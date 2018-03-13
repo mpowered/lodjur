@@ -13,3 +13,5 @@ executable          lodjur
                   , lucid
                   , text
                   , mtl
+                  , http-types
+                  , process
