@@ -14,16 +14,19 @@ import qualified Data.Text as Text
 import           Lucid.Base (Html, toHtml)
 import qualified Lucid.Base as Html
 import Lucid.Html5
+import Lucid.Bootstrap
 import Network.HTTP.Types.Status
 import System.Process
+import Data.Time.Clock
 
 type DeployHistory = [DeployEvent]
 
-data DeployEvent = DeployEvent Tag DeployResult
+data DeployEvent
+  = DeployStarted Tag UTCTime
+  | DeployFinished Tag UTCTime
+  | DeployFailed Tag UTCTime Text
 
 data DeployState = Idle | Deploying Tag
-
-data DeployResult = DeploySuccess | DeployError Text
 
 data LodjurState = LodjurState DeployState DeployHistory
 
@@ -56,14 +59,16 @@ deployTag tag = do
   gitDeploy = threadDelay (5 * us)
 
   notify var (Left ex) = do
+    now                        <- getCurrentTime
     LodjurState _state history <- takeMVar var
     putMVar var $ LodjurState
       Idle
-      (DeployEvent tag (DeployError (Text.pack (show ex))) : history)
+      (DeployFailed tag now (Text.pack (show ex)) : history)
 
   notify var (Right ()) = do
+    now                        <- getCurrentTime
     LodjurState _state history <- takeMVar var
-    putMVar var $ LodjurState Idle (DeployEvent tag DeploySuccess : history)
+    putMVar var $ LodjurState Idle (DeployFinished tag now : history)
 
 readState :: Action LodjurState
 readState = do
@@ -76,43 +81,76 @@ modifyState f = do
   state <- liftIO (takeMVar var)
   liftIO . putMVar var =<< f state
 
-type Scotty = ScottyT Lazy.Text (ReaderT LodjurEnv IO)
+-- type Scotty = ScottyT Lazy.Text (ReaderT LodjurEnv IO)
 type Action = ActionT Lazy.Text (ReaderT LodjurEnv IO)
 
 renderHtml :: Html () -> Action ()
 renderHtml = html . Html.renderText
 
+renderLayout :: Text -> Html () -> Action ()
+renderLayout title contents = renderHtml $ doctypehtml_ $ html_ $ do
+  head_ $ do
+    title_ (toHtml title)
+    link_
+      [ rel_ "stylesheet"
+      , href_
+        "https://maxcdn.bootstrapcdn.com/bootstrap/4.0.0/css/bootstrap.min.css"
+      ]
+  body_ contents
+
+renderHistory :: DeployHistory -> Html ()
+renderHistory history = do
+  h2_ [class_ "mt-5"] "History"
+  renderBody history
+  where
+    renderBody :: DeployHistory -> Html ()
+    renderBody [] = p_ [class_ "text-secondary"] "No history available."
+    renderBody events =
+      table_ [class_ "table table-striped"] $ do
+        tr_ $ do
+          th_ "Tag"
+          th_ "Time"
+          th_ "Description"
+        forM_ events $ \event -> tr_ $ case event of
+          DeployStarted tag startedAt -> do
+            td_ (toHtml tag)
+            td_ (toHtml (show startedAt))
+            td_ ""
+          DeployFinished tag finishedAt -> do
+            td_ (toHtml tag)
+            td_ (toHtml (show finishedAt))
+            td_ [style_ "color: green;"] "Success"
+          DeployFailed tag failedAt e -> do
+            td_ (toHtml tag)
+            td_ (toHtml (show failedAt))
+            td_ [style_ "color: red;"] ("Error: " <> toHtml e)
+
+renderDeployCard :: [Tag] -> DeployState -> Html ()
+renderDeployCard tags state = do
+  h2_ [class_ "mt-5"] "Current State"
+  case state of
+    Idle ->
+      div_ [class_ "card"] $ do
+        div_ [class_ "card-header"] "New Deploy"
+        div_ [class_ "card-body"] $ form_ [method_ "post"] $ do
+          div_ [class_ "input-group"] $ do
+            select_ [name_ "tag", class_ "form-control"] $ forM_ tags $ \tag ->
+              option_ [value_ tag] (toHtml tag)
+            span_ [class_ "input-group-button"] $
+              input_ [class_ "btn btn-primary", type_ "submit", value_ "Deploy"]
+    Deploying tag ->
+      p_ [class_ "text-info"] $ toHtml $  "Deploying tag " <> tag <> "..."
+
 showAllTagsAction :: Action ()
 showAllTagsAction = do
   LodjurState deployState history <- readState
-  stateHtml                       <- renderState deployState
-  renderHtml $ do
-    h1_ "Lodjur Deployment Manager"
-    hr_ []
-    div_ stateHtml
-    hr_ []
-    renderHistory history
- where
-  renderState = \case
-    Idle -> do
-      tags <- listTags
-      return $ do
-        form_ [method_ "post"] $ do
-          select_ [name_ "tag"] $ forM_ tags $ \tag ->
-            option_ [value_ tag] (toHtml tag)
-          input_ [type_ "submit", value_ "Deploy"]
-    Deploying tag -> return $ do
-      p_ $ toHtml $ "Deploying tag: " <> tag
-  renderHistory :: DeployHistory -> Html ()
-  renderHistory results = table_ $ do
-    tr_ $ do
-      th_ "Tag"
-      th_ "Result"
-    forM_ results $ \(DeployEvent tag result) -> tr_ $ do
-      td_ (toHtml tag)
-      case result of
-        DeploySuccess -> td_ [style_ "color: green;"] "Success"
-        DeployError e -> td_ [style_ "color: red;"] ("Error: " <> toHtml e)
+  tags <- listTags
+  renderLayout "Lodjur Deployment Manager" $ container_ $ do
+    div_ [class_ "row"] $ div_ [class_ "col"] $ do
+      h1_  [class_ "mt-5"] "Lodjur"
+      p_ [class_ "lead"] "Mpowered's Nixops Deployment Frontend"
+    div_ [class_ "row"] $ div_ [class_ "col"] $ renderDeployCard tags deployState
+    div_ [class_ "row"] $ div_ [class_ "col"] $ renderHistory history
 
 deployTagAction :: Action ()
 deployTagAction = modifyState $ \case
@@ -123,13 +161,17 @@ deployTagAction = modifyState $ \case
     deployTag tag
     return $ LodjurState (Deploying tag) history
   LodjurState (Deploying tag) history -> do
-    renderHtml $ p_ $ toHtml $ "Already deploying a tag: " <> tag
+    renderLayout "Already Deploying"
+      $  p_
+      $  toHtml
+      $  "Already deploying a tag: "
+      <> tag
     return $ LodjurState Idle history
 
 main :: IO ()
 main = do
   mvar <- newMVar (LodjurState Idle [])
   qsem <- newQSem 4
-  scottyT 4000 (flip runReaderT (LodjurEnv mvar qsem)) $ do
+  scottyT 4000 (`runReaderT` LodjurEnv mvar qsem) $ do
     get  "/" showAllTagsAction
     post "/" deployTagAction

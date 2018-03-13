@@ -15,3 +15,4 @@ executable          lodjur
                   , mtl
                   , http-types
                   , process
+                  , time
