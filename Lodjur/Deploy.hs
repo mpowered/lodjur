@@ -86,11 +86,3 @@ deployTag LodjurEnv { lodjurStateVar = var } tag = do
         now <- getCurrentTime
         let ev = DeployFinished tag now
         transitionState var $ \_ -> return (Idle, [ev])
-
-
-
-
-
-
-
-
