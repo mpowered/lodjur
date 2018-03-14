@@ -9,9 +9,7 @@ import Control.Concurrent
 import Control.Exception
 
 class Actor a where
-  data Message a :: * -> *
-
-  initialState :: a
+  type Message a :: * -> *
   receive :: Ref a -> (a, Message a r) -> IO (ReceiveType a r)
   shutdown :: a -> IO ()
 
@@ -54,12 +52,12 @@ requireAlive ref action = do
 kill :: Actor a => Ref a -> IO ()
 kill receiver = writeChan (inbox receiver) PoisonPill
 
-spawn :: Actor a => IO (Ref a)
-spawn = do
+spawn :: Actor a => a -> IO (Ref a)
+spawn initialState = do
   inbox' <- newChan
   aliveVar <- newMVar True
   let ref = Ref inbox' aliveVar
-  _ <- forkIO $ receiveLoop ref initialState
+  _ <- forkIO (receiveLoop ref initialState)
   return ref
  where
   receiveLoop ref state =

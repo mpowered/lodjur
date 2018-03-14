@@ -4,6 +4,7 @@
 {-# LANGUAGE OverloadedStrings #-}
 {-# LANGUAGE TypeFamilies #-}
 {-# LANGUAGE NamedFieldPuns #-}
+{-# LANGUAGE RecordWildCards #-}
 module Lodjur.Deploy2 where
 
 import Data.Semigroup
@@ -30,20 +31,28 @@ newtype DeployResult = DeployResult Text deriving (Show, Eq)
 
 type DeployHistory = HashMap DeployId DeployResult
 
-data DeployActor = DeployActor { state :: DeployState, history :: DeployHistory }
+data DeployActor = DeployActor { state :: DeployState
+                               , history :: DeployHistory
+                               , deploymentName :: DeploymentName
+                               , gitWorkingDir :: FilePath
+                               }
+
+initialize :: DeploymentName -> FilePath -> DeployActor
+initialize deploymentName gitWorkingDir =
+  DeployActor { state = Idle, history = mempty, .. }
 
 deploy :: DeployId -> IO DeployResult
 deploy di = do
   threadDelay $ 5 * 1000 * 1000
   return (DeployResult (di <> " is done!"))
 
-instance Actor DeployActor where
-  data Message DeployActor r where
-    Deploy :: Tag -> Message DeployActor (Sync (Maybe DeployId))
-    GetDeployStatus :: DeployId -> Message DeployActor (Sync (Maybe DeployResult))
-    DeployFinished :: DeployId -> DeployResult -> Message DeployActor Async
+data DeployMessage r where
+  Deploy :: Tag -> DeployMessage (Sync (Maybe DeployId))
+  GetDeployStatus :: DeployId -> DeployMessage (Sync (Maybe DeployResult))
+  DeployFinished :: DeployId -> DeployResult -> DeployMessage Async
 
-  initialState = DeployActor Idle mempty
+instance Actor DeployActor where
+  type Message DeployActor = DeployMessage
 
   receive self (a@DeployActor{state, history}, msg)=
     case (state, msg) of
