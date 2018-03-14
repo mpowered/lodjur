@@ -18,7 +18,7 @@ main = do
      <> header "Mpowered's Nixops Deployment Frontend" )
 
     startServices Options{..} = do
-      env <- newLodjurEnv nixopsDeployment gitWorkingDir 
+      env <- newLodjurEnv nixopsDeployment gitWorkingDir
       runServer port env
 
 data Options = Options
