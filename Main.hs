@@ -4,81 +4,18 @@
 import Data.Semigroup
 import Web.Scotty.Trans
 import Control.Concurrent
-import Control.Exception
 import Control.Monad
 import Data.Text (Text)
 import qualified Data.Text.Lazy as Lazy
 import Control.Monad.IO.Class (liftIO)
 import Control.Monad.Reader
-import qualified Data.Text as Text
 import           Lucid.Base (Html, toHtml)
 import qualified Lucid.Base as Html
 import Lucid.Html5
 import Lucid.Bootstrap
 import Network.HTTP.Types.Status
-import System.Process
-import Data.Time.Clock
 
-type DeployHistory = [DeployEvent]
-
-data DeployEvent
-  = DeployStarted Tag UTCTime
-  | DeployFinished Tag UTCTime
-  | DeployFailed Tag UTCTime Text
-
-data DeployState = Idle | Deploying Tag
-
-data LodjurState = LodjurState DeployState DeployHistory
-
-data LodjurEnv = LodjurEnv
-  { lodjurStateVar :: MVar LodjurState
-  , lodjurGitSem   :: QSem
-  }
-
-type Tag = Text
-
-listTags :: Action [Tag]
-listTags = do
-  qsem <- lift $ asks lodjurGitSem
-  liftIO $ bracket_ (waitQSem qsem) (signalQSem qsem) gitListTags
-
-us :: Int
-us = 1000000
-
-gitListTags :: IO [Tag]
-gitListTags = do
-  threadDelay (1 * us)
-  out <- readProcess "git" ["tag", "-l"] ""
-  return $ filter (not . Text.null) $ Text.lines $ Text.pack out
-
-transitionState
-  :: MVar LodjurState
-  -> (DeployState -> IO (DeployState, [DeployEvent]))
-  -> IO ()
-transitionState var f = do
-  LodjurState state history <- takeMVar var
-  (state', es)              <- f state
-  putMVar var (LodjurState state' (es <> history))
-
-deployTag :: MVar LodjurState -> Tag -> IO ()
-deployTag var tag = do
-  now <- getCurrentTime
-  transitionState var
-    $ \_ -> return (Deploying tag, [DeployStarted tag now])
-  void $ forkFinally gitDeploy finishDeploy
- where
-  gitDeploy = threadDelay (5 * us)
-
-  finishDeploy (Left ex) = do
-    now <- getCurrentTime
-    transitionState var
-      $ \_ -> return (Idle, [DeployFailed tag now (Text.pack (show ex))])
-
-  finishDeploy (Right ()) = do
-    now <- getCurrentTime
-    let ev = DeployFinished tag now
-    transitionState var $ \_ -> return (Idle, [ev])
-
+import Lodjur.Deploy
 -- type Scotty = ScottyT Lazy.Text (ReaderT LodjurEnv IO)
 type Action = ActionT Lazy.Text (ReaderT LodjurEnv IO)
 
@@ -137,19 +74,22 @@ renderDeployCard tags state = do
   case state of
     Idle -> div_ [class_ "card"] $ do
       div_ [class_ "card-header"] "New Deploy"
-      div_ [class_ "card-body"] $ form_ [method_ "post"] $
-        div_ [class_ "input-group"] $ do
-        select_ [name_ "tag", class_ "form-control"] $ forM_ tags $ \tag ->
-          option_ [value_ tag] (toHtml tag)
-        span_ [class_ "input-group-button"] $ input_
-          [class_ "btn btn-primary", type_ "submit", value_ "Deploy"]
+      div_ [class_ "card-body"]
+        $ form_ [method_ "post"]
+        $ div_ [class_ "input-group"]
+        $ do
+            select_ [name_ "tag", class_ "form-control"] $ forM_ tags $ \tag ->
+              option_ [value_ tag] (toHtml tag)
+            span_ [class_ "input-group-button"] $ input_
+              [class_ "btn btn-primary", type_ "submit", value_ "Deploy"]
     Deploying tag ->
       p_ [class_ "text-info"] $ toHtml $ "Deploying tag " <> tag <> "..."
 
 showAllTagsAction :: Action ()
 showAllTagsAction = do
   LodjurState deployState history <- readState
-  tags                            <- listTags
+  qsem                            <- lift $ asks lodjurGitSem
+  tags                            <- liftIO $ listTags qsem
   renderLayout "Lodjur Deployment Manager" $ container_ $ do
     div_ [class_ "row"] $ div_ [class_ "col"] $ do
       h1_ [class_ "mt-5"] "Lodjur"
@@ -180,3 +120,4 @@ main = do
   scottyT 4000 (`runReaderT` LodjurEnv mvar qsem) $ do
     get  "/" showAllTagsAction
     post "/" deployTagAction
+
