@@ -1,4 +1,15 @@
-module Lodjur.Deploy where
+module Lodjur.Deploy
+    ( DeployHistory
+    , DeployEvent (..)
+    , DeployState(..)
+    , LodjurState(..)
+    , LodjurEnv
+    , newLodjurEnv
+    , currentState
+    , Tag
+    , listTags
+    , deployTag
+    ) where
 
 import Data.Time.Clock
 import Data.Text (Text)
@@ -25,10 +36,16 @@ data LodjurEnv = LodjurEnv
   , lodjurGitSem   :: QSem
   }
 
-type Tag = Text
+newLodjurEnv :: IO LodjurEnv
+newLodjurEnv = do
+    mvar <- newMVar (LodjurState Idle [])
+    qsem <- newQSem 4
+    return (LodjurEnv mvar qsem)
 
-listTags :: QSem -> IO [Tag]
-listTags qsem = bracket_ (waitQSem qsem) (signalQSem qsem) gitListTags
+currentState :: LodjurEnv -> IO LodjurState
+currentState = readMVar . lodjurStateVar
+
+type Tag = Text
 
 us :: Int
 us = 1000000
@@ -39,6 +56,10 @@ gitListTags = do
     out <- readProcess "git" ["tag", "-l"] ""
     return $ filter (not . Text.null) $ Text.lines $ Text.pack out
 
+listTags :: LodjurEnv -> IO [Tag]
+listTags LodjurEnv { lodjurGitSem = qsem } =
+    bracket_ (waitQSem qsem) (signalQSem qsem) gitListTags
+
 transitionState
     :: MVar LodjurState
     -> (DeployState -> IO (DeployState, [DeployEvent]))
@@ -48,8 +69,8 @@ transitionState var f = do
     (state', es)              <- f state
     putMVar var (LodjurState state' (es <> history))
 
-deployTag :: MVar LodjurState -> Tag -> IO ()
-deployTag var tag = do
+deployTag :: LodjurEnv -> Tag -> IO ()
+deployTag LodjurEnv { lodjurStateVar = var } tag = do
     now <- getCurrentTime
     transitionState var $ \_ -> return (Deploying tag, [DeployStarted tag now])
     void $ forkFinally gitDeploy finishDeploy
@@ -65,4 +86,11 @@ deployTag var tag = do
         now <- getCurrentTime
         let ev = DeployFinished tag now
         transitionState var $ \_ -> return (Idle, [ev])
+
+
+
+
+
+
+
 

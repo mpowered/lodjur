@@ -3,7 +3,6 @@
 
 import Data.Semigroup
 import Web.Scotty.Trans
-import Control.Concurrent
 import Control.Monad
 import Data.Text (Text)
 import qualified Data.Text.Lazy as Lazy
@@ -16,13 +15,11 @@ import Lucid.Bootstrap
 import Network.HTTP.Types.Status
 
 import Lodjur.Deploy
--- type Scotty = ScottyT Lazy.Text (ReaderT LodjurEnv IO)
+
 type Action = ActionT Lazy.Text (ReaderT LodjurEnv IO)
 
 readState :: Action LodjurState
-readState = do
-  var <- lift $ asks lodjurStateVar
-  liftIO (readMVar var)
+readState = lift ask >>= liftIO . currentState
 
 renderHtml :: Html () -> Action ()
 renderHtml = html . Html.renderText
@@ -88,8 +85,8 @@ renderDeployCard tags state = do
 showAllTagsAction :: Action ()
 showAllTagsAction = do
   LodjurState deployState history <- readState
-  qsem                            <- lift $ asks lodjurGitSem
-  tags                            <- liftIO $ listTags qsem
+  env                             <- lift ask
+  tags                            <- liftIO $ listTags env
   renderLayout "Lodjur Deployment Manager" $ container_ $ do
     div_ [class_ "row"] $ div_ [class_ "col"] $ do
       h1_ [class_ "mt-5"] "Lodjur"
@@ -101,11 +98,11 @@ showAllTagsAction = do
 deployTagAction :: Action ()
 deployTagAction = readState >>= \case
   LodjurState Idle _ -> do
-    var <- lift $ asks lodjurStateVar
+    env <- lift ask
     tag <- param "tag" :: Action Tag
     status status302
     setHeader "Location" "/"
-    liftIO $ deployTag var tag
+    liftIO $ deployTag env tag
   LodjurState (Deploying tag) _ ->
     renderLayout "Already Deploying"
       $  p_
@@ -115,9 +112,7 @@ deployTagAction = readState >>= \case
 
 main :: IO ()
 main = do
-  mvar <- newMVar (LodjurState Idle [])
-  qsem <- newQSem 4
-  scottyT 4000 (`runReaderT` LodjurEnv mvar qsem) $ do
+  env <- newLodjurEnv
+  scottyT 4000 (`runReaderT` env) $ do
     get  "/" showAllTagsAction
     post "/" deployTagAction
-
