@@ -51,11 +51,6 @@ gitListTags = do
   out <- readProcess "git" ["tag", "-l"] ""
   return $ filter (not . Text.null) $ Text.lines $ Text.pack out
 
-readState :: Action LodjurState
-readState = do
-  var <- lift $ asks lodjurStateVar
-  liftIO (readMVar var)
-
 transitionState
   :: MVar LodjurState
   -> (DeployState -> IO (DeployState, [DeployEvent]))
@@ -65,29 +60,32 @@ transitionState var f = do
   (state', es)              <- f state
   putMVar var (LodjurState state' (es <> history))
 
-deployTag :: Tag -> Action ()
-deployTag tag = do
-  var <- lift $ asks lodjurStateVar
-  liftIO $ do
-    now <- getCurrentTime
-    transitionState var
-      $ \_ -> return (Deploying tag, [DeployStarted tag now])
-    void $ forkFinally gitDeploy (notify var)
+deployTag :: MVar LodjurState -> Tag -> IO ()
+deployTag var tag = do
+  now <- getCurrentTime
+  transitionState var
+    $ \_ -> return (Deploying tag, [DeployStarted tag now])
+  void $ forkFinally gitDeploy finishDeploy
  where
   gitDeploy = threadDelay (5 * us)
 
-  notify var (Left ex) = do
+  finishDeploy (Left ex) = do
     now <- getCurrentTime
     transitionState var
       $ \_ -> return (Idle, [DeployFailed tag now (Text.pack (show ex))])
 
-  notify var (Right ()) = do
+  finishDeploy (Right ()) = do
     now <- getCurrentTime
     let ev = DeployFinished tag now
     transitionState var $ \_ -> return (Idle, [ev])
 
 -- type Scotty = ScottyT Lazy.Text (ReaderT LodjurEnv IO)
 type Action = ActionT Lazy.Text (ReaderT LodjurEnv IO)
+
+readState :: Action LodjurState
+readState = do
+  var <- lift $ asks lodjurStateVar
+  liftIO (readMVar var)
 
 renderHtml :: Html () -> Action ()
 renderHtml = html . Html.renderText
@@ -163,10 +161,11 @@ showAllTagsAction = do
 deployTagAction :: Action ()
 deployTagAction = readState >>= \case
   LodjurState Idle _ -> do
+    var <- lift $ asks lodjurStateVar
     tag <- param "tag" :: Action Tag
     status status302
     setHeader "Location" "/"
-    deployTag tag
+    liftIO $ deployTag var tag
   LodjurState (Deploying tag) _ ->
     renderLayout "Already Deploying"
       $  p_
