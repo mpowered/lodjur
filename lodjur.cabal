@@ -17,4 +17,4 @@ executable          lodjur
                   , http-types
                   , process
                   , time
-                  , optparse-applicative
+                  , optparse-applicative >= 0.14 && < 0.15
