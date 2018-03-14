@@ -17,10 +17,11 @@ newtype Tag = Tag { unTag :: Text } deriving (Eq, Show, IsString)
 
 newtype DeploymentName = DeploymentName String deriving (Eq, Show, IsString)
 
-data DeployActor = Idle | Deploying
+data DeployActor
+  = Idle
+  | Deploying
 
 instance Actor DeployActor where
-
   data Message DeployActor r where
     Deploy :: Tag -> Message DeployActor (Sync Bool)
     DeployFinished :: Tag -> Message DeployActor Async
@@ -28,7 +29,7 @@ instance Actor DeployActor where
   initialState = Idle
 
   receive self = \case
-    (Idle, Deploy _) -> do
+    (Idle     , Deploy _) -> do
       putStrLn "Deploying ..."
       void $ forkIO $ do
         threadDelay $ 5 * 1000 * 1000
