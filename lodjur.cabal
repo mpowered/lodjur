@@ -7,7 +7,6 @@ executable          lodjur
     hs-source-dirs: .
     main-is:        Main.hs
     ghc-options:    -Wall -threaded -O2 -rtsopts -with-rtsopts=-N
-    extensions:     OverloadedStrings
     other-modules:  Lodjur.Deploy
                   , Lodjur.Web
     build-depends:  base   >= 4      && < 5
