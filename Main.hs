@@ -56,33 +56,35 @@ readState = do
   var <- lift $ asks lodjurStateVar
   liftIO (readMVar var)
 
-modifyState :: MVar LodjurState -> (LodjurState -> IO LodjurState) -> IO ()
-modifyState var f = do
-  state <- takeMVar var
-  putMVar var =<< f state
-
-addEvent :: MVar LodjurState -> DeployEvent -> IO ()
-addEvent var event =
-  modifyState var $ \(LodjurState state history) ->
-    return (LodjurState state (event : history))
+transitionState
+  :: MVar LodjurState
+  -> (DeployState -> IO (DeployState, [DeployEvent]))
+  -> IO ()
+transitionState var f = do
+  LodjurState state history <- takeMVar var
+  (state', es)              <- f state
+  putMVar var (LodjurState state' (es <> history))
 
 deployTag :: Tag -> Action ()
 deployTag tag = do
   var <- lift $ asks lodjurStateVar
   liftIO $ do
     now <- getCurrentTime
-    addEvent var (DeployStarted tag now)
+    transitionState var
+      $ \_ -> return (Deploying tag, [DeployStarted tag now])
     void $ forkFinally gitDeploy (notify var)
  where
   gitDeploy = threadDelay (5 * us)
 
   notify var (Left ex) = do
     now <- getCurrentTime
-    addEvent var (DeployFailed tag now (Text.pack (show ex)))
+    transitionState var
+      $ \_ -> return (Idle, [DeployFailed tag now (Text.pack (show ex))])
 
   notify var (Right ()) = do
     now <- getCurrentTime
-    addEvent var (DeployFinished tag now)
+    let ev = DeployFinished tag now
+    transitionState var $ \_ -> return (Idle, [ev])
 
 -- type Scotty = ScottyT Lazy.Text (ReaderT LodjurEnv IO)
 type Action = ActionT Lazy.Text (ReaderT LodjurEnv IO)
@@ -137,12 +139,12 @@ renderDeployCard tags state = do
   case state of
     Idle -> div_ [class_ "card"] $ do
       div_ [class_ "card-header"] "New Deploy"
-      div_ [class_ "card-body"] $ form_ [method_ "post"] $ do
+      div_ [class_ "card-body"] $ form_ [method_ "post"] $
         div_ [class_ "input-group"] $ do
-          select_ [name_ "tag", class_ "form-control"] $ forM_ tags $ \tag ->
-            option_ [value_ tag] (toHtml tag)
-          span_ [class_ "input-group-button"] $ input_
-            [class_ "btn btn-primary", type_ "submit", value_ "Deploy"]
+        select_ [name_ "tag", class_ "form-control"] $ forM_ tags $ \tag ->
+          option_ [value_ tag] (toHtml tag)
+        span_ [class_ "input-group-button"] $ input_
+          [class_ "btn btn-primary", type_ "submit", value_ "Deploy"]
     Deploying tag ->
       p_ [class_ "text-info"] $ toHtml $ "Deploying tag " <> tag <> "..."
 
