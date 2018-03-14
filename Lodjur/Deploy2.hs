@@ -22,8 +22,8 @@ data DeployActor = Idle | Deploying
 instance Actor DeployActor where
 
   data Message DeployActor r where
-    Deploy :: Tag -> Message DeployActor Bool
-    DeployFinished :: Tag -> Message DeployActor ()
+    Deploy :: Tag -> Message DeployActor (Sync Bool)
+    DeployFinished :: Tag -> Message DeployActor Async
 
   initialState = Idle
 
@@ -35,10 +35,10 @@ instance Actor DeployActor where
         self ! DeployFinished "foo"
       return (Deploying, True)
     (Idle     , DeployFinished _) ->
-      return (Idle, ())
+      return Idle
     (Deploying, Deploy _        ) -> do
       putStrLn "Ignoring."
       return (Deploying, False)
     (Deploying, DeployFinished _) -> do
       putStrLn "Deploy finished!"
-      return (Idle, ())
+      return Idle
