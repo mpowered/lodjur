@@ -1,20 +1,20 @@
-{-# LANGUAGE OverloadedStrings #-}
 {-# LANGUAGE LambdaCase        #-}
+{-# LANGUAGE OverloadedStrings #-}
 
-import Data.Semigroup
-import Web.Scotty.Trans
-import Control.Monad
-import Data.Text (Text)
-import qualified Data.Text.Lazy as Lazy
-import Control.Monad.IO.Class (liftIO)
-import Control.Monad.Reader
-import           Lucid.Base (Html, toHtml)
-import qualified Lucid.Base as Html
-import Lucid.Html5
-import Lucid.Bootstrap
-import Network.HTTP.Types.Status
+import           Control.Monad
+import           Control.Monad.IO.Class    (liftIO)
+import           Control.Monad.Reader
+import           Data.Semigroup
+import           Data.Text                 (Text)
+import qualified Data.Text.Lazy            as Lazy
+import           Lucid.Base                (Html, toHtml)
+import qualified Lucid.Base                as Html
+import           Lucid.Bootstrap
+import           Lucid.Html5
+import           Network.HTTP.Types.Status
+import           Web.Scotty.Trans
 
-import Lodjur.Deploy
+import           Lodjur.Deploy
 
 type Action = ActionT Lazy.Text (ReaderT LodjurEnv IO)
 
