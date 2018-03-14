@@ -64,3 +64,7 @@ instance Actor DeployActor where
         return a { state = Idle, history = HashMap.insert di result history }
       (_, GetDeployStatus di) ->
         return (a { state = Idle }, HashMap.lookup di history)
+
+  shutdown DeployActor {state} = case state of
+    Idle -> return ()
+    Deploying -> putStrLn "Killed while deploying"
