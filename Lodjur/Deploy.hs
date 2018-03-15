@@ -24,15 +24,15 @@ import           Control.Concurrent
 import           Control.Exception          (Exception, SomeException, throwIO)
 import           Control.Monad              (void)
 import           Data.HashSet               (HashSet)
+import qualified Data.HashSet               as HashSet
 import           Data.Hashable              (Hashable)
 import           Data.Semigroup
 import           Data.String
 import           Data.Text                  (Text)
+import qualified Data.Text                  as Text
 import           GHC.Generics               (Generic)
 import           System.Exit
 import           System.Process             (proc, readCreateProcessWithExitCode, CreateProcess (cwd))
-import qualified Data.HashSet               as HashSet
-import qualified Data.Text                  as Text
 
 import           Lodjur.Process
 
