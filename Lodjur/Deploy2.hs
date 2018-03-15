@@ -113,7 +113,7 @@ nixopsCmd args = do
 
 deploy :: FilePath -> DeploymentJob -> IO DeployResult
 deploy gitWorkingDir job = do
-  _ <- gitCmd ["checkout", Text.unpack (jobId job)] gitWorkingDir
+  _ <- gitCmd ["checkout", Text.unpack (jobId job), "--recurse-submodules" ] gitWorkingDir
   _ <- nixopsCmd ["deploy", "-d", unDeploymentName (deploymentName job)]
   return (DeploySuccessful job)
 
