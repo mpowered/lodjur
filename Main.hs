@@ -21,15 +21,14 @@ main =
      <> header "Mpowered's Nixops Deployment Frontend" )
 
     startServices Options{..} = do
-      let deploymentNames = HashSet.singleton nixopsDeployment
+      let deploymentNames = HashSet.fromList nixopsDeployments
       deployer <- spawn (initialize deploymentNames gitWorkingDir)
-      -- env <- newLodjurEnv nixopsDeployment gitWorkingDir
       runServer port deployer
 
 data Options = Options
-  { gitWorkingDir    :: FilePath
-  , nixopsDeployment :: DeploymentName
-  , port             :: Port
+  { gitWorkingDir     :: FilePath
+  , nixopsDeployments :: [DeploymentName]
+  , port              :: Port
   }
 
 lodjur :: Parser Options
@@ -39,13 +38,15 @@ lodjur = Options
          <> metavar "PATH"
          <> short 'g'
          <> help "Path to Git directory containing deployment expressions" )
-      <*> strOption
+      <*> many (strOption
           ( long "deployment"
+         <> metavar "NAME"
          <> short 'd'
-         <> help "Name of nixops deployment" )
+         <> help "Names of nixops deployments to support" ))
       <*> option auto
           ( long "port"
+         <> metavar "PORT"
+         <> short 'p'
          <> help "Port to run the web server on"
          <> showDefault
-         <> value 4000
-         <> metavar "PORT" )
+         <> value 4000 )
