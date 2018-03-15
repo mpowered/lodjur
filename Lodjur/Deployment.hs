@@ -27,4 +27,3 @@ data JobResult
   = JobSuccessful
   | JobFailed Text
   deriving (Show, Eq)
-

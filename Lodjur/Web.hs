@@ -76,6 +76,29 @@ renderEventLog eventLog =
       td_ (toHtml (show finishedAt))
       td_ [style_ "color: red;"] (toHtml e)
 
+renderDeployJobs :: DeploymentJobs -> Html ()
+renderDeployJobs jobs
+  | HashMap.null jobs = p_ [class_ "text-secondary"] "No jobs available."
+  | otherwise =
+    table_ [class_ "table table-striped"] $ do
+      tr_ $ do
+        th_ "Job"
+        th_ "Deployment"
+        th_ "Tag"
+        th_ "Result"
+      mapM_ renderJob (HashMap.elems jobs)
+ where
+  renderJob :: (DeploymentJob, Maybe JobResult) -> Html ()
+  renderJob (job, r) =
+    tr_ $ do
+      td_ (jobLink job)
+      td_ (toHtml (unDeploymentName (deploymentName job)))
+      td_ (toHtml (unTag (deploymentTag job)))
+      case r of
+        Just JobSuccessful -> td_ [class_ "text-success"] "Successful"
+        Just (JobFailed reason) -> td_ [class_ "text-danger"] (toHtml reason)
+        Nothing -> td_ [class_ "text-primary"] "Running"
+
 renderDeployCard :: [DeploymentName] -> [Tag] -> DeployState -> Html ()
 renderDeployCard deploymentNames tags state = do
   h2_ [class_ "mt-5"] "Current State"
@@ -134,7 +157,7 @@ jobHref :: DeploymentJob -> Text
 jobHref job = "/jobs/" <> jobId job
 
 jobLink :: DeploymentJob -> Html ()
-jobLink job = a_ [href_ (jobHref job)] (toHtml (unTag (deploymentTag job)))
+jobLink job = a_ [href_ (jobHref job)] (toHtml (jobId job))
 
 homeAction :: Action ()
 homeAction = do
@@ -142,6 +165,7 @@ homeAction = do
   deploymentNames <- liftIO $ deployer ? GetDeploymentNames
   tags            <- liftIO $ deployer ? GetTags
   deployState     <- liftIO $ deployer ? GetCurrentState
+  jobs            <- liftIO $ deployer ? GetJobs
   renderLayout "Lodjur Deployment Manager" $ do
     div_ [class_ "row"] $ div_ [class_ "col"] $ do
       h1_ [class_ "mt-5"] "Lodjur"
@@ -150,6 +174,9 @@ homeAction = do
       deploymentNames
       tags
       deployState
+    div_ [class_ "row"] $ div_ [class_ "col"] $ do
+      h2_ [class_ "mt-5"] "Jobs"
+      renderDeployJobs jobs
 
 newDeployAction :: Action ()
 newDeployAction = readState >>= \case
