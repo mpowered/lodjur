@@ -15,6 +15,7 @@ import           Lucid.Bootstrap
 import           Lucid.Html5
 import           Network.HTTP.Types.Status
 import           Web.Scotty.Trans
+import qualified Data.Text as Text
 
 import           Lodjur.Process
 import           Lodjur.Deploy
@@ -68,44 +69,63 @@ renderEventLog eventLog = do
         td_ (toHtml (show failedAt))
         td_ [style_ "color: red;"] (toHtml e)
 
-renderDeployCard :: [Tag] -> DeployState -> Html ()
-renderDeployCard tags state = do
+renderDeployCard :: [DeploymentName] -> [Tag] -> DeployState -> Html ()
+renderDeployCard deploymentNames tags state = do
   h2_ [class_ "mt-5"] "Current State"
   case state of
-    Idle -> div_ [class_ "card"] $ do
-      div_ [class_ "card-header"] "New Deploy"
-      div_ [class_ "card-body"]
-        $ form_ [method_ "post"]
-        $ div_ [class_ "input-group"]
-        $ do
-            select_ [name_ "tag", class_ "form-control"] $ forM_ tags $ \(unTag -> tag) ->
-              option_ [value_ tag] (toHtml tag)
-            span_ [class_ "input-group-button"] $ input_
-              [class_ "btn btn-primary", type_ "submit", value_ "Deploy"]
+    Idle -> do
+      p_ [class_ "text-muted"] "Idle"
+      div_ [class_ "card"] $ do
+        div_ [class_ "card-header"] "New Deploy"
+        div_ [class_ "card-body"]
+          $ form_ [method_ "post"]
+          $ div_ [class_ "row"]
+          $ do
+            div_ [class_ "col"] $
+              select_ [name_ "deployment-name", class_ "form-control"]
+                $ forM_ deploymentNames
+                $ \(unDeploymentName -> n) ->
+                    option_ [value_ (Text.pack n)] (toHtml n)
+            div_ [class_ "col"] $
+              select_ [name_ "tag", class_ "form-control"]
+                $ forM_ tags
+                $ \(unTag -> tag) -> option_ [value_ tag] (toHtml tag)
+            div_ [class_ "col"] $
+              span_ [class_ "input-group-button form-control"] $ input_
+                [class_ "btn btn-primary", type_ "submit", value_ "Deploy"]
     Deploying job ->
-      p_ [class_ "text-info"] $ toHtml $ "Deploying tag " <> unTag (deploymentTag job) <> "..."
+      p_ [class_ "text-info"]
+        $  toHtml
+        $  "Deploying tag "
+        <> unTag (deploymentTag job)
+        <> "..."
 
 showAllTagsAction :: Action ()
 showAllTagsAction = do
-  deployer      <- lift ask
-  tags          <- liftIO $ deployer ? GetTags
-  deployState   <- liftIO $ deployer ? GetCurrentState
-  eventLog      <- liftIO $ deployer ? GetEventLog
+  deployer        <- lift ask
+  deploymentNames <- liftIO $ deployer ? GetDeploymentNames
+  tags            <- liftIO $ deployer ? GetTags
+  deployState     <- liftIO $ deployer ? GetCurrentState
+  eventLog        <- liftIO $ deployer ? GetEventLog
   renderLayout "Lodjur Deployment Manager" $ container_ $ do
     div_ [class_ "row"] $ div_ [class_ "col"] $ do
       h1_ [class_ "mt-5"] "Lodjur"
       p_  [class_ "lead"] "Mpowered's Nixops Deployment Frontend"
-    div_ [class_ "row"] $ div_ [class_ "col"] $ renderDeployCard tags deployState
+    div_ [class_ "row"] $ div_ [class_ "col"] $ renderDeployCard
+      deploymentNames
+      tags
+      deployState
     div_ [class_ "row"] $ div_ [class_ "col"] $ renderEventLog eventLog
 
 deployTagAction :: Action ()
 deployTagAction = readState >>= \case
   Idle -> do
     deployer <- lift ask
-    tag <- Tag <$> param "tag"
+    dName    <- DeploymentName <$> param "deployment-name"
+    tag      <- Tag <$> param "tag"
     status status302
     setHeader "Location" "/"
-    void $ liftIO $ deployer ? Deploy "mpowered-staging" tag
+    void $ liftIO $ deployer ? Deploy dName tag
   Deploying job ->
     renderLayout "Already Deploying"
       $  p_
@@ -116,7 +136,6 @@ deployTagAction = readState >>= \case
 type Port = Int
 
 runServer :: Port -> Ref Deployer -> IO ()
-runServer port ref =
-  scottyT port (`runReaderT` ref) $ do
-    get  "/" showAllTagsAction
-    post "/" deployTagAction
+runServer port ref = scottyT port (`runReaderT` ref) $ do
+  get  "/" showAllTagsAction
+  post "/" deployTagAction

@@ -84,6 +84,7 @@ data DeployMessage r where
   Deploy :: DeploymentName -> Tag -> DeployMessage (Sync (Maybe DeploymentJob))
   GetEventLog :: DeployMessage (Sync EventLog)
   GetCurrentState :: DeployMessage (Sync DeployState)
+  GetDeploymentNames :: DeployMessage (Sync [DeploymentName])
   GetTags :: DeployMessage (Sync [Tag])
   -- Private messages:
   NotifyEvent :: JobEvent -> DeployMessage Async
@@ -151,25 +152,34 @@ instance Process Deployer where
           void (forkFinally (deploy gitWorkingDir job) (notifyDeployFinished self job))
           return (a { state = Deploying job}, Just job)
         -- We can't deploy to an unknown deployment.
-        | otherwise -> return (a, Nothing)
-      (Idle     , NotifyEvent _) ->
-        return a { state = Idle }
+        | otherwise -> do
+          putStrLn ("Invalid deployment name: " <> unDeploymentName name)
+          return (a, Nothing)
       (Deploying{}, Deploy{}      ) ->
         return (a, Nothing)
-      (Deploying job, NotifyEvent event)
-        | job == eventJob event -> do
-          putStrLn ("Recorded event: " <> show event)
-          return a { state = Idle, eventLog = (jobId (eventJob event), event) : eventLog }
-        | otherwise -> do
-          putStrLn ("Cannot record job event: " <> show event)
-          return a
+
+      -- Queries:
+      (_, GetDeploymentNames) ->
+        return (a, HashSet.toList deploymentNames)
       (_, GetTags) -> do
         tags <- gitListTags gitWorkingDir
         return (a, tags)
       (_, GetCurrentState) ->
         return (a, state)
       (_, GetEventLog) ->
-        return (a { state = Idle }, eventLog)
+        return (a, eventLog)
+
+      -- Private messages:
+      (_, NotifyEvent event) -> do
+        putStrLn ("Recording event: " <> show event)
+        let state' =
+              case event of
+                JobRunning{} -> state
+                JobFailed{} -> Idle
+                JobSuccessful{} -> Idle
+        return a { state = state'
+                 , eventLog = (jobId (eventJob event), event) : eventLog
+                 }
 
   terminate Deployer {state} = case state of
     Idle -> return ()
