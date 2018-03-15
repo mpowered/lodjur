@@ -2,6 +2,7 @@
 {-# LANGUAGE GeneralizedNewtypeDeriving #-}
 module Lodjur.Deployment where
 
+import           Data.Aeson
 import           Data.Text           (Text)
 import           Data.String
 import           GHC.Generics        (Generic)
@@ -26,5 +27,7 @@ data DeploymentJob = DeploymentJob
 data JobResult
   = JobSuccessful
   | JobFailed Text
-  deriving (Show, Eq)
+  deriving (Show, Eq, Generic)
 
+instance ToJSON JobResult
+instance FromJSON JobResult

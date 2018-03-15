@@ -24,7 +24,7 @@ main = startServices =<< execParser opts
 
   startServices Options {..} = do
     let deploymentNames = HashSet.fromList nixopsDeployments
-    eventLogger <- spawn EventLogger.emptyEventLogger
+    eventLogger <- spawn =<< EventLogger.newEventLogger "lodjur.db"
     deployer    <- spawn
       (Deployer.initialize eventLogger deploymentNames gitWorkingDir)
     runServer port deployer eventLogger
