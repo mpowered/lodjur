@@ -53,7 +53,7 @@ newEventLogger file = EventLogger <$> openAndInit file
 openAndInit :: String -> IO Connection
 openAndInit file = do
     conn <- open file
-    execute_ conn "CREATE TABLE IF NOT EXISTS job_event_log (time INTEGER, job_id TEXT, event TEXT)"
+    execute_ conn "CREATE TABLE IF NOT EXISTS job_event_log (time TEXT, job_id TEXT, event TEXT)"
     return conn
 
 insertEvent :: ToJSON event => Connection -> UTCTime -> JobId -> event -> IO ()
