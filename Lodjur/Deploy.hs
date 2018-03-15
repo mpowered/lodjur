@@ -1,59 +1,95 @@
+{-# LANGUAGE GADTs #-}
+{-# LANGUAGE DeriveGeneric #-}
+{-# LANGUAGE RankNTypes #-}
 {-# LANGUAGE GeneralizedNewtypeDeriving #-}
+{-# LANGUAGE OverloadedStrings #-}
+{-# LANGUAGE TypeFamilies #-}
+{-# LANGUAGE NamedFieldPuns #-}
+{-# LANGUAGE RecordWildCards #-}
+{-# LANGUAGE LambdaCase #-}
 module Lodjur.Deploy
-    ( DeployHistory
-    , DeployEvent (..)
-    , DeployState(..)
-    , LodjurState(..)
-    , LodjurEnv
-    , Tag (..)
-    , Deployment
-    , newLodjurEnv
-    , currentState
-    , listTags
-    , deployTag
-    ) where
+  ( Tag (..)
+  , DeploymentName (..)
+  , JobId
+  , DeploymentJob (..)
+  , DeployState (..)
+  , JobEvent (..)
+  , EventLog
+  , Deployer
+  , DeployMessage (..)
+  , initialize
+  ) where
 
 import           Control.Concurrent
-import           Control.Exception
-import           Control.Monad
+import           Control.Exception          (Exception, SomeException, throwIO)
+import           Control.Monad              (void)
+import           Data.HashSet               (HashSet)
+import           Data.Hashable              (Hashable)
 import           Data.Semigroup
-import           Data.Text          (Text)
-import qualified Data.Text          as Text
-import Data.String (IsString)
-import           Data.Time.Clock
+import           Data.String
+import           Data.Text                  (Text)
+import           GHC.Generics               (Generic)
 import           System.Exit
-import           System.Process (proc, readCreateProcessWithExitCode, CreateProcess (cwd))
+import           System.Process             (proc, readCreateProcessWithExitCode, CreateProcess (cwd))
+import qualified Data.HashSet               as HashSet
+import qualified Data.Text                  as Text
 
-type DeployHistory = [DeployEvent]
+import           Lodjur.Process
 
-data DeployEvent
-  = DeployStarted Tag UTCTime
-  | DeployFinished Tag UTCTime
-  | DeployFailed Tag UTCTime Text
+newtype Tag =
+  Tag { unTag :: Text }
+  deriving (Eq, Show, IsString)
 
-data DeployState = Idle | Deploying Tag
+newtype DeploymentName =
+  DeploymentName { unDeploymentName :: String }
+  deriving (Eq, Show, IsString, Generic, Hashable)
 
-data LodjurState = LodjurState DeployState DeployHistory
+type JobId = Text
 
-data LodjurEnv = LodjurEnv
-  { lodjurStateVar :: MVar LodjurState
-  , lodjurGitSem   :: QSem
-  , lodjurDeployment :: Deployment
-  , lodjurGitWorkingDir :: FilePath
-  }
+data DeploymentJob = DeploymentJob { jobId :: JobId
+                                   , deploymentName :: DeploymentName
+                                   , deploymentTag :: Tag
+                                   }
+  deriving (Show, Eq)
 
-newtype Tag = Tag { unTag :: Text } deriving (Eq, Show, IsString)
+data DeployState
+  = Idle
+  | Deploying DeploymentJob
+  deriving (Eq, Show)
 
-newtype Deployment = Deployment String deriving (Eq, Show, IsString)
+data JobEvent
+  = JobRunning DeploymentJob
+  | JobSuccessful DeploymentJob
+  | JobFailed DeploymentJob Text
+  deriving (Show, Eq)
 
-newLodjurEnv :: Deployment -> FilePath -> IO LodjurEnv
-newLodjurEnv deployment workingDir = do
-  mvar <- newMVar (LodjurState Idle [])
-  qsem <- newQSem 4
-  return (LodjurEnv mvar qsem deployment workingDir)
+eventJob :: JobEvent -> DeploymentJob
+eventJob =
+  \case
+    JobRunning job -> job
+    JobSuccessful job -> job
+    JobFailed job _ -> job
 
-currentState :: LodjurEnv -> IO LodjurState
-currentState = readMVar . lodjurStateVar
+type EventLog = [(JobId, JobEvent)]
+
+data Deployer = Deployer { state :: DeployState
+                         , eventLog :: EventLog
+                         , deploymentNames :: HashSet DeploymentName
+                         , gitWorkingDir :: FilePath
+                         }
+
+data DeployMessage r where
+  -- Public messages:
+  Deploy :: DeploymentName -> Tag -> DeployMessage (Sync (Maybe DeploymentJob))
+  GetEventLog :: DeployMessage (Sync EventLog)
+  GetCurrentState :: DeployMessage (Sync DeployState)
+  GetTags :: DeployMessage (Sync [Tag])
+  -- Private messages:
+  NotifyEvent :: JobEvent -> DeployMessage Async
+
+initialize :: HashSet DeploymentName -> FilePath -> Deployer
+initialize deploymentNames gitWorkingDir =
+  Deployer {state = Idle, eventLog = mempty, ..}
 
 data GitFailed = GitFailed String String Int
   deriving (Eq, Show)
@@ -83,42 +119,56 @@ nixopsCmd args = do
     ExitSuccess      -> return stdout
     ExitFailure code -> throwIO (NixopsFailed stdout stderr code)
 
-gitListTags :: LodjurEnv -> IO [Tag]
-gitListTags env = do
-  out <- gitCmd ["tag", "-l"] (lodjurGitWorkingDir env)
-  return $ map Tag . filter (not . Text.null) . Text.lines $ Text.pack out
+deploy :: FilePath -> DeploymentJob -> IO ()
+deploy gitWorkingDir job = do
+  _ <- gitCmd ["checkout", Text.unpack (jobId job)] gitWorkingDir
+  _ <- nixopsCmd ["deploy", "-d", unDeploymentName (deploymentName job)]
+  return ()
 
-runDeploy :: LodjurEnv -> Tag -> IO String
-runDeploy env (Tag tag) = do
-  _ <- gitCmd ["checkout", Text.unpack tag] (lodjurGitWorkingDir env)
-  let Deployment d = lodjurDeployment env
-  nixopsCmd ["deploy", "-d", d]
+gitListTags :: FilePath -> IO [Tag]
+gitListTags workingDir = parseTags <$> gitCmd ["tag", "-l"] workingDir
+  where parseTags = map Tag . filter (not . Text.null) . Text.lines . Text.pack
 
-listTags :: LodjurEnv -> IO [Tag]
-listTags env@LodjurEnv { lodjurGitSem = qsem } =
-  bracket_ (waitQSem qsem) (signalQSem qsem) (gitListTags env)
-
-transitionState
-  :: MVar LodjurState
-  -> (DeployState -> IO (DeployState, [DeployEvent]))
+notifyDeployFinished
+  :: Ref Deployer
+  -> DeploymentJob
+  -> Either SomeException ()
   -> IO ()
-transitionState var f = do
-  LodjurState state history <- takeMVar var
-  (state', es)              <- f state
-  putMVar var (LodjurState state' (es <> history))
+notifyDeployFinished self d r =
+  self ! NotifyEvent (either (JobFailed d . Text.pack . show) (const (JobSuccessful d)) r)
 
-deployTag :: LodjurEnv -> Tag -> IO ()
-deployTag env@LodjurEnv { lodjurStateVar = var } tag = do
-  now <- getCurrentTime
-  transitionState var $ \_ -> return (Deploying tag, [DeployStarted tag now])
-  void $ forkFinally (runDeploy env tag) finishDeploy
- where
-  finishDeploy (Left ex) = do
-    now <- getCurrentTime
-    transitionState var
-      $ \_ -> return (Idle, [DeployFailed tag now (Text.pack (show ex))])
+instance Process Deployer where
+  type Message Deployer = DeployMessage
 
-  finishDeploy (Right _output) = do
-    now <- getCurrentTime
-    let ev = DeployFinished tag now
-    transitionState var $ \_ -> return (Idle, [ev])
+  receive self (a@Deployer{..}, msg)=
+    case (state, msg) of
+      (Idle     , Deploy name tag)
+        -- We require the deployment name to be known.
+        | HashSet.member name deploymentNames -> do
+          let job = DeploymentJob { deploymentTag = tag, jobId = "deploy-1", deploymentName = name }
+          void (forkFinally (deploy gitWorkingDir job) (notifyDeployFinished self job))
+          return (a { state = Deploying job}, Just job)
+        -- We can't deploy to an unknown deployment.
+        | otherwise -> return (a, Nothing)
+      (Idle     , NotifyEvent _) ->
+        return a { state = Idle }
+      (Deploying{}, Deploy{}      ) ->
+        return (a, Nothing)
+      (Deploying job, NotifyEvent event)
+        | job == eventJob event -> do
+          putStrLn ("Recorded event: " <> show event)
+          return a { state = Idle, eventLog = (jobId (eventJob event), event) : eventLog }
+        | otherwise -> do
+          putStrLn ("Cannot record job event: " <> show event)
+          return a
+      (_, GetTags) -> do
+        tags <- gitListTags gitWorkingDir
+        return (a, tags)
+      (_, GetCurrentState) ->
+        return (a, state)
+      (_, GetEventLog) ->
+        return (a { state = Idle }, eventLog)
+
+  terminate Deployer {state} = case state of
+    Idle -> return ()
+    Deploying job -> putStrLn ("Killed while deploying " <> show job)

@@ -16,12 +16,13 @@ import           Lucid.Html5
 import           Network.HTTP.Types.Status
 import           Web.Scotty.Trans
 
+import           Lodjur.Process
 import           Lodjur.Deploy
 
-type Action = ActionT Lazy.Text (ReaderT LodjurEnv IO)
+type Action = ActionT Lazy.Text (ReaderT (Ref Deployer) IO)
 
-readState :: Action LodjurState
-readState = lift ask >>= liftIO . currentState
+readState :: Action DeployState
+readState = lift ask >>= liftIO . (? GetCurrentState)
 
 renderHtml :: Html () -> Action ()
 renderHtml = html . Html.renderText
@@ -37,12 +38,12 @@ renderLayout title contents = renderHtml $ doctypehtml_ $ html_ $ do
       ]
   body_ contents
 
-renderHistory :: DeployHistory -> Html ()
+renderHistory :: EventLog -> Html ()
 renderHistory history = do
   h2_ [class_ "mt-5"] "History"
   renderBody history
  where
-  renderBody :: DeployHistory -> Html ()
+  renderBody :: EventLog -> Html ()
   renderBody []     = p_ [class_ "text-secondary"] "No history available."
   renderBody events = table_ [class_ "table table-striped"] $ do
     tr_ $ do
@@ -51,17 +52,17 @@ renderHistory history = do
       th_ "Time"
       th_ "Description"
     forM_ events $ \event -> tr_ $ case event of
-      DeployStarted (unTag -> tag) startedAt -> do
+      JobRunning (unTag -> tag) startedAt -> do
         td_ $ span_ [class_ "text-info"] "Started"
         td_ (toHtml tag)
         td_ (toHtml (show startedAt))
         td_ ""
-      DeployFinished (unTag -> tag) finishedAt -> do
+      JobSuccessful (unTag -> tag) finishedAt -> do
         td_ $ span_ [class_ "text-success"] "Finished"
         td_ (toHtml tag)
         td_ (toHtml (show finishedAt))
         td_ ""
-      DeployFailed (unTag -> tag) failedAt e -> do
+      JobFailed (unTag -> tag) failedAt e -> do
         td_ $ span_ [class_ "text-danger"] "Failed"
         td_ (toHtml tag)
         td_ (toHtml (show failedAt))
@@ -86,9 +87,8 @@ renderDeployCard tags state = do
 
 showAllTagsAction :: Action ()
 showAllTagsAction = do
-  LodjurState deployState history <- readState
-  env                             <- lift ask
-  tags                            <- liftIO $ listTags env
+  deployer                        <- lift ask
+  tags                            <- liftIO $ deployer ! GetTags
   renderLayout "Lodjur Deployment Manager" $ container_ $ do
     div_ [class_ "row"] $ div_ [class_ "col"] $ do
       h1_ [class_ "mt-5"] "Lodjur"
@@ -99,23 +99,23 @@ showAllTagsAction = do
 
 deployTagAction :: Action ()
 deployTagAction = readState >>= \case
-  LodjurState Idle _ -> do
-    env <- lift ask
+  Idle _ -> do
+    deployer <- lift ask
     tag <- Tag <$> param "tag"
     status status302
     setHeader "Location" "/"
-    liftIO $ deployTag env tag
-  LodjurState (Deploying tag) _ ->
+    liftIO $ deployer ! Deploy tag
+  Deploying job ->
     renderLayout "Already Deploying"
       $  p_
       $  toHtml
       $  "Already deploying a tag: "
-      <> unTag tag
+      <> unTag (deploymentTag job)
 
 type Port = Int
 
-runServer :: Port -> LodjurEnv -> IO ()
-runServer port env =
-  scottyT port (`runReaderT` env) $ do
+runServer :: Port -> Ref Deployer -> IO ()
+runServer port ref =
+  scottyT port (`runReaderT` ref) $ do
     get  "/" showAllTagsAction
     post "/" deployTagAction
