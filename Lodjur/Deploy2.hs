@@ -18,21 +18,21 @@ module Lodjur.Deploy2
   , initialize
   ) where
 
-import Control.Exception (Exception, SomeException, throwIO)
-import Data.Semigroup
-import Control.Monad (void)
-import Control.Concurrent
-import Data.HashMap.Strict (HashMap)
+import           Control.Concurrent
+import           Control.Exception   (Exception, SomeException, throwIO)
+import           Control.Monad       (void)
+import           Data.Hashable       (Hashable)
+import           Data.HashMap.Strict (HashMap)
 import qualified Data.HashMap.Strict as HashMap
-import Data.String
-import Data.Text (Text)
-import qualified Data.Text as Text
-import Data.HashSet (HashSet)
-import qualified Data.HashSet as HashSet
-import GHC.Generics (Generic)
-import Data.Hashable (Hashable)
-import System.Exit
-import System.Process (proc, readCreateProcessWithExitCode, CreateProcess (cwd))
+import           Data.HashSet        (HashSet)
+import qualified Data.HashSet        as HashSet
+import qualified Data.Text           as Text
+import           Data.Semigroup
+import           Data.String
+import           Data.Text           (Text)
+import           GHC.Generics        (Generic)
+import           System.Exit
+import           System.Process      (proc, readCreateProcessWithExitCode, CreateProcess (cwd))
 
 import Lodjur.Process
 
