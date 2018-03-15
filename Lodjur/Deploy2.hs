@@ -6,7 +6,17 @@
 {-# LANGUAGE TypeFamilies #-}
 {-# LANGUAGE NamedFieldPuns #-}
 {-# LANGUAGE RecordWildCards #-}
-module Lodjur.Deploy2 where
+module Lodjur.Deploy2
+  ( Tag (..)
+  , DeploymentName (..)
+  , JobId
+  , DeploymentJob (..)
+  , DeployState (..)
+  , DeployResult (..)
+  , DeployActor
+  , DeployMessage (..)
+  , initialize
+  ) where
 
 import Control.Exception (SomeException)
 import Data.Semigroup
@@ -22,7 +32,7 @@ import qualified Data.HashSet as HashSet
 import GHC.Generics (Generic)
 import Data.Hashable (Hashable)
 
-import Lodjur.Actor
+import Lodjur.Process
 
 newtype Tag = Tag { unTag :: Text } deriving (Eq, Show, IsString)
 
@@ -82,7 +92,7 @@ notifyDeployFinished self d r = do
   let result = either (DeployFailed d . Text.pack . show) id r
   self ! DeployFinished d result
 
-instance Actor DeployActor where
+instance Process DeployActor where
   type Message DeployActor = DeployMessage
 
   receive self (a@DeployActor{state, history, deploymentNames}, msg)=
@@ -111,6 +121,6 @@ instance Actor DeployActor where
       (_, GetResult di) ->
         return (a { state = Idle }, HashMap.lookup di history)
 
-  shutdown DeployActor {state} = case state of
+  terminate DeployActor {state} = case state of
     Idle -> return ()
     Deploying job -> putStrLn ("Killed while deploying " <> show job)

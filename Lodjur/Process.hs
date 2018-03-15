@@ -3,15 +3,28 @@
 {-# LANGUAGE RankNTypes #-}
 {-# LANGUAGE TypeFamilies #-}
 {-# LANGUAGE EmptyDataDecls #-}
-module Lodjur.Actor where
+module Lodjur.Process
+  ( Process
+  , receive
+  , terminate
+  , Message
+  , Sync
+  , Async
+  , Ref
+  , ActorNotAliveException(..)
+  , (!)
+  , (?)
+  , spawn
+  , kill
+  ) where
 
 import Control.Concurrent
 import Control.Exception
 
-class Actor a where
+class Process a where
   type Message a :: * -> *
   receive :: Ref a -> (a, Message a r) -> IO (ReceiveType a r)
-  shutdown :: a -> IO ()
+  terminate :: a -> IO ()
 
 data Sync r
 data Async
@@ -38,21 +51,18 @@ requireAlive ref action = do
   isAlive <- readMVar (alive ref)
   if isAlive then action else throwIO ActorNotAliveException
 
-(!) :: Actor a => Ref a -> Message a Async -> IO ()
+(!) :: Process a => Ref a -> Message a Async -> IO ()
 (!) receiver msg =
   requireAlive receiver $
     writeChan (inbox receiver) (AsyncMessage msg)
 
-(?) :: Actor a => Ref a -> Message a (Sync r) -> IO r
+(?) :: Process a => Ref a -> Message a (Sync r) -> IO r
 (?) receiver msg = requireAlive receiver $ do
     res <- newEmptyMVar
     writeChan (inbox receiver) (SyncMessage msg res)
     takeMVar res
 
-kill :: Actor a => Ref a -> IO ()
-kill receiver = writeChan (inbox receiver) PoisonPill
-
-spawn :: Actor a => a -> IO (Ref a)
+spawn :: Process a => a -> IO (Ref a)
 spawn initialState = do
   inbox' <- newChan
   aliveVar <- newMVar True
@@ -70,5 +80,8 @@ spawn initialState = do
         state' <- receive ref (state, msg)
         receiveLoop ref state'
       PoisonPill -> do
-        shutdown state
+        terminate state
         modifyMVar_ (alive ref) (const (return False))
+
+kill :: Process a => Ref a -> IO ()
+kill receiver = writeChan (inbox receiver) PoisonPill
