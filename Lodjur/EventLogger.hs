@@ -1,23 +1,23 @@
-{-# LANGUAGE DeriveGeneric              #-}
-{-# LANGUAGE GADTs                      #-}
-{-# LANGUAGE OverloadedStrings          #-}
-{-# LANGUAGE TypeFamilies               #-}
-{-# LANGUAGE ViewPatterns               #-}
+{-# LANGUAGE DeriveGeneric     #-}
+{-# LANGUAGE GADTs             #-}
+{-# LANGUAGE OverloadedStrings #-}
+{-# LANGUAGE TypeFamilies      #-}
+{-# LANGUAGE ViewPatterns      #-}
 module Lodjur.EventLogger
   ( JobEvent (..)
   , EventLogs
   , EventLog
   , EventLogger
-  , newEventLogger
+  , initialize
   , EventLogMessage (..)
   ) where
 
 import           Control.Exception      (Exception, throwIO)
 import           Control.Monad
 import           Data.Aeson
-import           Data.Time.Clock
 import           Data.HashMap.Strict    (HashMap)
 import qualified Data.HashMap.Strict    as HashMap
+import           Data.Time.Clock
 import           Database.SQLite.Simple
 import           GHC.Generics           (Generic)
 
@@ -35,7 +35,7 @@ instance ToJSON JobEvent
 instance FromJSON JobEvent
 
 jobEventTime :: JobEvent -> UTCTime
-jobEventTime (JobRunning t) = t
+jobEventTime (JobRunning t   ) = t
 jobEventTime (JobFinished _ t) = t
 
 type EventLogs = HashMap JobId EventLog
@@ -47,28 +47,25 @@ newtype EventDecodeFailed = EventDecodeFailed String
 
 instance Exception EventDecodeFailed
 
-newEventLogger :: String -> IO EventLogger
-newEventLogger file = EventLogger <$> openAndInit file
-
-openAndInit :: String -> IO Connection
-openAndInit file = do
-    conn <- open file
-    execute_ conn "CREATE TABLE IF NOT EXISTS job_event_log (time TEXT, job_id TEXT, event TEXT)"
-    return conn
+initialize :: Connection -> IO EventLogger
+initialize conn = do
+  execute_ conn "CREATE TABLE IF NOT EXISTS job_event_log (time TEXT, job_id TEXT, event TEXT)"
+  return (EventLogger conn)
 
 insertEvent :: ToJSON event => Connection -> UTCTime -> JobId -> event -> IO ()
-insertEvent conn t jobid event =
-  execute conn "INSERT INTO job_event_log (time, job_id, event) VALUES (?, ?, ?)"
-    (t, jobid, encode event)
+insertEvent conn t jobid event = execute
+  conn
+  "INSERT INTO job_event_log (time, job_id, event) VALUES (?, ?, ?)"
+  (t, jobid, encode event)
 
 getAllEventLogs :: Connection -> IO EventLogs
-getAllEventLogs conn = mkEventLog =<< query_ conn "SELECT job_id, event FROM job_event_log ORDER BY time ASC"
+getAllEventLogs conn = mkEventLog
+  =<< query_ conn "SELECT job_id, event FROM job_event_log ORDER BY time ASC"
  where
   mkEventLog = foldM mergeEvent mempty
-  mergeEvent m (jobid, eitherDecode -> event) =
-    case event of
-      Left msg -> throwIO $ EventDecodeFailed msg
-      Right e -> return $ HashMap.insertWith (++) jobid [e] m
+  mergeEvent m (jobid, eitherDecode -> event) = case event of
+    Left  msg -> throwIO $ EventDecodeFailed msg
+    Right e   -> return $ HashMap.insertWith (++) jobid [e] m
 
 data EventLogMessage r where
   -- Public messages:

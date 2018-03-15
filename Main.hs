@@ -3,13 +3,14 @@
 
 module Main where
 
-import qualified Data.HashSet        as HashSet
-import           Data.Semigroup      ((<>))
+import qualified Data.HashSet           as HashSet
+import           Data.Semigroup         ((<>))
+import           Database.SQLite.Simple
 import           Options.Applicative
 
-import qualified Lodjur.Deployer     as Deployer
+import qualified Lodjur.Deployer        as Deployer
 import           Lodjur.Deployment
-import qualified Lodjur.EventLogger  as EventLogger
+import qualified Lodjur.EventLogger     as EventLogger
 import           Lodjur.Process
 import           Lodjur.Web
 
@@ -24,9 +25,10 @@ main = startServices =<< execParser opts
 
   startServices Options {..} = do
     let deploymentNames = HashSet.fromList nixopsDeployments
-    eventLogger <- spawn =<< EventLogger.newEventLogger databaseName
+    conn        <- open databaseName
+    eventLogger <- spawn =<< EventLogger.initialize conn
     deployer    <- spawn
-      (Deployer.initialize eventLogger deploymentNames gitWorkingDir)
+      =<< Deployer.initialize eventLogger deploymentNames gitWorkingDir conn
     runServer port deployer eventLogger
 
 data Options = Options
@@ -59,8 +61,9 @@ lodjur =
           <> value 4000
           )
     <*> strOption
-          ( long "database" <> metavar "FILE" <> help
-            "Path to database"
+          (  long "database"
+          <> metavar "FILE"
+          <> help "Path to database"
           <> showDefault
           <> value ":memory:"
           )

@@ -77,16 +77,15 @@ renderEventLog eventLog =
       td_ [style_ "color: red;"] (toHtml e)
 
 renderDeployJobs :: DeploymentJobs -> Html ()
-renderDeployJobs jobs
-  | HashMap.null jobs = p_ [class_ "text-secondary"] "No jobs available."
-  | otherwise =
-    table_ [class_ "table table-striped"] $ do
-      tr_ $ do
-        th_ "Job"
-        th_ "Deployment"
-        th_ "Tag"
-        th_ "Result"
-      mapM_ renderJob (HashMap.elems jobs)
+renderDeployJobs [] = p_ [class_ "text-secondary"] "No jobs available."
+renderDeployJobs jobs =
+  table_ [class_ "table table-striped"] $ do
+    tr_ $ do
+      th_ "Job"
+      th_ "Deployment"
+      th_ "Tag"
+      th_ "Result"
+    mapM_ renderJob jobs
  where
   renderJob :: (DeploymentJob, Maybe JobResult) -> Html ()
   renderJob (job, r) =

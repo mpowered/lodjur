@@ -19,21 +19,24 @@ module Lodjur.Deployer
   ) where
 
 import           Control.Concurrent
-import           Control.Exception   (Exception, SomeException, throwIO)
-import           Control.Monad       (void)
-import           Data.HashMap.Strict (HashMap)
-import qualified Data.HashMap.Strict as HashMap
-import           Data.HashSet        (HashSet)
-import qualified Data.HashSet        as HashSet
+import           Control.Exception        (Exception, SomeException, throwIO)
+import           Control.Monad            (void)
+import           Data.HashSet             (HashSet)
+import qualified Data.HashSet             as HashSet
 import           Data.Semigroup
-import qualified Data.Text           as Text
+import qualified Data.Text                as Text
 import           Data.Time.Clock
+import qualified Data.UUID                as UUID
+import qualified Data.UUID.V4             as UUID
+import           Database.SQLite.Simple
 import           System.Exit
-import           System.Process      (CreateProcess (cwd), proc,
-                                      readCreateProcessWithExitCode)
+import           System.Process           (CreateProcess (cwd), proc,
+                                           readCreateProcessWithExitCode)
 
+import qualified Lodjur.Deployer.Database as Database
 import           Lodjur.Deployment
-import           Lodjur.EventLogger
+import           Lodjur.EventLogger       (EventLogMessage (..), EventLogger,
+                                           JobEvent (..))
 import           Lodjur.Process
 
 data DeployState
@@ -41,13 +44,14 @@ data DeployState
   | Deploying DeploymentJob
   deriving (Eq, Show)
 
-type DeploymentJobs = HashMap JobId (DeploymentJob, Maybe JobResult)
+type DeploymentJobs = [(DeploymentJob, Maybe JobResult)]
+
 data Deployer = Deployer
   { state           :: DeployState
   , eventLogger     :: Ref EventLogger
   , deploymentNames :: HashSet DeploymentName
   , gitWorkingDir   :: FilePath
-  , jobs            :: DeploymentJobs
+  , conn            :: Connection
   }
 
 data DeployMessage r where
@@ -60,10 +64,15 @@ data DeployMessage r where
   -- Private messages:
   FinishJob :: DeploymentJob -> JobResult -> DeployMessage Async
 
-initialize :: Ref EventLogger -> HashSet DeploymentName -> FilePath -> Deployer
-initialize eventLogger deploymentNames gitWorkingDir =
-  -- TODO: persistent jobs
-  Deployer {state = Idle, jobs = mempty, ..}
+initialize
+  :: Ref EventLogger
+  -> HashSet DeploymentName
+  -> FilePath
+  -> Connection
+  -> IO Deployer
+initialize eventLogger deploymentNames gitWorkingDir conn = do
+  Database.initialize conn
+  return Deployer {state = Idle, ..}
 
 data GitFailed = GitFailed String String Int
   deriving (Eq, Show)
@@ -127,19 +136,17 @@ instance Process Deployer where
 
   receive self (a@Deployer{..}, msg)=
     case (state, msg) of
-      (Idle     , Deploy name tag)
+      (Idle     , Deploy deploymentName deploymentTag)
         -- We require the deployment name to be known.
-        | HashSet.member name deploymentNames -> do
-          let job = DeploymentJob { deploymentTag = tag, jobId = "deploy-1", deploymentName = name }
+        | HashSet.member deploymentName deploymentNames -> do
+          jobId <- UUID.toText <$> UUID.nextRandom
+          let job = DeploymentJob {..}
           void (forkFinally (deploy eventLogger gitWorkingDir job) (notifyDeployFinished self eventLogger job))
-          return ( a { state = Deploying job
-                     , jobs = HashMap.insert (jobId job) (job, Nothing) jobs
-                     }
-                 , Just job
-                 )
+          Database.insertJob conn job Nothing
+          return ( a { state = Deploying job } , Just job)
         -- We can't deploy to an unknown deployment.
         | otherwise -> do
-          putStrLn ("Invalid deployment name: " <> unDeploymentName name)
+          putStrLn ("Invalid deployment name: " <> unDeploymentName deploymentName)
           return (a, Nothing)
       (Deploying{}, Deploy{}      ) ->
         return (a, Nothing)
@@ -147,7 +154,8 @@ instance Process Deployer where
       -- Queries:
       (_, GetDeploymentNames) ->
         return (a, HashSet.toList deploymentNames)
-      (_, GetJobs) ->
+      (_, GetJobs) -> do
+        jobs <- Database.getAllJobs conn
         return (a, jobs)
       (_, GetTags) -> do
         tags <- gitListTags gitWorkingDir
@@ -156,10 +164,9 @@ instance Process Deployer where
         return (a, state)
 
       -- Private messages:
-      (_, FinishJob job result) ->
-        return a { state = Idle
-                 , jobs = HashMap.insert (jobId job) (job, Just result) jobs
-                 }
+      (_, FinishJob job result) -> do
+        Database.updateJobResult conn (jobId job) result
+        return a { state = Idle }
 
   terminate Deployer {state} = case state of
     Idle          -> return ()

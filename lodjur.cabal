@@ -9,6 +9,7 @@ executable          lodjur
     ghc-options:    -Wall -threaded -O2 -rtsopts -with-rtsopts=-N
     other-modules:  Lodjur.EventLogger
                   , Lodjur.Deployer
+                  , Lodjur.Deployer.Database
                   , Lodjur.Deployment
                   , Lodjur.Process
                   , Lodjur.Web
@@ -24,4 +25,5 @@ executable          lodjur
                   , sqlite-simple
                   , text
                   , time
+                  , uuid
                   , unordered-containers
