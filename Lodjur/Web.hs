@@ -92,7 +92,7 @@ renderDeployCard deploymentNames tags state = do
       div_ [class_ "card"] $ do
         div_ [class_ "card-header"] "New Deploy"
         div_ [class_ "card-body"]
-          $ form_ [method_ "post"]
+          $ form_ [method_ "post", action_ "/jobs"]
           $ div_ [class_ "row"]
           $ do
               div_ [class_ "col"] $ do
@@ -119,8 +119,8 @@ renderDeployCard deploymentNames tags state = do
         <> unTag (deploymentTag job)
         <> "..."
 
-showAllTagsAction :: Action ()
-showAllTagsAction = do
+homeAction :: Action ()
+homeAction = do
   deployer        <- lift (asks envDeployer)
   deploymentNames <- liftIO $ deployer ? GetDeploymentNames
   tags            <- liftIO $ deployer ? GetTags
@@ -137,8 +137,8 @@ showAllTagsAction = do
       deployState
     div_ [class_ "row"] $ div_ [class_ "col"] $ renderEventLogs eventLogs
 
-deployTagAction :: Action ()
-deployTagAction = readState >>= \case
+newDeployAction :: Action ()
+newDeployAction = readState >>= \case
   Idle -> do
     deployer <- lift (asks envDeployer)
     dName    <- DeploymentName <$> param "deployment-name"
@@ -146,7 +146,8 @@ deployTagAction = readState >>= \case
     status status302
     setHeader "Location" "/"
     void $ liftIO $ deployer ? Deploy dName tag
-  Deploying job ->
+  Deploying job -> do
+    status status400
     renderLayout "Already Deploying"
       $  p_
       $  toHtml
@@ -158,5 +159,5 @@ type Port = Int
 runServer :: Port -> Ref Deployer -> Ref EventLogger -> IO ()
 runServer port envDeployer envEventLogger =
   scottyT port (`runReaderT` Env {..}) $ do
-    get  "/" showAllTagsAction
-    post "/" deployTagAction
+    get  "/" homeAction
+    post "/jobs" newDeployAction
