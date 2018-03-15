@@ -116,11 +116,11 @@ renderDeployCard deploymentNames tags state = do
 notFoundAction :: Action ()
 notFoundAction = do
   status status404
-  renderLayout "Page not found!" $ do
-    h1_ [class_ "mt-5"] "The page could not be found!"
+  renderLayout "Not Found" $ do
+    h1_ [class_ "mt-5"] "Not Found"
     p_ [class_ "lead"] $ do
-      "Try "
-      a_ [href_ "/"] "going back the start page"
+      "The requested page could not be found. Try "
+      a_ [href_ "/"] "going back to the start page"
       "."
 
 badRequestAction :: Html () -> Action ()
@@ -175,12 +175,13 @@ showJobAction = do
       let title = "Job " <> jobId
       renderLayout (toHtml title) $ do
         h1_ [class_ "mt-5 mb-5"] (toHtml title)
-        div_ [class_ "row"] $ do
+        div_ [class_ "row"] $
           div_ [class_ "col"] $ do
-            h2_ "Event Log"
+            h2_ [class_ "mb-3"] "Event Log"
             renderEventLog eventLog
+        div_ [class_ "row"] $
           div_ [class_ "col"] $ do
-            h2_ "Build Output"
+            h2_ [class_ "mb-3"] "Build Output"
             span_ [class_ "text-muted"] "No build output available."
     Nothing -> notFoundAction
 
