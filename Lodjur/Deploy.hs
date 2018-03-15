@@ -30,6 +30,7 @@ import           Data.Semigroup
 import           Data.String
 import           Data.Text                  (Text)
 import qualified Data.Text                  as Text
+import           Data.Time.Clock
 import           GHC.Generics               (Generic)
 import           System.Exit
 import           System.Process             (proc, readCreateProcessWithExitCode, CreateProcess (cwd))
@@ -58,17 +59,17 @@ data DeployState
   deriving (Eq, Show)
 
 data JobEvent
-  = JobRunning DeploymentJob
-  | JobSuccessful DeploymentJob
-  | JobFailed DeploymentJob Text
+  = JobRunning DeploymentJob UTCTime
+  | JobSuccessful DeploymentJob UTCTime
+  | JobFailed DeploymentJob UTCTime Text
   deriving (Show, Eq)
 
 eventJob :: JobEvent -> DeploymentJob
 eventJob =
   \case
-    JobRunning job -> job
-    JobSuccessful job -> job
-    JobFailed job _ -> job
+    JobRunning job _ -> job
+    JobSuccessful job _ -> job
+    JobFailed job _ _ -> job
 
 type EventLog = [(JobId, JobEvent)]
 
@@ -134,8 +135,9 @@ notifyDeployFinished
   -> DeploymentJob
   -> Either SomeException ()
   -> IO ()
-notifyDeployFinished self d r =
-  self ! NotifyEvent (either (JobFailed d . Text.pack . show) (const (JobSuccessful d)) r)
+notifyDeployFinished self d r = do
+  now <- getCurrentTime
+  self ! NotifyEvent (either (JobFailed d now . Text.pack . show) (const (JobSuccessful d now)) r)
 
 instance Process Deployer where
   type Message Deployer = DeployMessage

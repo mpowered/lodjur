@@ -38,10 +38,10 @@ renderLayout title contents = renderHtml $ doctypehtml_ $ html_ $ do
       ]
   body_ contents
 
-renderHistory :: EventLog -> Html ()
-renderHistory history = do
-  h2_ [class_ "mt-5"] "History"
-  renderBody history
+renderEventLog :: EventLog -> Html ()
+renderEventLog eventLog = do
+  h2_ [class_ "mt-5"] "Event Log"
+  renderBody eventLog
  where
   renderBody :: EventLog -> Html ()
   renderBody []     = p_ [class_ "text-secondary"] "No history available."
@@ -51,20 +51,20 @@ renderHistory history = do
       th_ "Tag"
       th_ "Time"
       th_ "Description"
-    forM_ events $ \event -> tr_ $ case event of
-      JobRunning (unTag -> tag) startedAt -> do
+    forM_ events $ \event -> tr_ $ case snd event of
+      JobRunning job startedAt -> do
         td_ $ span_ [class_ "text-info"] "Started"
-        td_ (toHtml tag)
+        td_ (toHtml (unTag (deploymentTag job)))
         td_ (toHtml (show startedAt))
         td_ ""
-      JobSuccessful (unTag -> tag) finishedAt -> do
+      JobSuccessful job finishedAt -> do
         td_ $ span_ [class_ "text-success"] "Finished"
-        td_ (toHtml tag)
+        td_ (toHtml (unTag (deploymentTag job)))
         td_ (toHtml (show finishedAt))
         td_ ""
-      JobFailed (unTag -> tag) failedAt e -> do
+      JobFailed job failedAt e -> do
         td_ $ span_ [class_ "text-danger"] "Failed"
-        td_ (toHtml tag)
+        td_ (toHtml (unTag (deploymentTag job)))
         td_ (toHtml (show failedAt))
         td_ [style_ "color: red;"] (toHtml e)
 
@@ -82,29 +82,30 @@ renderDeployCard tags state = do
               option_ [value_ tag] (toHtml tag)
             span_ [class_ "input-group-button"] $ input_
               [class_ "btn btn-primary", type_ "submit", value_ "Deploy"]
-    Deploying tag ->
-      p_ [class_ "text-info"] $ toHtml $ "Deploying tag " <> unTag tag <> "..."
+    Deploying job ->
+      p_ [class_ "text-info"] $ toHtml $ "Deploying tag " <> unTag (deploymentTag job) <> "..."
 
 showAllTagsAction :: Action ()
 showAllTagsAction = do
-  deployer                        <- lift ask
-  tags                            <- liftIO $ deployer ! GetTags
+  deployer      <- lift ask
+  tags          <- liftIO $ deployer ? GetTags
+  deployState   <- liftIO $ deployer ? GetCurrentState
+  eventLog      <- liftIO $ deployer ? GetEventLog
   renderLayout "Lodjur Deployment Manager" $ container_ $ do
     div_ [class_ "row"] $ div_ [class_ "col"] $ do
       h1_ [class_ "mt-5"] "Lodjur"
       p_  [class_ "lead"] "Mpowered's Nixops Deployment Frontend"
-    div_ [class_ "row"] $ div_ [class_ "col"] $ renderDeployCard tags
-                                                                 deployState
-    div_ [class_ "row"] $ div_ [class_ "col"] $ renderHistory history
+    div_ [class_ "row"] $ div_ [class_ "col"] $ renderDeployCard tags deployState
+    div_ [class_ "row"] $ div_ [class_ "col"] $ renderEventLog eventLog
 
 deployTagAction :: Action ()
 deployTagAction = readState >>= \case
-  Idle _ -> do
+  Idle -> do
     deployer <- lift ask
     tag <- Tag <$> param "tag"
     status status302
     setHeader "Location" "/"
-    liftIO $ deployer ! Deploy tag
+    void $ liftIO $ deployer ? Deploy "CHANGEME" tag
   Deploying job ->
     renderLayout "Already Deploying"
       $  p_

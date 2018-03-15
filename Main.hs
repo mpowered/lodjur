@@ -3,11 +3,13 @@
 
 module Main where
 
-import Data.Semigroup ((<>))
-import Options.Applicative
+import qualified Data.HashSet               as HashSet
+import           Data.Semigroup ((<>))
+import           Options.Applicative
 
-import Lodjur.Deploy
-import Lodjur.Web
+import           Lodjur.Deploy
+import           Lodjur.Process
+import           Lodjur.Web
 
 main :: IO ()
 main =
@@ -19,12 +21,14 @@ main =
      <> header "Mpowered's Nixops Deployment Frontend" )
 
     startServices Options{..} = do
-      env <- newLodjurEnv nixopsDeployment gitWorkingDir
-      runServer port env
+      let deploymentNames = HashSet.singleton nixopsDeployment
+      deployer <- spawn (initialize deploymentNames gitWorkingDir)
+      -- env <- newLodjurEnv nixopsDeployment gitWorkingDir
+      runServer port deployer
 
 data Options = Options
   { gitWorkingDir    :: FilePath
-  , nixopsDeployment :: Deployment
+  , nixopsDeployment :: DeploymentName
   , port             :: Port
   }
 
