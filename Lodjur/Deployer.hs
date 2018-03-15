@@ -1,12 +1,10 @@
-{-# LANGUAGE DeriveGeneric              #-}
 {-# LANGUAGE GADTs                      #-}
-{-# LANGUAGE GeneralizedNewtypeDeriving #-}
 {-# LANGUAGE NamedFieldPuns             #-}
 {-# LANGUAGE OverloadedStrings          #-}
 {-# LANGUAGE RankNTypes                 #-}
 {-# LANGUAGE RecordWildCards            #-}
 {-# LANGUAGE TypeFamilies               #-}
-module Lodjur.Deploy
+module Lodjur.Deployer
   ( Tag (..)
   , DeploymentName (..)
   , JobId
@@ -14,76 +12,31 @@ module Lodjur.Deploy
   , DeployState (..)
   , JobEvent (..)
   , JobResult (..)
-  , EventLogs
-  , EventLog
   , Deployer
   , DeployMessage (..)
-  , EventLogger (..)
-  , EventLogMessage (..)
   , initialize
   ) where
 
 import           Control.Concurrent
 import           Control.Exception   (Exception, SomeException, throwIO)
 import           Control.Monad       (void)
-import           Data.Hashable       (Hashable)
-import           Data.HashMap.Strict (HashMap)
-import qualified Data.HashMap.Strict as HashMap
 import           Data.HashSet        (HashSet)
 import qualified Data.HashSet        as HashSet
 import           Data.Semigroup
-import           Data.String
-import           Data.Text           (Text)
 import qualified Data.Text           as Text
 import           Data.Time.Clock
-import           GHC.Generics        (Generic)
 import           System.Exit
 import           System.Process      (CreateProcess (cwd), proc,
                                       readCreateProcessWithExitCode)
 
 import           Lodjur.Process
-
-newtype Tag =
-  Tag { unTag :: Text }
-  deriving (Eq, Show, IsString)
-
-newtype DeploymentName =
-  DeploymentName { unDeploymentName :: String }
-  deriving (Eq, Show, IsString, Generic, Hashable)
-
-type JobId = Text
-
-data DeploymentJob = DeploymentJob
-  { jobId          :: JobId
-  , deploymentName :: DeploymentName
-  , deploymentTag  :: Tag
-  } deriving (Show, Eq)
+import           Lodjur.Deployment
+import           Lodjur.EventLogger
 
 data DeployState
   = Idle
   | Deploying DeploymentJob
   deriving (Eq, Show)
-
-data JobEvent
-  = JobRunning UTCTime
-  | JobFinished JobResult UTCTime
-  deriving (Show, Eq)
-
-data JobResult
-  = JobSuccessful
-  | JobFailed Text
-  deriving (Show, Eq)
-
-type EventLogs = HashMap JobId EventLog
-
-type EventLog = [JobEvent]
-
-data EventLogger = EventLogger EventLogs
-
-data EventLogMessage r where
-  -- Public messages:
-  GetEventLogs :: EventLogMessage (Sync EventLogs)
-  AppendEvent :: JobId -> JobEvent -> EventLogMessage Async
 
 data Deployer = Deployer
   { state           :: DeployState
@@ -192,16 +145,3 @@ instance Process Deployer where
   terminate Deployer {state} = case state of
     Idle          -> return ()
     Deploying job -> putStrLn ("Killed while deploying " <> show job)
-
-instance Process EventLogger where
-  type Message EventLogger = EventLogMessage
-
-  receive _self (a@(EventLogger logs), GetEventLogs) =
-    return (a, logs)
-
-  receive _self (EventLogger logs, AppendEvent jobid event) = do
-    putStrLn ("Recording event: " <> show event)
-    let events = HashMap.lookupDefault [] jobid logs
-    return $ EventLogger (HashMap.insert jobid (event : events) logs)
-
-  terminate (EventLogger _) = return ()
