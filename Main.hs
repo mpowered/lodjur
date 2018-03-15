@@ -1,10 +1,10 @@
-{-# LANGUAGE RecordWildCards   #-}
 {-# LANGUAGE OverloadedStrings #-}
+{-# LANGUAGE RecordWildCards   #-}
 
 module Main where
 
-import qualified Data.HashSet               as HashSet
-import           Data.Semigroup ((<>))
+import qualified Data.HashSet        as HashSet
+import           Data.Semigroup      ((<>))
 import           Options.Applicative
 
 import           Lodjur.Deploy
@@ -22,7 +22,8 @@ main =
 
     startServices Options{..} = do
       let deploymentNames = HashSet.fromList nixopsDeployments
-      deployer <- spawn (initialize deploymentNames gitWorkingDir)
+      eventLogger <- spawn EventLogger
+      deployer <- spawn (initialize eventLogger deploymentNames gitWorkingDir)
       runServer port deployer
 
 data Options = Options

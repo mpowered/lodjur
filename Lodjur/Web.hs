@@ -39,6 +39,7 @@ renderLayout title contents = renderHtml $ doctypehtml_ $ html_ $ do
       ]
   body_ contents
 
+{-
 renderEventLog :: EventLog -> Html ()
 renderEventLog eventLog = do
   h2_ [class_ "mt-5"] "Event Log"
@@ -68,6 +69,7 @@ renderEventLog eventLog = do
         td_ (toHtml (unTag (deploymentTag job)))
         td_ (toHtml (show failedAt))
         td_ [style_ "color: red;"] (toHtml e)
+-}
 
 renderDeployCard :: [DeploymentName] -> [Tag] -> DeployState -> Html ()
 renderDeployCard deploymentNames tags state = do
@@ -106,7 +108,6 @@ showAllTagsAction = do
   deploymentNames <- liftIO $ deployer ? GetDeploymentNames
   tags            <- liftIO $ deployer ? GetTags
   deployState     <- liftIO $ deployer ? GetCurrentState
-  eventLog        <- liftIO $ deployer ? GetEventLog
   renderLayout "Lodjur Deployment Manager" $ container_ $ do
     div_ [class_ "row"] $ div_ [class_ "col"] $ do
       h1_ [class_ "mt-5"] "Lodjur"
@@ -115,7 +116,7 @@ showAllTagsAction = do
       deploymentNames
       tags
       deployState
-    div_ [class_ "row"] $ div_ [class_ "col"] $ renderEventLog eventLog
+    -- div_ [class_ "row"] $ div_ [class_ "col"] $ renderEventLog eventLog
 
 deployTagAction :: Action ()
 deployTagAction = readState >>= \case

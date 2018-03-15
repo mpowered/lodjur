@@ -17,6 +17,7 @@ module Lodjur.Deploy
   , EventLog
   , Deployer
   , DeployMessage (..)
+  , EventLogger (..)
   , initialize
   ) where
 
@@ -59,39 +60,42 @@ data DeployState
   deriving (Eq, Show)
 
 data JobEvent
-  = JobRunning DeploymentJob UTCTime
-  | JobSuccessful DeploymentJob UTCTime
-  | JobFailed DeploymentJob UTCTime Text
+  = JobRunning UTCTime
+  | JobFinished JobResult UTCTime
   deriving (Show, Eq)
 
-eventJob :: JobEvent -> DeploymentJob
-eventJob =
-  \case
-    JobRunning job _ -> job
-    JobSuccessful job _ -> job
-    JobFailed job _ _ -> job
+data JobResult
+  = JobSuccessful
+  | JobFailed Text
+  deriving (Show, Eq)
 
 type EventLog = [(JobId, JobEvent)]
 
-data Deployer = Deployer { state :: DeployState
-                         , eventLog :: EventLog
-                         , deploymentNames :: HashSet DeploymentName
-                         , gitWorkingDir :: FilePath
-                         }
+data EventLogger = EventLogger
+
+data EventLogMessage r where
+  -- Private messages:
+  AppendEvent :: JobEvent -> EventLogMessage Async
+
+data Deployer = Deployer
+  { state :: DeployState
+  , eventLogger :: Ref EventLogger
+  , deploymentNames :: HashSet DeploymentName
+  , gitWorkingDir :: FilePath
+  }
 
 data DeployMessage r where
   -- Public messages:
   Deploy :: DeploymentName -> Tag -> DeployMessage (Sync (Maybe DeploymentJob))
-  GetEventLog :: DeployMessage (Sync EventLog)
   GetCurrentState :: DeployMessage (Sync DeployState)
   GetDeploymentNames :: DeployMessage (Sync [DeploymentName])
   GetTags :: DeployMessage (Sync [Tag])
   -- Private messages:
-  NotifyEvent :: JobEvent -> DeployMessage Async
+  FinishJob :: JobResult -> DeployMessage Async
 
-initialize :: HashSet DeploymentName -> FilePath -> Deployer
-initialize deploymentNames gitWorkingDir =
-  Deployer {state = Idle, eventLog = mempty, ..}
+initialize :: Ref EventLogger -> HashSet DeploymentName -> FilePath -> Deployer
+initialize eventLogger deploymentNames gitWorkingDir =
+  Deployer {state = Idle, ..}
 
 data GitFailed = GitFailed String String Int
   deriving (Eq, Show)
@@ -121,11 +125,11 @@ nixopsCmd args = do
     ExitSuccess      -> return stdout
     ExitFailure code -> throwIO (NixopsFailed stdout stderr code)
 
-deploy :: FilePath -> DeploymentJob -> IO ()
+deploy :: FilePath -> DeploymentJob -> IO JobResult
 deploy gitWorkingDir job = do
   _ <- gitCmd ["checkout", Text.unpack (unTag (deploymentTag job)), "--recurse-submodules"] gitWorkingDir
   _ <- nixopsCmd ["deploy", "-d", unDeploymentName (deploymentName job)]
-  return ()
+  return JobSuccessful
 
 gitListTags :: FilePath -> IO [Tag]
 gitListTags workingDir = parseTags <$> gitCmd ["tag", "-l"] workingDir
@@ -133,12 +137,10 @@ gitListTags workingDir = parseTags <$> gitCmd ["tag", "-l"] workingDir
 
 notifyDeployFinished
   :: Ref Deployer
-  -> DeploymentJob
-  -> Either SomeException ()
+  -> Either SomeException JobResult
   -> IO ()
-notifyDeployFinished self d r = do
-  now <- getCurrentTime
-  self ! NotifyEvent (either (JobFailed d now . Text.pack . show) (const (JobSuccessful d now)) r)
+notifyDeployFinished self r =
+  self ! FinishJob (either (JobFailed . Text.pack . show) id r)
 
 instance Process Deployer where
   type Message Deployer = DeployMessage
@@ -149,7 +151,7 @@ instance Process Deployer where
         -- We require the deployment name to be known.
         | HashSet.member name deploymentNames -> do
           let job = DeploymentJob { deploymentTag = tag, jobId = "deploy-1", deploymentName = name }
-          void (forkFinally (deploy gitWorkingDir job) (notifyDeployFinished self job))
+          void (forkFinally (deploy gitWorkingDir job) (notifyDeployFinished self))
           return (a { state = Deploying job}, Just job)
         -- We can't deploy to an unknown deployment.
         | otherwise -> do
@@ -166,21 +168,22 @@ instance Process Deployer where
         return (a, tags)
       (_, GetCurrentState) ->
         return (a, state)
-      (_, GetEventLog) ->
-        return (a, eventLog)
 
       -- Private messages:
-      (_, NotifyEvent event) -> do
-        putStrLn ("Recording event: " <> show event)
-        let state' =
-              case event of
-                JobRunning{} -> state
-                JobFailed{} -> Idle
-                JobSuccessful{} -> Idle
-        return a { state = state'
-                 , eventLog = (jobId (eventJob event), event) : eventLog
-                 }
+      (_, FinishJob result) -> do
+        putStrLn ("Finished job with result: " <> show result)
+        return a { state = Idle }
+                 -- eventLog = (jobId (eventJob event), event) : eventLog
 
   terminate Deployer {state} = case state of
     Idle -> return ()
     Deploying job -> putStrLn ("Killed while deploying " <> show job)
+
+instance Process EventLogger where
+  type Message EventLogger = EventLogMessage
+
+  receive _self (EventLogger, AppendEvent event) = do
+    putStrLn ("Recording event: " <> show event)
+    return EventLogger
+
+  terminate EventLogger = return ()
