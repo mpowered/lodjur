@@ -1,4 +1,5 @@
 {-# LANGUAGE GADTs #-}
+{-# LANGUAGE DeriveGeneric #-}
 {-# LANGUAGE RankNTypes #-}
 {-# LANGUAGE GeneralizedNewtypeDeriving #-}
 {-# LANGUAGE OverloadedStrings #-}
@@ -7,6 +8,7 @@
 {-# LANGUAGE RecordWildCards #-}
 module Lodjur.Deploy2 where
 
+import Control.Exception (SomeException)
 import Data.Semigroup
 import Control.Monad (void)
 import Control.Concurrent
@@ -14,70 +16,95 @@ import Data.HashMap.Strict (HashMap)
 import qualified Data.HashMap.Strict as HashMap
 import Data.String
 import Data.Text (Text)
-import qualified Data.Text.IO as Text
+import qualified Data.Text as Text
+import Data.HashSet (HashSet)
+import qualified Data.HashSet as HashSet
+import GHC.Generics (Generic)
+import Data.Hashable (Hashable)
 
 import Lodjur.Actor
 
 newtype Tag = Tag { unTag :: Text } deriving (Eq, Show, IsString)
 
-newtype DeploymentName = DeploymentName String deriving (Eq, Show, IsString)
+newtype DeploymentName =
+  DeploymentJobName String
+  deriving (Eq, Show, IsString, Generic, Hashable)
 
-type DeployId = Text
+type JobId = Text
+
+data DeploymentJob = DeploymentJob { jobId :: JobId
+                                   , deploymentName :: DeploymentName
+                                   , deploymentTag :: Tag
+                                   }
+  deriving (Show, Eq)
 
 data DeployState
   = Idle
-  | Deploying Tag DeployId
+  | Deploying DeploymentJob
+  deriving (Eq, Show)
 
-newtype DeployResult = DeployResult Text deriving (Show, Eq)
+data DeployResult
+  = DeploySuccessful DeploymentJob
+  | DeployFailed DeploymentJob Text
+  deriving (Show, Eq)
 
-type DeployHistory = HashMap DeployId DeployResult
+type DeployHistory = HashMap JobId DeployResult
 
 data DeployActor = DeployActor { state :: DeployState
                                , history :: DeployHistory
-                               , deploymentName :: DeploymentName
+                               , deploymentNames :: HashSet DeploymentName
                                , gitWorkingDir :: FilePath
                                }
 
-initialize :: DeploymentName -> FilePath -> DeployActor
-initialize deploymentName gitWorkingDir =
-  DeployActor { state = Idle, history = mempty, .. }
-
-deploy :: DeployId -> IO DeployResult
-deploy di = do
-  threadDelay $ 5 * 1000 * 1000
-  return (DeployResult (di <> " is done!"))
-
 data DeployMessage r where
   -- Public messages:
-  Deploy :: Tag -> DeployMessage (Sync (Maybe DeployId))
-  GetResult :: DeployId -> DeployMessage (Sync (Maybe DeployResult))
+  Deploy :: DeploymentName -> Tag -> DeployMessage (Sync (Maybe DeploymentJob))
+  GetResult :: JobId -> DeployMessage (Sync (Maybe DeployResult))
   GetCurrentState :: DeployMessage (Sync DeployState)
   -- Private messages:
-  DeployFinished :: DeployId -> DeployResult -> DeployMessage Async
+  DeployFinished :: DeploymentJob -> DeployResult -> DeployMessage Async
+
+initialize :: HashSet DeploymentName -> FilePath -> DeployActor
+initialize deploymentNames gitWorkingDir =
+  DeployActor {state = Idle, history = mempty, ..}
+
+deploy :: DeploymentJob -> IO DeployResult
+deploy d = do
+  threadDelay $ 5 * 1000 * 1000
+  return (DeploySuccessful d)
+
+notifyDeployFinished
+  :: Ref DeployActor
+  -> DeploymentJob
+  -> Either SomeException DeployResult
+  -> IO ()
+notifyDeployFinished self d r = do
+  let result = either (DeployFailed d . Text.pack . show) id r
+  self ! DeployFinished d result
 
 instance Actor DeployActor where
   type Message DeployActor = DeployMessage
 
-  receive self (a@DeployActor{state, history}, msg)=
+  receive self (a@DeployActor{state, history, deploymentNames}, msg)=
     case (state, msg) of
-      (Idle     , Deploy tag) -> do
-        let di = "deploy-1"
-        Text.putStrLn ("Deploying tag " <> unTag tag <> ". Deploy ID: " <> di)
-        void $ forkIO $ do
-          result <- deploy di
-          self ! DeployFinished di result
-        return (a { state = Deploying tag di}, Just di)
+      (Idle     , Deploy name tag)
+        -- We require the deployment name to be known.
+        | HashSet.member name deploymentNames -> do
+          let d = DeploymentJob { deploymentTag = tag, jobId = "deploy-1", deploymentName = name }
+          void (forkFinally (deploy d) (notifyDeployFinished self d))
+          return (a { state = Deploying d}, Just d)
+        -- We can't deploy to an unknown deployment.
+        | otherwise -> return (a, Nothing)
       (Idle     , DeployFinished _ _) ->
         return a { state = Idle }
-      (Deploying{}, Deploy _        ) -> do
-        Text.putStrLn "Ignoring."
+      (Deploying{}, Deploy{}      ) ->
         return (a, Nothing)
-      (Deploying _ currentId, DeployFinished di result)
-        | currentId == di -> do
-          Text.putStrLn ("Deploy finished: " <> di)
-          return a { state = Idle, history = HashMap.insert di result history }
+      (Deploying job, DeployFinished finishedJob result)
+        | job == finishedJob -> do
+          putStrLn ("Deploy job finished: " <> show job)
+          return a { state = Idle, history = HashMap.insert (jobId job) result history }
         | otherwise -> do
-          Text.putStrLn ("Cannot mark deploy as finished: " <> di)
+          putStrLn ("Cannot mark deploy job as finished: " <> show job)
           return a
       (_, GetCurrentState) ->
         return (a, state)
@@ -86,4 +113,4 @@ instance Actor DeployActor where
 
   shutdown DeployActor {state} = case state of
     Idle -> return ()
-    Deploying tag _ -> putStrLn ("Killed while deploying " <> show tag)
+    Deploying job -> putStrLn ("Killed while deploying " <> show job)

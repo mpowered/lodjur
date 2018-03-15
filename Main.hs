@@ -10,7 +10,7 @@ import Lodjur.Deploy
 import Lodjur.Web
 
 main :: IO ()
-main = do
+main =
   startServices =<< execParser opts
   where
     opts = info (lodjur <**> helper)

@@ -19,3 +19,4 @@ executable          lodjur
                   , time
                   , optparse-applicative >= 0.14 && < 0.15
                   , unordered-containers
+                  , hashable
