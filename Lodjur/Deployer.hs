@@ -19,7 +19,7 @@ module Lodjur.Deployer
   ) where
 
 import           Control.Concurrent
-import           Control.Exception   (Exception, SomeException, throwIO)
+import           Control.Exception   (Exception, SomeException, throwIO, tryJust)
 import           Control.Monad       (void)
 import           Data.HashMap.Strict (HashMap)
 import qualified Data.HashMap.Strict as HashMap
@@ -29,11 +29,12 @@ import           Data.Semigroup
 import qualified Data.Text           as Text
 import           Data.Time.Clock
 import           System.Exit
-import           System.Process      (CreateProcess (cwd), proc,
-                                      readCreateProcessWithExitCode)
-
+import           System.IO
+import           System.IO.Error     (isEOFError)
+import           System.Process
 import           Lodjur.Deployment
 import           Lodjur.EventLogger
+import           Lodjur.OutputLogger
 import           Lodjur.Process
 
 data DeployState
@@ -45,6 +46,7 @@ type DeploymentJobs = HashMap JobId (DeploymentJob, Maybe JobResult)
 data Deployer = Deployer
   { state           :: DeployState
   , eventLogger     :: Ref EventLogger
+  , outputLogger    :: Ref OutputLogger
   , deploymentNames :: HashSet DeploymentName
   , gitWorkingDir   :: FilePath
   , jobs            :: DeploymentJobs
@@ -60,9 +62,8 @@ data DeployMessage r where
   -- Private messages:
   FinishJob :: DeploymentJob -> JobResult -> DeployMessage Async
 
-initialize :: Ref EventLogger -> HashSet DeploymentName -> FilePath -> Deployer
-initialize eventLogger deploymentNames gitWorkingDir =
-  -- TODO: persistent jobs
+initialize :: Ref EventLogger -> Ref OutputLogger -> HashSet DeploymentName -> FilePath -> Deployer
+initialize eventLogger outputLogger deploymentNames gitWorkingDir =
   Deployer {state = Idle, jobs = mempty, ..}
 
 data GitFailed = GitFailed String String Int
@@ -75,40 +76,78 @@ data NixopsFailed = NixopsFailed String String Int
 
 instance Exception NixopsFailed
 
+logCreateProcessWithExitCode
+    :: Ref OutputLogger
+    -> JobId
+    -> CreateProcess
+    -> IO ExitCode
+logCreateProcessWithExitCode outputLogger jobid cp = do
+  let cp_opts = cp {
+                  std_in  = NoStream,
+                  std_out = CreatePipe,
+                  std_err = CreatePipe
+                }
+
+  (_, Just hout, Just herr, ph) <- createProcess cp_opts
+  void $ logStream outputLogger jobid hout
+  void $ logStream outputLogger jobid herr
+  waitForProcess ph
+
+logStream :: Ref OutputLogger -> JobId -> Handle -> IO ThreadId
+logStream logger jobid h = forkIO go
+ where
+  go = do
+    next <- tryJust
+              (\e -> if isEOFError e then Just () else Nothing)
+              (hGetLine h)
+    case next of
+      Left _ -> return ()
+      Right line -> do
+        logger ! AppendOutput jobid [line]
+        go
+
 gitCmd :: [String] -> FilePath -> IO String
 gitCmd args gitWorkingDir = do
-  (exitcode, stdout, stderr) <- readCreateProcessWithExitCode
+  (exitcode, out, err) <- readCreateProcessWithExitCode
+    ((proc "git" args) { cwd = Just gitWorkingDir }) ""
+  case exitcode of
+    ExitSuccess      -> return out
+    ExitFailure code -> throwIO (GitFailed out err code)
+
+gitCmdLogged :: Ref OutputLogger -> JobId -> [String] -> FilePath -> IO String
+gitCmdLogged outputLogger jobid args gitWorkingDir = do
+  exitcode <- logCreateProcessWithExitCode outputLogger jobid
     ((proc "git" args) { cwd = Just gitWorkingDir })
-    ""
   case exitcode of
-    ExitSuccess      -> return stdout
-    ExitFailure code -> throwIO (GitFailed stdout stderr code)
+    ExitSuccess      -> return ""
+    ExitFailure code -> throwIO (GitFailed "" "" code)
 
-nixopsCmd :: [String] -> IO String
-nixopsCmd args = do
-  (exitcode, stdout, stderr) <- readCreateProcessWithExitCode
+nixopsCmdLogged :: Ref OutputLogger -> JobId -> [String] -> IO String
+nixopsCmdLogged outputLogger jobid args = do
+  exitcode <- logCreateProcessWithExitCode outputLogger jobid
     (proc "nixops" args)
-    ""
   case exitcode of
-    ExitSuccess      -> return stdout
-    ExitFailure code -> throwIO (NixopsFailed stdout stderr code)
+    ExitSuccess      -> return ""
+    ExitFailure code -> throwIO (NixopsFailed "" "" code)
 
-deploy :: Ref EventLogger -> FilePath -> DeploymentJob -> IO JobResult
-deploy eventLogger gitWorkingDir job = do
+deploy :: Ref EventLogger -> Ref OutputLogger -> FilePath -> DeploymentJob -> IO JobResult
+deploy eventLogger outputLogger gitWorkingDir job = do
   started <- getCurrentTime
   eventLogger ! AppendEvent (jobId job) (JobRunning started)
-  _ <- gitCmd
+  _ <- gitCmdLogged outputLogger (jobId job)
     [ "checkout"
     , Text.unpack (unTag (deploymentTag job))
     , "--recurse-submodules"
     ]
     gitWorkingDir
-  _ <- nixopsCmd ["deploy", "-d", unDeploymentName (deploymentName job)]
+  _ <- nixopsCmdLogged outputLogger (jobId job)
+    ["deploy", "-d", unDeploymentName (deploymentName job)]
   return JobSuccessful
 
 gitListTags :: FilePath -> IO [Tag]
-gitListTags workingDir = parseTags <$> gitCmd ["tag", "-l"] workingDir
-  where parseTags = map Tag . filter (not . Text.null) . Text.lines . Text.pack
+gitListTags workingDir =
+  parseTags <$> gitCmd ["tag", "-l"] workingDir
+ where parseTags = map Tag . filter (not . Text.null) . Text.lines . Text.pack
 
 notifyDeployFinished
   :: Ref Deployer
@@ -131,7 +170,7 @@ instance Process Deployer where
         -- We require the deployment name to be known.
         | HashSet.member name deploymentNames -> do
           let job = DeploymentJob { deploymentTag = tag, jobId = "deploy-1", deploymentName = name }
-          void (forkFinally (deploy eventLogger gitWorkingDir job) (notifyDeployFinished self eventLogger job))
+          void (forkFinally (deploy eventLogger outputLogger gitWorkingDir job) (notifyDeployFinished self eventLogger job))
           return ( a { state = Deploying job
                      , jobs = HashMap.insert (jobId job) (job, Nothing) jobs
                      }
