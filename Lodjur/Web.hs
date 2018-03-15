@@ -105,7 +105,7 @@ deployTagAction = readState >>= \case
     tag <- Tag <$> param "tag"
     status status302
     setHeader "Location" "/"
-    void $ liftIO $ deployer ? Deploy "CHANGEME" tag
+    void $ liftIO $ deployer ? Deploy "mpowered-staging" tag
   Deploying job ->
     renderLayout "Already Deploying"
       $  p_
