@@ -1,12 +1,11 @@
-{-# LANGUAGE GADTs #-}
-{-# LANGUAGE DeriveGeneric #-}
-{-# LANGUAGE RankNTypes #-}
+{-# LANGUAGE DeriveGeneric              #-}
+{-# LANGUAGE GADTs                      #-}
 {-# LANGUAGE GeneralizedNewtypeDeriving #-}
-{-# LANGUAGE OverloadedStrings #-}
-{-# LANGUAGE TypeFamilies #-}
-{-# LANGUAGE NamedFieldPuns #-}
-{-# LANGUAGE RecordWildCards #-}
-{-# LANGUAGE LambdaCase #-}
+{-# LANGUAGE NamedFieldPuns             #-}
+{-# LANGUAGE OverloadedStrings          #-}
+{-# LANGUAGE RankNTypes                 #-}
+{-# LANGUAGE RecordWildCards            #-}
+{-# LANGUAGE TypeFamilies               #-}
 module Lodjur.Deploy
   ( Tag (..)
   , DeploymentName (..)
@@ -14,27 +13,33 @@ module Lodjur.Deploy
   , DeploymentJob (..)
   , DeployState (..)
   , JobEvent (..)
+  , JobResult (..)
+  , EventLogs
   , EventLog
   , Deployer
   , DeployMessage (..)
   , EventLogger (..)
+  , EventLogMessage (..)
   , initialize
   ) where
 
 import           Control.Concurrent
-import           Control.Exception          (Exception, SomeException, throwIO)
-import           Control.Monad              (void)
-import           Data.HashSet               (HashSet)
-import qualified Data.HashSet               as HashSet
-import           Data.Hashable              (Hashable)
+import           Control.Exception   (Exception, SomeException, throwIO)
+import           Control.Monad       (void)
+import           Data.Hashable       (Hashable)
+import           Data.HashMap.Strict (HashMap)
+import qualified Data.HashMap.Strict as HashMap
+import           Data.HashSet        (HashSet)
+import qualified Data.HashSet        as HashSet
 import           Data.Semigroup
 import           Data.String
-import           Data.Text                  (Text)
-import qualified Data.Text                  as Text
+import           Data.Text           (Text)
+import qualified Data.Text           as Text
 import           Data.Time.Clock
-import           GHC.Generics               (Generic)
+import           GHC.Generics        (Generic)
 import           System.Exit
-import           System.Process             (proc, readCreateProcessWithExitCode, CreateProcess (cwd))
+import           System.Process      (CreateProcess (cwd), proc,
+                                      readCreateProcessWithExitCode)
 
 import           Lodjur.Process
 
@@ -48,11 +53,11 @@ newtype DeploymentName =
 
 type JobId = Text
 
-data DeploymentJob = DeploymentJob { jobId :: JobId
-                                   , deploymentName :: DeploymentName
-                                   , deploymentTag :: Tag
-                                   }
-  deriving (Show, Eq)
+data DeploymentJob = DeploymentJob
+  { jobId          :: JobId
+  , deploymentName :: DeploymentName
+  , deploymentTag  :: Tag
+  } deriving (Show, Eq)
 
 data DeployState
   = Idle
@@ -69,19 +74,22 @@ data JobResult
   | JobFailed Text
   deriving (Show, Eq)
 
-type EventLog = [(JobId, JobEvent)]
+type EventLogs = HashMap JobId EventLog
 
-data EventLogger = EventLogger
+type EventLog = [JobEvent]
+
+data EventLogger = EventLogger EventLogs
 
 data EventLogMessage r where
-  -- Private messages:
-  AppendEvent :: JobEvent -> EventLogMessage Async
+  -- Public messages:
+  GetEventLogs :: EventLogMessage (Sync EventLogs)
+  AppendEvent :: JobId -> JobEvent -> EventLogMessage Async
 
 data Deployer = Deployer
-  { state :: DeployState
-  , eventLogger :: Ref EventLogger
+  { state           :: DeployState
+  , eventLogger     :: Ref EventLogger
   , deploymentNames :: HashSet DeploymentName
-  , gitWorkingDir :: FilePath
+  , gitWorkingDir   :: FilePath
   }
 
 data DeployMessage r where
@@ -125,8 +133,10 @@ nixopsCmd args = do
     ExitSuccess      -> return stdout
     ExitFailure code -> throwIO (NixopsFailed stdout stderr code)
 
-deploy :: FilePath -> DeploymentJob -> IO JobResult
-deploy gitWorkingDir job = do
+deploy :: Ref EventLogger -> FilePath -> DeploymentJob -> IO JobResult
+deploy eventLogger gitWorkingDir job = do
+  started <- getCurrentTime
+  eventLogger ! AppendEvent (jobId job) (JobRunning started)
   _ <- gitCmd ["checkout", Text.unpack (unTag (deploymentTag job)), "--recurse-submodules"] gitWorkingDir
   _ <- nixopsCmd ["deploy", "-d", unDeploymentName (deploymentName job)]
   return JobSuccessful
@@ -137,10 +147,15 @@ gitListTags workingDir = parseTags <$> gitCmd ["tag", "-l"] workingDir
 
 notifyDeployFinished
   :: Ref Deployer
+  -> Ref EventLogger
+  -> DeploymentJob
   -> Either SomeException JobResult
   -> IO ()
-notifyDeployFinished self r =
-  self ! FinishJob (either (JobFailed . Text.pack . show) id r)
+notifyDeployFinished self eventLogger job r = do
+  finished <- getCurrentTime
+  let result = either (JobFailed . Text.pack . show) id r
+  eventLogger ! AppendEvent (jobId job) (JobFinished result finished)
+  self ! FinishJob result
 
 instance Process Deployer where
   type Message Deployer = DeployMessage
@@ -151,7 +166,7 @@ instance Process Deployer where
         -- We require the deployment name to be known.
         | HashSet.member name deploymentNames -> do
           let job = DeploymentJob { deploymentTag = tag, jobId = "deploy-1", deploymentName = name }
-          void (forkFinally (deploy gitWorkingDir job) (notifyDeployFinished self))
+          void (forkFinally (deploy eventLogger gitWorkingDir job) (notifyDeployFinished self eventLogger job))
           return (a { state = Deploying job}, Just job)
         -- We can't deploy to an unknown deployment.
         | otherwise -> do
@@ -173,17 +188,20 @@ instance Process Deployer where
       (_, FinishJob result) -> do
         putStrLn ("Finished job with result: " <> show result)
         return a { state = Idle }
-                 -- eventLog = (jobId (eventJob event), event) : eventLog
 
   terminate Deployer {state} = case state of
-    Idle -> return ()
+    Idle          -> return ()
     Deploying job -> putStrLn ("Killed while deploying " <> show job)
 
 instance Process EventLogger where
   type Message EventLogger = EventLogMessage
 
-  receive _self (EventLogger, AppendEvent event) = do
-    putStrLn ("Recording event: " <> show event)
-    return EventLogger
+  receive _self (a@(EventLogger logs), GetEventLogs) =
+    return (a, logs)
 
-  terminate EventLogger = return ()
+  receive _self (EventLogger logs, AppendEvent jobid event) = do
+    putStrLn ("Recording event: " <> show event)
+    let events = HashMap.lookupDefault [] jobid logs
+    return $ EventLogger (HashMap.insert jobid (event : events) logs)
+
+  terminate (EventLogger _) = return ()

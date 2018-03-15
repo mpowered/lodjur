@@ -22,9 +22,9 @@ main =
 
     startServices Options{..} = do
       let deploymentNames = HashSet.fromList nixopsDeployments
-      eventLogger <- spawn EventLogger
+      eventLogger <- spawn (EventLogger mempty)
       deployer <- spawn (initialize eventLogger deploymentNames gitWorkingDir)
-      runServer port deployer
+      runServer port deployer eventLogger
 
 data Options = Options
   { gitWorkingDir     :: FilePath

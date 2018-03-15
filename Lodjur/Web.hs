@@ -1,13 +1,16 @@
 {-# LANGUAGE LambdaCase        #-}
 {-# LANGUAGE OverloadedStrings #-}
+{-# LANGUAGE RecordWildCards   #-}
 {-# LANGUAGE ViewPatterns      #-}
 module Lodjur.Web (Port, runServer) where
 
 import           Control.Monad
 import           Control.Monad.IO.Class    (liftIO)
 import           Control.Monad.Reader
+import qualified Data.HashMap.Strict       as HashMap
 import           Data.Semigroup
 import           Data.Text                 (Text)
+import qualified Data.Text                 as Text
 import qualified Data.Text.Lazy            as Lazy
 import           Lucid.Base                (Html, toHtml)
 import qualified Lucid.Base                as Html
@@ -15,15 +18,19 @@ import           Lucid.Bootstrap
 import           Lucid.Html5
 import           Network.HTTP.Types.Status
 import           Web.Scotty.Trans
-import qualified Data.Text as Text
 
-import           Lodjur.Process
 import           Lodjur.Deploy
+import           Lodjur.Process
 
-type Action = ActionT Lazy.Text (ReaderT (Ref Deployer) IO)
+data Env = Env
+  { envDeployer    :: Ref Deployer
+  , envEventLogger :: Ref EventLogger
+  }
+
+type Action = ActionT Lazy.Text (ReaderT Env IO)
 
 readState :: Action DeployState
-readState = lift ask >>= liftIO . (? GetCurrentState)
+readState = lift (asks envDeployer) >>= liftIO . (? GetCurrentState)
 
 renderHtml :: Html () -> Action ()
 renderHtml = html . Html.renderText
@@ -39,37 +46,43 @@ renderLayout title contents = renderHtml $ doctypehtml_ $ html_ $ do
       ]
   body_ contents
 
-{-
-renderEventLog :: EventLog -> Html ()
-renderEventLog eventLog = do
+renderEventLogs :: EventLogs -> Html ()
+renderEventLogs eventLogs = do
   h2_ [class_ "mt-5"] "Event Log"
-  renderBody eventLog
+  renderBody eventLogs
  where
-  renderBody :: EventLog -> Html ()
-  renderBody []     = p_ [class_ "text-secondary"] "No history available."
-  renderBody events = table_ [class_ "table table-striped"] $ do
-    tr_ $ do
-      th_ "Event"
-      th_ "Tag"
-      th_ "Time"
-      th_ "Description"
-    forM_ events $ \event -> tr_ $ case snd event of
-      JobRunning job startedAt -> do
-        td_ $ span_ [class_ "text-info"] "Started"
-        td_ (toHtml (unTag (deploymentTag job)))
-        td_ (toHtml (show startedAt))
-        td_ ""
-      JobSuccessful job finishedAt -> do
-        td_ $ span_ [class_ "text-success"] "Finished"
-        td_ (toHtml (unTag (deploymentTag job)))
-        td_ (toHtml (show finishedAt))
-        td_ ""
-      JobFailed job failedAt e -> do
-        td_ $ span_ [class_ "text-danger"] "Failed"
-        td_ (toHtml (unTag (deploymentTag job)))
-        td_ (toHtml (show failedAt))
-        td_ [style_ "color: red;"] (toHtml e)
--}
+  renderBody :: EventLogs -> Html ()
+  renderBody eventlogs
+    | HashMap.null eventlogs = p_ [class_ "text-secondary"] "No history available."
+    | otherwise =
+        table_ [class_ "table table-striped"] $ do
+          tr_ $ do
+            th_ "Event"
+            th_ "Tag"
+            th_ "Time"
+            th_ "Description"
+          forM_ (HashMap.toList eventlogs) $ \(jobid, eventlog) -> do
+            tr_ [class_ "table-primary"] $ td_ [colspan_ "4"] (toHtml jobid)
+            renderEvents eventlog
+  renderEvents :: EventLog -> Html ()
+  renderEvents events =
+    forM_ events $ \event ->
+      tr_ $ case event of
+        JobRunning startedAt -> do
+          td_ $ span_ [class_ "text-info"] "Started"
+          td_ "tag"
+          td_ (toHtml (show startedAt))
+          td_ ""
+        JobFinished JobSuccessful finishedAt -> do
+          td_ $ span_ [class_ "text-success"] "Finished"
+          td_ "tag"
+          td_ (toHtml (show finishedAt))
+          td_ ""
+        JobFinished (JobFailed e) finishedAt -> do
+          td_ $ span_ [class_ "text-danger"] "Failed"
+          td_ "tag"
+          td_ (toHtml (show finishedAt))
+          td_ [style_ "color: red;"] (toHtml e)
 
 renderDeployCard :: [DeploymentName] -> [Tag] -> DeployState -> Html ()
 renderDeployCard deploymentNames tags state = do
@@ -104,10 +117,12 @@ renderDeployCard deploymentNames tags state = do
 
 showAllTagsAction :: Action ()
 showAllTagsAction = do
-  deployer        <- lift ask
+  deployer        <- lift (asks envDeployer)
   deploymentNames <- liftIO $ deployer ? GetDeploymentNames
   tags            <- liftIO $ deployer ? GetTags
   deployState     <- liftIO $ deployer ? GetCurrentState
+  eventLogger     <- lift (asks envEventLogger)
+  eventLogs       <- liftIO $ eventLogger ? GetEventLogs
   renderLayout "Lodjur Deployment Manager" $ container_ $ do
     div_ [class_ "row"] $ div_ [class_ "col"] $ do
       h1_ [class_ "mt-5"] "Lodjur"
@@ -116,12 +131,12 @@ showAllTagsAction = do
       deploymentNames
       tags
       deployState
-    -- div_ [class_ "row"] $ div_ [class_ "col"] $ renderEventLog eventLog
+    div_ [class_ "row"] $ div_ [class_ "col"] $ renderEventLogs eventLogs
 
 deployTagAction :: Action ()
 deployTagAction = readState >>= \case
   Idle -> do
-    deployer <- lift ask
+    deployer <- lift (asks envDeployer)
     dName    <- DeploymentName <$> param "deployment-name"
     tag      <- Tag <$> param "tag"
     status status302
@@ -136,7 +151,7 @@ deployTagAction = readState >>= \case
 
 type Port = Int
 
-runServer :: Port -> Ref Deployer -> IO ()
-runServer port ref = scottyT port (`runReaderT` ref) $ do
+runServer :: Port -> Ref Deployer -> Ref EventLogger -> IO ()
+runServer port envDeployer envEventLogger = scottyT port (`runReaderT` Env { .. }) $ do
   get  "/" showAllTagsAction
   post "/" deployTagAction
