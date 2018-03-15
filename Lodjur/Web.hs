@@ -181,8 +181,8 @@ showJobAction = do
             renderEventLog eventLog
         div_ [class_ "row"] $
           div_ [class_ "col"] $ do
-            h2_ [class_ "mb-3"] "Build Output"
-            span_ [class_ "text-muted"] "No build output available."
+            h2_ [class_ "mb-3"] "Command Output"
+            span_ [class_ "text-muted"] "No output available."
     Nothing -> notFoundAction
 
 type Port = Int
