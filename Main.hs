@@ -24,7 +24,7 @@ main = startServices =<< execParser opts
 
   startServices Options {..} = do
     let deploymentNames = HashSet.fromList nixopsDeployments
-    eventLogger <- spawn =<< EventLogger.newEventLogger "lodjur.db"
+    eventLogger <- spawn =<< EventLogger.newEventLogger databaseName
     deployer    <- spawn
       (Deployer.initialize eventLogger deploymentNames gitWorkingDir)
     runServer port deployer eventLogger
@@ -33,6 +33,7 @@ data Options = Options
   { gitWorkingDir     :: FilePath
   , nixopsDeployments :: [DeploymentName]
   , port              :: Port
+  , databaseName      :: FilePath
   }
 
 lodjur :: Parser Options
@@ -56,4 +57,10 @@ lodjur =
           <> help "Port to run the web server on"
           <> showDefault
           <> value 4000
+          )
+    <*> strOption
+          ( long "database" <> metavar "FILE" <> help
+            "Path to database"
+          <> showDefault
+          <> value ":memory:"
           )
