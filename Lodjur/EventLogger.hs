@@ -12,7 +12,8 @@ module Lodjur.EventLogger
   , EventLogMessage (..)
   ) where
 
-import           Control.Exception      (Exception, throwIO)
+import           Control.Concurrent
+import           Control.Exception      (Exception, throwIO, tryJust)
 import           Control.Monad
 import           Data.Aeson
 import           Data.Time.Clock
@@ -47,22 +48,35 @@ newtype EventDecodeFailed = EventDecodeFailed String
 
 instance Exception EventDecodeFailed
 
+retryIfBusy :: IO a -> IO a
+retryIfBusy a = do
+  e <- tryJust isBusy a
+  case e of
+    Left _ -> threadDelay 10 >> retryIfBusy a
+    Right r -> return r
+ where
+  isBusy sqlerr
+    | sqlError sqlerr == ErrorBusy = Just ()
+    | otherwise                     = Nothing
+
 newEventLogger :: String -> IO EventLogger
 newEventLogger file = EventLogger <$> openAndInit file
 
 openAndInit :: String -> IO Connection
 openAndInit file = do
     conn <- open file
-    execute_ conn "CREATE TABLE IF NOT EXISTS job_event_log (time TEXT, job_id TEXT, event TEXT)"
+    retryIfBusy $
+      execute_ conn "CREATE TABLE IF NOT EXISTS job_event_log (time TEXT, job_id TEXT, event TEXT)"
     return conn
 
 insertEvent :: ToJSON event => Connection -> UTCTime -> JobId -> event -> IO ()
-insertEvent conn t jobid event =
+insertEvent conn t jobid event = retryIfBusy $
   execute conn "INSERT INTO job_event_log (time, job_id, event) VALUES (?, ?, ?)"
     (t, jobid, encode event)
 
 getAllEventLogs :: Connection -> IO EventLogs
-getAllEventLogs conn = mkEventLog =<< query_ conn "SELECT job_id, event FROM job_event_log ORDER BY time ASC"
+getAllEventLogs conn = retryIfBusy $
+  mkEventLog =<< query_ conn "SELECT job_id, event FROM job_event_log ORDER BY time ASC"
  where
   mkEventLog = foldM mergeEvent mempty
   mergeEvent m (jobid, eitherDecode -> event) =
