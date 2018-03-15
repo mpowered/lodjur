@@ -36,37 +36,30 @@ readState = lift (asks envDeployer) >>= liftIO . (? GetCurrentState)
 renderHtml :: Html () -> Action ()
 renderHtml = html . Html.renderText
 
-renderLayout :: Text -> Html () -> Action ()
+renderLayout :: Html () -> Html () -> Action ()
 renderLayout title contents = renderHtml $ doctypehtml_ $ html_ $ do
   head_ $ do
-    title_ (toHtml title)
+    title_ title
     link_
       [ rel_ "stylesheet"
       , href_
         "https://maxcdn.bootstrapcdn.com/bootstrap/4.0.0/css/bootstrap.min.css"
       ]
-  body_ contents
+  body_ (container_ contents)
 
-renderEventLogs :: EventLogs -> Html ()
-renderEventLogs eventLogs = do
-  h2_ [class_ "mt-5"] "Event Log"
-  renderBody eventLogs
+renderEventLog :: EventLog -> Html ()
+renderEventLog []       = p_ [class_ "text-secondary"] "No events available."
+renderEventLog eventLog =
+  table_ [class_ "table table-striped"] $ do
+    tr_ $ do
+      th_ "Event"
+      th_ "Tag"
+      th_ "Time"
+      th_ "Description"
+    mapM_ renderEvent eventLog
  where
-  renderBody :: EventLogs -> Html ()
-  renderBody eventlogs
-    | HashMap.null eventlogs = p_ [class_ "text-secondary"]
-                                  "No history available."
-    | otherwise = table_ [class_ "table table-striped"] $ do
-      tr_ $ do
-        th_ "Event"
-        th_ "Tag"
-        th_ "Time"
-        th_ "Description"
-      forM_ (HashMap.toList eventlogs) $ \(jobid, eventlog) -> do
-        tr_ [class_ "table-primary"] $ td_ [colspan_ "4"] (toHtml jobid)
-        renderEvents eventlog
-  renderEvents :: EventLog -> Html ()
-  renderEvents events = forM_ events $ \event -> tr_ $ case event of
+  renderEvent :: JobEvent -> Html ()
+  renderEvent event = tr_ $ case event of
     JobRunning startedAt -> do
       td_ $ span_ [class_ "text-info"] "Started"
       td_ "tag"
@@ -100,7 +93,8 @@ renderDeployCard deploymentNames tags state = do
                   $ forM_ deploymentNames
                   $ \(unDeploymentName -> n) ->
                       option_ [value_ (Text.pack n)] (toHtml n)
-                small_ [class_ "text-muted"] "Name of the Nixops deployment to target."
+                small_ [class_ "text-muted"]
+                       "Name of the Nixops deployment to target."
               div_ [class_ "col"] $ do
                 select_ [name_ "tag", class_ "form-control"]
                   $ forM_ tags
@@ -119,15 +113,36 @@ renderDeployCard deploymentNames tags state = do
         <> unTag (deploymentTag job)
         <> "..."
 
+notFoundAction :: Action ()
+notFoundAction = do
+  status status404
+  renderLayout "Page not found!" $ do
+    h1_ [class_ "mt-5"] "The page could not be found!"
+    p_ [class_ "lead"] $ do
+      "Try "
+      a_ [href_ "/"] "going back the start page"
+      "."
+
+badRequestAction :: Html () -> Action ()
+badRequestAction message = do
+  status status400
+  renderLayout "Bad request!" $ do
+    h1_ [class_ "mt-5"] "Bad request!"
+    p_  [class_ "lead"] message
+
+jobHref :: DeploymentJob -> Text
+jobHref job = "/jobs/" <> jobId job
+
+jobLink :: DeploymentJob -> Html ()
+jobLink job = a_ [href_ (jobHref job)] (toHtml (unTag (deploymentTag job)))
+
 homeAction :: Action ()
 homeAction = do
   deployer        <- lift (asks envDeployer)
   deploymentNames <- liftIO $ deployer ? GetDeploymentNames
   tags            <- liftIO $ deployer ? GetTags
   deployState     <- liftIO $ deployer ? GetCurrentState
-  eventLogger     <- lift (asks envEventLogger)
-  eventLogs       <- liftIO $ eventLogger ? GetEventLogs
-  renderLayout "Lodjur Deployment Manager" $ container_ $ do
+  renderLayout "Lodjur Deployment Manager" $ do
     div_ [class_ "row"] $ div_ [class_ "col"] $ do
       h1_ [class_ "mt-5"] "Lodjur"
       p_  [class_ "lead"] "Mpowered's Nixops Deployment Frontend"
@@ -135,7 +150,6 @@ homeAction = do
       deploymentNames
       tags
       deployState
-    div_ [class_ "row"] $ div_ [class_ "col"] $ renderEventLogs eventLogs
 
 newDeployAction :: Action ()
 newDeployAction = readState >>= \case
@@ -143,21 +157,39 @@ newDeployAction = readState >>= \case
     deployer <- lift (asks envDeployer)
     dName    <- DeploymentName <$> param "deployment-name"
     tag      <- Tag <$> param "tag"
-    status status302
-    setHeader "Location" "/"
-    void $ liftIO $ deployer ? Deploy dName tag
-  Deploying job -> do
-    status status400
-    renderLayout "Already Deploying"
-      $  p_
-      $  toHtml
-      $  "Already deploying a tag: "
-      <> unTag (deploymentTag job)
+    liftIO (deployer ? Deploy dName tag) >>= \case
+      Just job -> do
+        status status302
+        setHeader "Location" (Lazy.fromStrict (jobHref job))
+      Nothing -> badRequestAction "Could not deploy!"
+  Deploying job ->
+    badRequestAction $ "Already deploying " <> jobLink job <> "."
+
+showJobAction :: Action ()
+showJobAction = do
+  jobId       <- param "job-id"
+  eventLogger <- lift (asks envEventLogger)
+  eventLogs   <- liftIO $ eventLogger ? GetEventLogs
+  case HashMap.lookup jobId eventLogs of
+    Just eventLog -> do
+      let title = "Job " <> jobId
+      renderLayout (toHtml title) $ do
+        h1_ [class_ "mt-5 mb-5"] (toHtml title)
+        div_ [class_ "row"] $ do
+          div_ [class_ "col"] $ do
+            h2_ "Event Log"
+            renderEventLog eventLog
+          div_ [class_ "col"] $ do
+            h2_ "Build Output"
+            span_ [class_ "text-muted"] "No build output available."
+    Nothing -> notFoundAction
 
 type Port = Int
 
 runServer :: Port -> Ref Deployer -> Ref EventLogger -> IO ()
 runServer port envDeployer envEventLogger =
   scottyT port (`runReaderT` Env {..}) $ do
-    get  "/" homeAction
-    post "/jobs" newDeployAction
+    get  "/"             homeAction
+    post "/jobs"         newDeployAction
+    get  "/jobs/:job-id" showJobAction
+    notFound notFoundAction
