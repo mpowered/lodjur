@@ -8,6 +8,7 @@ import           Control.Monad
 import           Control.Monad.IO.Class    (liftIO)
 import           Control.Monad.Reader
 import qualified Data.HashMap.Strict       as HashMap
+import qualified Data.List                 as List
 import           Data.Semigroup
 import           Data.Text                 (Text)
 import qualified Data.Text                 as Text
@@ -39,25 +40,26 @@ renderHtml :: Html () -> Action ()
 renderHtml = html . Html.renderText
 
 renderLayout :: Html () -> [Html ()] -> Html () -> Action ()
-renderLayout title breadcrumbs contents = renderHtml $ doctypehtml_ $ html_ $ do
-  head_ $ do
-    title_ title
-    link_
-      [ rel_ "stylesheet"
-      , href_
-        "https://maxcdn.bootstrapcdn.com/bootstrap/4.0.0/css/bootstrap.min.css"
-      ]
-  body_ $
-    container_ $ do
-      nav_ $ ol_ [class_ "breadcrumb mt-4"] (toBreadcrumbItems (homeLink : breadcrumbs))
+renderLayout title breadcrumbs contents =
+  renderHtml $ doctypehtml_ $ html_ $ do
+    head_ $ do
+      title_ title
+      link_
+        [ rel_ "stylesheet"
+        , href_
+          "https://maxcdn.bootstrapcdn.com/bootstrap/4.0.0/css/bootstrap.min.css"
+        ]
+    body_ $ container_ $ do
+      nav_ $ ol_ [class_ "breadcrumb mt-4"]
+                 (toBreadcrumbItems (homeLink : breadcrumbs))
       contents
-  where
-    toBreadcrumbItems :: [Html ()] -> Html ()
-    toBreadcrumbItems [] = return ()
-    toBreadcrumbItems elements = do
-      foldMap (li_ [class_ "breadcrumb-item"]) (init elements)
-      li_ [class_ "breadcrumb-item active"] (last elements)
-    homeLink = a_ [href_ "/"] "Lodjur"
+ where
+  toBreadcrumbItems :: [Html ()] -> Html ()
+  toBreadcrumbItems []       = return ()
+  toBreadcrumbItems elements = do
+    foldMap (li_ [class_ "breadcrumb-item"])  (init elements)
+    li_     [class_ "breadcrumb-item active"] (last elements)
+  homeLink = a_ [href_ "/"] "Lodjur"
 
 renderEventLog :: EventLog -> Html ()
 renderEventLog []       = p_ [class_ "text-secondary"] "No events available."
@@ -72,7 +74,7 @@ renderEventLog eventLog = table_ [class_ "table table-striped"] $ do
   renderEvent :: JobEvent -> Html ()
   renderEvent event = tr_ $ case event of
     JobRunning startedAt -> do
-      td_ $ span_ [class_ "text-info"] "Started"
+      td_ $ span_ [class_ "text-primary"] "Started"
       td_ "tag"
       td_ (toHtml (show startedAt))
       td_ ""
@@ -89,13 +91,15 @@ renderEventLog eventLog = table_ [class_ "table table-striped"] $ do
 
 renderDeployJobs :: DeploymentJobs -> Html ()
 renderDeployJobs []   = p_ [class_ "text-secondary"] "No jobs available."
-renderDeployJobs jobs = table_ [class_ "table table-striped"] $ do
-  tr_ $ do
-    th_ "Job"
-    th_ "Deployment"
-    th_ "Tag"
-    th_ "Result"
-  mapM_ renderJob jobs
+renderDeployJobs jobs = div_ [class_ "card"] $ do
+  div_ [class_ "card-header"] "Latest Jobs"
+  table_ [class_ "table table-striped mb-0"] $ do
+    tr_ $ do
+      th_ "Job"
+      th_ "Deployment"
+      th_ "Tag"
+      th_ "Result"
+    mapM_ renderJob jobs
  where
   renderJob :: (DeploymentJob, Maybe JobResult) -> Html ()
   renderJob (job, r) = tr_ $ do
@@ -107,42 +111,64 @@ renderDeployJobs jobs = table_ [class_ "table table-striped"] $ do
       Just (JobFailed reason) -> td_ [class_ "text-danger"] (toHtml reason)
       Nothing                 -> td_ [class_ "text-primary"] "Running"
 
+renderCurrentState :: DeployState -> Html ()
+renderCurrentState state = div_ [class_ "card"] $ do
+  div_ [class_ "card-header"] "Current State"
+  div_ [class_ "card-body text-center"] $ case state of
+    Idle          -> span_ [class_ "text-muted h3"] "Idle"
+    Deploying job -> do
+      div_ [class_ "text-warning h3"] "Deploying"
+      a_ [href_ (jobHref job), class_ "text-warning"] $ do
+        toHtml (unTag (deploymentTag job))
+        " to "
+        toHtml (unDeploymentName (deploymentName job))
+
+-- TODO: Convert this to a database query.
+renderLatestSuccessful :: [DeploymentName] -> DeploymentJobs -> Html ()
+renderLatestSuccessful deploymentNames jobs = div_ [class_ "card"] $ do
+  div_ [class_ "card-header text-success"] "Latest Successful"
+  table_ [class_ "table table-bordered mb-0"]
+    $ forM_ deploymentNames
+    $ \name -> case List.find (successfulJobIn name) jobs of
+        Just (job, _) -> tr_ $ do
+          td_ (toHtml (unDeploymentName (deploymentName job)))
+          td_ (toHtml (unTag (deploymentTag job)))
+          td_ (jobLink job)
+        Nothing ->
+          div_ [class_ "card-body"] $
+            span_ [class_ "text-muted"] "No successful deployment jobs found."
+ where
+  successfulJobIn n = \case
+    (job, Just JobSuccessful) -> deploymentName job == n
+    _                         -> False
+
 renderDeployCard :: [DeploymentName] -> [Tag] -> DeployState -> Html ()
-renderDeployCard deploymentNames tags state = do
-  h2_ [class_ "mt-5"] "Current State"
-  case state of
-    Idle -> do
-      p_ [class_ "text-muted"] "Idle"
-      div_ [class_ "card"] $ do
-        div_ [class_ "card-header"] "New Deploy"
-        div_ [class_ "card-body"]
-          $ form_ [method_ "post", action_ "/jobs"]
-          $ div_ [class_ "row"]
-          $ do
-              div_ [class_ "col"] $ do
-                select_ [name_ "deployment-name", class_ "form-control"]
-                  $ forM_ deploymentNames
-                  $ \(unDeploymentName -> n) ->
-                      option_ [value_ (Text.pack n)] (toHtml n)
-                small_ [class_ "text-muted"]
-                       "Name of the Nixops deployment to target."
-              div_ [class_ "col"] $ do
-                select_ [name_ "tag", class_ "form-control"]
-                  $ forM_ tags
-                  $ \(unTag -> tag) -> option_ [value_ tag] (toHtml tag)
-                small_ [class_ "text-muted"] "Which git tag to deploy."
-              div_ [class_ "col"]
-                $ input_
-                    [ class_ "btn btn-primary form-control"
-                    , type_ "submit"
-                    , value_ "Deploy"
-                    ]
-    Deploying job ->
-      p_ [class_ "text-info"]
-        $  toHtml
-        $  "Deploying tag "
-        <> unTag (deploymentTag job)
-        <> "..."
+renderDeployCard deploymentNames tags state = case state of
+  Idle -> div_ [class_ "card"] $ do
+    div_ [class_ "card-header"] "New Deploy"
+    div_ [class_ "card-body"]
+      $ form_ [method_ "post", action_ "/jobs"]
+      $ div_ [class_ "row"]
+      $ do
+          div_ [class_ "col"] $ do
+            select_ [name_ "deployment-name", class_ "form-control"]
+              $ forM_ deploymentNames
+              $ \(unDeploymentName -> n) ->
+                  option_ [value_ (Text.pack n)] (toHtml n)
+            small_ [class_ "text-muted"]
+                   "Name of the Nixops deployment to target."
+          div_ [class_ "col"] $ do
+            select_ [name_ "tag", class_ "form-control"]
+              $ forM_ tags
+              $ \(unTag -> tag) -> option_ [value_ tag] (toHtml tag)
+            small_ [class_ "text-muted"] "Which git tag to deploy."
+          div_ [class_ "col"]
+            $ input_
+                [ class_ "btn btn-primary form-control"
+                , type_ "submit"
+                , value_ "Deploy"
+                ]
+  Deploying _ -> return ()
 
 notFoundAction :: Action ()
 notFoundAction = do
@@ -181,13 +207,14 @@ homeAction = do
   deployState     <- liftIO $ deployer ? GetCurrentState
   jobs            <- liftIO $ deployer ? GetJobs
   renderLayout "Lodjur Deployment Manager" [] $ do
-    div_ [class_ "row"] $ div_ [class_ "col"] $ renderDeployCard
+    div_ [class_ "row mt-5"] $ do
+      div_ [class_ "col col-4"] $ renderCurrentState deployState
+      div_ [class_ "col"] $ renderLatestSuccessful deploymentNames jobs
+    div_ [class_ "row mt-5"] $ div_ [class_ "col"] $ renderDeployJobs jobs
+    div_ [class_ "row mt-5 mb-5"] $ div_ [class_ "col"] $ renderDeployCard
       deploymentNames
       tags
       deployState
-    div_ [class_ "row"] $ div_ [class_ "col"] $ do
-      h2_ [class_ "mt-5"] "Jobs"
-      renderDeployJobs jobs
 
 newDeployAction :: Action ()
 newDeployAction = readState >>= \case
@@ -211,14 +238,13 @@ showJobAction = do
   eventLogs    <- liftIO $ eventLogger ? GetEventLogs
   outputLog    <- liftIO $ HashMap.lookup jobId <$> outputLogger ? GetOutputLogs
   case HashMap.lookup jobId eventLogs of
-    Just eventLog ->
-      renderLayout "Job Details" ["Jobs", jobIdLink jobId] $ do
-        div_ [class_ "row mt-5"] $ div_ [class_ "col"] $ do
-          h2_ [class_ "mb-3"] "Event Log"
-          renderEventLog eventLog
-        div_ [class_ "row mt-2"] $ div_ [class_ "col"] $ do
-          h2_ [class_ "mb-3"] "Command Output"
-          displayOutput outputLog
+    Just eventLog -> renderLayout "Job Details" ["Jobs", jobIdLink jobId] $ do
+      div_ [class_ "row mt-5"] $ div_ [class_ "col"] $ do
+        h2_ [class_ "mb-3"] "Event Log"
+        renderEventLog eventLog
+      div_ [class_ "row mt-2"] $ div_ [class_ "col"] $ do
+        h2_ [class_ "mb-3"] "Command Output"
+        displayOutput outputLog
     Nothing -> notFoundAction
  where
   displayOutput :: Maybe Output -> Html ()
