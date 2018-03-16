@@ -41,7 +41,8 @@ initialize conn = retryIfBusy $ do
     "CREATE TABLE IF NOT EXISTS job_event_log (time TEXT, job_id TEXT, event TEXT)"
   execute_
     conn
-    "CREATE TABLE IF NOT EXISTS job_event_log (time TEXT, job_id TEXT, event TEXT)"
+    "CREATE TABLE IF NOT EXISTS job_output_log (time TEXT, job_id TEXT, output TEXT)"
+
 
 insertJob :: Connection -> DeploymentJob -> Maybe JobResult -> IO ()
 insertJob conn DeploymentJob {..} = \case
