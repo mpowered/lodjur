@@ -24,7 +24,7 @@ executable          lodjur
                   , optparse-applicative >= 0.14 && < 0.15
                   , process
                   , scotty
-                  , sqlite-simple
+                  , postgresql-simple
                   , text
                   , time
                   , uuid

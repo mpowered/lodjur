@@ -3,15 +3,15 @@
 
 module Main where
 
-import qualified Data.HashSet           as HashSet
-import           Data.Semigroup         ((<>))
-import           Database.SQLite.Simple
+import qualified Data.HashSet               as HashSet
+import           Data.Semigroup             ((<>))
+import           Database.PostgreSQL.Simple
 import           Options.Applicative
 
-import qualified Lodjur.Deployer        as Deployer
+import qualified Lodjur.Deployer            as Deployer
 import           Lodjur.Deployment
-import qualified Lodjur.EventLogger     as EventLogger
-import qualified Lodjur.OutputLogger    as OutputLogger
+import qualified Lodjur.EventLogger         as EventLogger
+import qualified Lodjur.OutputLogger        as OutputLogger
 import           Lodjur.Process
 import           Lodjur.Web
 
@@ -26,18 +26,33 @@ main = startServices =<< execParser opts
 
   startServices Options {..} = do
     let deploymentNames = HashSet.fromList nixopsDeployments
-    conn         <- open databaseName
-    eventLogger  <- spawn =<< EventLogger.initialize conn
-    outputLogger <- spawn =<< OutputLogger.initialize conn
-    deployer     <- spawn
-      =<< Deployer.initialize eventLogger outputLogger deploymentNames gitWorkingDir conn
+    pool <- newPool ConnectInfo
+      { connectHost     = databaseHost
+      , connectPort     = databasePort
+      , connectName     = databaseName
+      , connectUser     = databaseUser
+      , connectPassword = databasePassword
+      }
+    eventLogger  <- spawn =<< EventLogger.initialize pool
+    outputLogger <- spawn =<< OutputLogger.initialize pool
+    deployer     <-
+      spawn
+        =<< Deployer.initialize eventLogger
+                                outputLogger
+                                deploymentNames
+                                gitWorkingDir
+                                conn
     runServer port deployer eventLogger
 
 data Options = Options
   { gitWorkingDir     :: FilePath
   , nixopsDeployments :: [DeploymentName]
   , port              :: Port
-  , databaseName      :: FilePath
+  , databaseHost      :: String
+  , databasePort      :: Word16
+  , databaseName      :: String
+  , databaseUser      :: String
+  , databasePassword  :: String
   }
 
 lodjur :: Parser Options
@@ -63,9 +78,37 @@ lodjur =
           <> value 4000
           )
     <*> strOption
-          (  long "database"
-          <> metavar "FILE"
-          <> help "Path to database"
+          (  long "database-host"
+          <> metavar "HOST"
+          <> help "PostgreSQL host"
           <> showDefault
-          <> value ":memory:"
+          <> value "localhost"
+          )
+    <*> option
+          auto
+          (  long "database-port"
+          <> metavar "PORT"
+          <> help "PostgreSQL port"
+          <> showDefault
+          <> value 5432
+          )
+    <*> strOption
+          (  long "database-name"
+          <> metavar "DATABASE"
+          <> help "Name of PostgreSQL database"
+          <> showDefault
+          <> value "lodjur"
+          )
+    <*> strOption
+          (  long "database-user"
+          <> metavar "USER"
+          <> help "PostgreSQL user name"
+          <> showDefault
+          <> value "root"
+          )
+    <*> strOption
+          (  long "database-password"
+          <> metavar "PASSWORD"
+          <> help "PostgreSQL user password"
+          <> value ""
           )
