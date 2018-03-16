@@ -21,11 +21,13 @@ import           Web.Scotty.Trans
 
 import           Lodjur.Deployer
 import           Lodjur.EventLogger
+import           Lodjur.OutputLogger
 import           Lodjur.Process
 
 data Env = Env
-  { envDeployer    :: Ref Deployer
-  , envEventLogger :: Ref EventLogger
+  { envDeployer     :: Ref Deployer
+  , envEventLogger  :: Ref EventLogger
+  , envOutputLogger :: Ref OutputLogger
   }
 
 type Action = ActionT Lazy.Text (ReaderT Env IO)
@@ -49,14 +51,13 @@ renderLayout title contents = renderHtml $ doctypehtml_ $ html_ $ do
 
 renderEventLog :: EventLog -> Html ()
 renderEventLog []       = p_ [class_ "text-secondary"] "No events available."
-renderEventLog eventLog =
-  table_ [class_ "table table-striped"] $ do
-    tr_ $ do
-      th_ "Event"
-      th_ "Tag"
-      th_ "Time"
-      th_ "Description"
-    mapM_ renderEvent eventLog
+renderEventLog eventLog = table_ [class_ "table table-striped"] $ do
+  tr_ $ do
+    th_ "Event"
+    th_ "Tag"
+    th_ "Time"
+    th_ "Description"
+  mapM_ renderEvent eventLog
  where
   renderEvent :: JobEvent -> Html ()
   renderEvent event = tr_ $ case event of
@@ -77,26 +78,24 @@ renderEventLog eventLog =
       td_ [style_ "color: red;"] (toHtml e)
 
 renderDeployJobs :: DeploymentJobs -> Html ()
-renderDeployJobs [] = p_ [class_ "text-secondary"] "No jobs available."
-renderDeployJobs jobs =
-  table_ [class_ "table table-striped"] $ do
-    tr_ $ do
-      th_ "Job"
-      th_ "Deployment"
-      th_ "Tag"
-      th_ "Result"
-    mapM_ renderJob jobs
+renderDeployJobs []   = p_ [class_ "text-secondary"] "No jobs available."
+renderDeployJobs jobs = table_ [class_ "table table-striped"] $ do
+  tr_ $ do
+    th_ "Job"
+    th_ "Deployment"
+    th_ "Tag"
+    th_ "Result"
+  mapM_ renderJob jobs
  where
   renderJob :: (DeploymentJob, Maybe JobResult) -> Html ()
-  renderJob (job, r) =
-    tr_ $ do
-      td_ (jobLink job)
-      td_ (toHtml (unDeploymentName (deploymentName job)))
-      td_ (toHtml (unTag (deploymentTag job)))
-      case r of
-        Just JobSuccessful -> td_ [class_ "text-success"] "Successful"
-        Just (JobFailed reason) -> td_ [class_ "text-danger"] (toHtml reason)
-        Nothing -> td_ [class_ "text-primary"] "Running"
+  renderJob (job, r) = tr_ $ do
+    td_ (jobLink job)
+    td_ (toHtml (unDeploymentName (deploymentName job)))
+    td_ (toHtml (unTag (deploymentTag job)))
+    case r of
+      Just JobSuccessful      -> td_ [class_ "text-success"] "Successful"
+      Just (JobFailed reason) -> td_ [class_ "text-danger"] (toHtml reason)
+      Nothing                 -> td_ [class_ "text-primary"] "Running"
 
 renderDeployCard :: [DeploymentName] -> [Tag] -> DeployState -> Html ()
 renderDeployCard deploymentNames tags state = do
@@ -193,28 +192,37 @@ newDeployAction = readState >>= \case
 
 showJobAction :: Action ()
 showJobAction = do
-  jobId       <- param "job-id"
-  eventLogger <- lift (asks envEventLogger)
-  eventLogs   <- liftIO $ eventLogger ? GetEventLogs
+  jobId         <- param "job-id"
+  eventLogger   <- lift (asks envEventLogger)
+  outputLogger  <- lift (asks envOutputLogger)
+  eventLogs     <- liftIO $ eventLogger ? GetEventLogs
+  outputLog    <- liftIO $ HashMap.lookup jobId <$> outputLogger ? GetOutputLogs
   case HashMap.lookup jobId eventLogs of
     Just eventLog -> do
-      let title = "Job " <> jobId
-      renderLayout (toHtml title) $ do
-        h1_ [class_ "mt-5 mb-5"] (toHtml title)
-        div_ [class_ "row"] $
-          div_ [class_ "col"] $ do
-            h2_ [class_ "mb-3"] "Event Log"
-            renderEventLog eventLog
-        div_ [class_ "row"] $
-          div_ [class_ "col"] $ do
-            h2_ [class_ "mb-3"] "Command Output"
-            span_ [class_ "text-muted"] "No output available."
+      let title = "Job Details"
+      renderLayout title $ do
+        h1_ [class_ "mt-5"] title
+        p_  [class_ "lead"] (toHtml jobId)
+        div_ [class_ "row mt-5"] $ div_ [class_ "col"] $ do
+          h2_ [class_ "mb-3"] "Event Log"
+          renderEventLog eventLog
+        div_ [class_ "row mt-2"] $ div_ [class_ "col"] $ do
+          h2_   [class_ "mb-3"]       "Command Output"
+          displayOutput outputLog
     Nothing -> notFoundAction
+
+  where
+    displayOutput :: Maybe Output -> Html ()
+    displayOutput Nothing =
+      span_ [class_ "text-muted"] "No output available."
+    displayOutput (Just output) =
+      pre_ (code_ (toHtml (unlines output)))
 
 type Port = Int
 
-runServer :: Port -> Ref Deployer -> Ref EventLogger -> IO ()
-runServer port envDeployer envEventLogger =
+runServer
+  :: Port -> Ref Deployer -> Ref EventLogger -> Ref OutputLogger -> IO ()
+runServer port envDeployer envEventLogger envOutputLogger =
   scottyT port (`runReaderT` Env {..}) $ do
     get  "/"             homeAction
     post "/jobs"         newDeployAction

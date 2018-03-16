@@ -31,7 +31,7 @@ main = startServices =<< execParser opts
     outputLogger <- spawn =<< OutputLogger.initialize conn
     deployer     <- spawn
       =<< Deployer.initialize eventLogger outputLogger deploymentNames gitWorkingDir conn
-    runServer port deployer eventLogger
+    runServer port deployer eventLogger outputLogger
 
 data Options = Options
   { gitWorkingDir     :: FilePath
