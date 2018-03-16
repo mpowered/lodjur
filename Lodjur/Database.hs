@@ -33,11 +33,11 @@ withConn pool a =
 initialize :: DbPool -> IO ()
 initialize pool = withConn pool $ \conn -> do
   void $ execute_ conn
-    "CREATE TABLE IF NOT EXISTS deployment_job (id TEXT PRIMARY KEY, time TIMESTAMP NOT NULL, deployment_name TEXT NOT NULL, tag TEXT NOT NULL, result TEXT NULL, error_message TEXT NULL)"
+    "CREATE TABLE IF NOT EXISTS deployment_job (id TEXT PRIMARY KEY, time TIMESTAMPZ NOT NULL, deployment_name TEXT NOT NULL, tag TEXT NOT NULL, result TEXT NULL, error_message TEXT NULL)"
   void $ execute_ conn
-    "CREATE TABLE IF NOT EXISTS event_log (time TIMESTAMP NOT NULL, job_id TEXT NOT NULL REFERENCES deployment_job(id) ON DELETE CASCADE ON UPDATE CASCADE, event JSONB NOT NULL)"
+    "CREATE TABLE IF NOT EXISTS event_log (time TIMESTAMPZ NOT NULL, job_id TEXT NOT NULL, event JSONB NOT NULL)"
   void $ execute_ conn
-    "CREATE TABLE IF NOT EXISTS output_log (time TIMESTAMP NOT NULL, job_id TEXT NOT NULL REFERENCES deployment_job(id) ON DELETE CASCADE ON UPDATE CASCADE, output TEXT NOT NULL)"
+    "CREATE TABLE IF NOT EXISTS output_log (time TIMESTAMPZ NOT NULL, job_id TEXT NOT NULL, output TEXT NOT NULL)"
 
 
 insertJob :: DbPool -> DeploymentJob -> Maybe JobResult -> IO ()
