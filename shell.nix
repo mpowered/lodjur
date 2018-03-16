@@ -1,12 +1,13 @@
-{ nixpkgs ? import <nixpkgs> {}, compiler ? "default", doBenchmark ? false }:
+{ nixpkgs ? import <nixpkgs> {}, compiler ? "default" }:
 
 let
 
   inherit (nixpkgs) pkgs;
 
-  f = { mkDerivation, aeson, base, hashable, http-types, lucid, mtl
-      , optparse-applicative, postgresql-simple, process, scotty, stdenv
-      , text, time, unordered-containers, uuid
+  f = { mkDerivation, aeson, base, hashable, http-types, lucid
+      , monad-control, mtl, optparse-applicative, postgresql-simple
+      , process, resource-pool, scotty, stdenv, text, time
+      , unordered-containers, uuid
       }:
       mkDerivation {
         pname = "lodjur";
@@ -15,9 +16,9 @@ let
         isLibrary = false;
         isExecutable = true;
         executableHaskellDepends = [
-          aeson base hashable http-types lucid mtl optparse-applicative
-          postgresql-simple process scotty text time unordered-containers
-          uuid
+          aeson base hashable http-types lucid monad-control mtl
+          optparse-applicative postgresql-simple process resource-pool scotty
+          text time unordered-containers uuid
         ];
         license = stdenv.lib.licenses.unfree;
       };
@@ -26,9 +27,7 @@ let
                        then pkgs.haskellPackages
                        else pkgs.haskell.packages.${compiler};
 
-  variant = if doBenchmark then pkgs.haskell.lib.doBenchmark else pkgs.lib.id;
-
-  drv = variant (haskellPackages.callPackage f {});
+  drv = haskellPackages.callPackage f {};
 
 in
 
