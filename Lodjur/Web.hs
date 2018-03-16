@@ -1,6 +1,7 @@
 {-# LANGUAGE LambdaCase        #-}
 {-# LANGUAGE OverloadedStrings #-}
 {-# LANGUAGE RecordWildCards   #-}
+{-# LANGUAGE TupleSections     #-}
 {-# LANGUAGE ViewPatterns      #-}
 module Lodjur.Web (Port, runServer) where
 
@@ -127,17 +128,16 @@ renderCurrentState state = div_ [class_ "card"] $ do
 renderLatestSuccessful :: [DeploymentName] -> DeploymentJobs -> Html ()
 renderLatestSuccessful deploymentNames jobs = div_ [class_ "card"] $ do
   div_ [class_ "card-header text-success"] "Latest Successful"
-  table_ [class_ "table table-bordered mb-0"]
-    $ forM_ deploymentNames
-    $ \name -> case List.find (successfulJobIn name) jobs of
-        Just (job, _) -> tr_ $ do
-          td_ (toHtml (unDeploymentName (deploymentName job)))
-          td_ (toHtml (unTag (deploymentTag job)))
-          td_ (jobLink job)
-        Nothing ->
-          div_ [class_ "card-body"] $
-            span_ [class_ "text-muted"] "No successful deployment jobs found."
+  table_ [class_ "table table-bordered mb-0"] $
+    forM_ successfulJobsByDeploymentName $ \(name, job) -> tr_ $ do
+      td_ (toHtml (unDeploymentName name))
+      td_ (toHtml (unTag (deploymentTag job)))
+      td_ (jobLink job)
  where
+  successfulJobsByDeploymentName :: [(DeploymentName, DeploymentJob)]
+  successfulJobsByDeploymentName = foldMap
+    (\name -> (name,) . fst <$> take 1 (List.filter (successfulJobIn name) jobs))
+    deploymentNames
   successfulJobIn n = \case
     (job, Just JobSuccessful) -> deploymentName job == n
     _                         -> False
