@@ -90,6 +90,7 @@ lodjur =
     <*> strOption
           (  long "database-host"
           <> metavar "HOST"
+          <> short 'H'
           <> help "PostgreSQL host"
           <> showDefault
           <> value "localhost"
@@ -98,6 +99,7 @@ lodjur =
           auto
           (  long "database-port"
           <> metavar "PORT"
+          <> short 'P'
           <> help "PostgreSQL port"
           <> showDefault
           <> value 5432
@@ -105,6 +107,7 @@ lodjur =
     <*> strOption
           (  long "database-name"
           <> metavar "DATABASE"
+          <> short 'D'
           <> help "Name of PostgreSQL database"
           <> showDefault
           <> value "lodjur"
@@ -112,6 +115,7 @@ lodjur =
     <*> strOption
           (  long "database-user"
           <> metavar "USER"
+          <> short 'U'
           <> help "PostgreSQL user name"
           <> showDefault
           <> value "root"
@@ -119,6 +123,7 @@ lodjur =
     <*> strOption
           (  long "database-password"
           <> metavar "PASSWORD"
+          <> short 'W'
           <> help "PostgreSQL user password"
           <> value ""
           )
