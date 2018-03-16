@@ -78,7 +78,7 @@ renderLayout title breadcrumbs contents =
 
 renderEventLog :: EventLog -> Html ()
 renderEventLog []       = p_ [class_ "text-secondary"] "No events available."
-renderEventLog eventLog = table_ [class_ "table table-striped"] $ do
+renderEventLog eventLog = table_ [class_ "table"] $ do
   tr_ $ do
     th_ "Event"
     th_ "Tag"
@@ -108,7 +108,7 @@ renderDeployJobs :: DeploymentJobs -> Html ()
 renderDeployJobs []   = p_ [class_ "text-secondary"] "No jobs available."
 renderDeployJobs jobs = div_ [class_ "card"] $ do
   div_ [class_ "card-header"] "Latest Jobs"
-  table_ [class_ "table table-striped mb-0"] $ do
+  table_ [class_ "table mb-0"] $ do
     tr_ $ do
       th_ "Job"
       th_ "Deployment"
