@@ -1,6 +1,6 @@
 { mkDerivation, aeson, base, hashable, http-types, lucid, mtl
 , optparse-applicative, process, scotty, sqlite-simple, stdenv
-, text, time, unordered-containers
+, text, time, unordered-containers, uuid
 }:
 mkDerivation {
   pname = "lodjur";
@@ -10,7 +10,7 @@ mkDerivation {
   isExecutable = true;
   executableHaskellDepends = [
     aeson base hashable http-types lucid mtl optparse-applicative
-    process scotty sqlite-simple text time unordered-containers
+    process scotty sqlite-simple text time unordered-containers uuid
   ];
   license = stdenv.lib.licenses.unfree;
 }
