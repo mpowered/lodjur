@@ -52,9 +52,9 @@ jobEventTime :: JobEvent -> UTCTime
 jobEventTime (JobRunning t   ) = t
 jobEventTime (JobFinished _ t) = t
 
-type Output = [String]
+data Output = Output { outputTime :: UTCTime, outputLines :: [String] }
 
-type OutputLogs = HashMap JobId Output
+type OutputLogs = HashMap JobId [Output]
 
 newtype EventDecodeFailed = EventDecodeFailed String
   deriving (Eq, Show)

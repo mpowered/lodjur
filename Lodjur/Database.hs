@@ -5,13 +5,13 @@
 {-# LANGUAGE ViewPatterns      #-}
 module Lodjur.Database where
 
-import           Control.Exception           (throwIO)
-import           Control.Monad               (foldM, void)
+import           Control.Exception          (throwIO)
+import           Control.Monad              (foldM, void)
 import           Data.Aeson
-import qualified Data.HashMap.Strict         as HashMap
+import qualified Data.HashMap.Strict        as HashMap
 import           Data.Pool
-import           Data.Text                   (Text)
-import           Data.Time.Clock             (NominalDiffTime, UTCTime)
+import           Data.Text                  (Text)
+import           Data.Time.Clock            (NominalDiffTime, UTCTime)
 import           Database.PostgreSQL.Simple
 
 import           Lodjur.Deployment
@@ -25,10 +25,7 @@ destroyPool :: DbPool -> IO ()
 destroyPool = destroyAllResources
 
 withConn :: DbPool -> (Connection -> IO a) -> IO a
-withConn pool a =
-  withResource pool $ \conn ->
-    withTransaction conn $
-      a conn
+withConn pool a = withResource pool $ \conn -> withTransaction conn $ a conn
 
 initialize :: DbPool -> IO ()
 initialize pool = withConn pool $ \conn -> do
@@ -72,19 +69,14 @@ insertJob pool DeploymentJob {..} = \case
 
 updateJobResult :: DbPool -> JobId -> JobResult -> IO ()
 updateJobResult pool jobId = \case
-  JobSuccessful -> withConn pool $ \conn ->
-    void $ execute conn
+  JobSuccessful -> withConn pool $ \conn -> void $ execute
+    conn
     "UPDATE deployment_job SET result = ? WHERE id = ?"
-    ( "successful" :: Text
-    , jobId
-    )
-  (JobFailed errMsg) -> withConn pool $ \conn ->
-    void $ execute conn
+    ("successful" :: Text, jobId)
+  (JobFailed errMsg) -> withConn pool $ \conn -> void $ execute
+    conn
     "UPDATE deployment_job SET result = ?, error_message = ? WHERE id = ?"
-    ( "successful" :: Text
-    , errMsg
-    , jobId
-    )
+    ("successful" :: Text, errMsg, jobId)
 
 getAllJobs :: DbPool -> IO [(DeploymentJob, Maybe JobResult)]
 getAllJobs pool = withConn pool $ \conn ->
@@ -100,36 +92,36 @@ getAllJobs pool = withConn pool $ \conn ->
           return (job, Just (JobFailed errorMessage))
         (Just "successful", Nothing) -> return (job, Just JobSuccessful)
         (Nothing, Nothing) -> return (job, Nothing)
-        (Just result, _) ->
-          fail ("Invalid result in database: " ++ result)
+        (Just result, _) -> fail ("Invalid result in database: " ++ result)
         (Nothing, Just msg) ->
           fail ("Unexpected message in database: " ++ show msg)
 
 insertEvent :: DbPool -> UTCTime -> JobId -> JobEvent -> IO ()
-insertEvent pool t jobid event = withConn pool $ \conn ->
-  void $ execute conn
+insertEvent pool t jobid event = withConn pool $ \conn -> void $ execute
+  conn
   "INSERT INTO event_log (time, job_id, event) VALUES (?, ?, ?)"
   (t, jobid, toJSON event)
 
 getAllEventLogs :: DbPool -> IO EventLogs
-getAllEventLogs pool = withConn pool $ \conn ->
-  mkEventLog =<< query_ conn
-  "SELECT job_id, event FROM event_log ORDER BY time ASC"
+getAllEventLogs pool = withConn pool $ \conn -> mkEventLog
+  =<< query_ conn "SELECT job_id, event FROM event_log ORDER BY time ASC"
  where
   mkEventLog = foldM mergeEvent mempty
   mergeEvent m (jobid, fromJSON -> event) = case event of
-    Error  msg -> throwIO $ EventDecodeFailed msg
-    Success e  -> return $ HashMap.insertWith (++) jobid [e] m
+    Error   msg -> throwIO $ EventDecodeFailed msg
+    Success e   -> return $ HashMap.insertWith (++) jobid [e] m
 
-appendOutput :: DbPool -> UTCTime -> JobId -> Output -> IO ()
-appendOutput pool t jobid output = withConn pool $ \conn ->
-  void $ execute conn
+appendOutput :: DbPool -> JobId -> Output -> IO ()
+appendOutput pool jobid output = withConn pool $ \conn -> void $ execute
+  conn
   "INSERT INTO output_log (time, job_id, output) VALUES (?, ?, ?)"
-  (t, jobid, unlines output)
+  (outputTime output, jobid, unlines (outputLines output))
 
 getAllOutputLogs :: DbPool -> IO OutputLogs
-getAllOutputLogs pool =
-  withConn pool $ \conn -> mkOutput <$> query_ conn "SELECT job_id, output FROM output_log ORDER BY time ASC"
+getAllOutputLogs pool = withConn pool $ \conn -> mkOutput <$> query_
+  conn
+  "SELECT job_id, time, output FROM output_log ORDER BY time ASC"
  where
   mkOutput = foldr mergeOutput mempty
-  mergeOutput (jobid, output) = HashMap.insertWith (++) jobid (lines output)
+  mergeOutput (jobid, time, output) =
+    HashMap.insertWith (++) jobid [Output time (lines output)]

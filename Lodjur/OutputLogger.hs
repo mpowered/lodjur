@@ -1,7 +1,7 @@
 {-# LANGUAGE GADTs                      #-}
 {-# LANGUAGE TypeFamilies               #-}
 module Lodjur.OutputLogger
-  ( Output
+  ( Output (..)
   , OutputLogs
   , OutputLogger
   , OutputLogMessage (..)
@@ -21,15 +21,15 @@ initialize pool = return (OutputLogger pool)
 
 data OutputLogMessage r where
   -- Public messages:
-  AppendOutput :: JobId -> Output -> OutputLogMessage Async
+  AppendOutput :: JobId -> [String] -> OutputLogMessage Async
   GetOutputLogs :: OutputLogMessage (Sync OutputLogs)
 
 instance Process OutputLogger where
   type Message OutputLogger = OutputLogMessage
 
-  receive _self (a@(OutputLogger pool), AppendOutput jobid output) = do
+  receive _self (a@(OutputLogger pool), AppendOutput jobid lines') = do
     now <- getCurrentTime
-    Database.appendOutput pool now jobid output
+    Database.appendOutput pool jobid (Output now lines')
     return a
 
   receive _self (a@(OutputLogger pool), GetOutputLogs) = do

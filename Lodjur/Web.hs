@@ -57,6 +57,8 @@ renderLayout title breadcrumbs contents =
         ]
       style_ " .breadcrumb-nav { background-color: #eee; } \
              \ .breadcrumb { background-color: transparent; } \
+             \ .command-output pre { margin-bottom: 0; } \
+             \ .command-output td { padding: 0; border-top: 0; } \
              \ "
     body_ $ do
       nav_ [class_ "navbar navbar-dark bg-dark"] $
@@ -259,12 +261,18 @@ showJobAction = do
         renderEventLog eventLog
       div_ [class_ "row mt-2"] $ div_ [class_ "col"] $ do
         h2_ [class_ "mb-3"] "Command Output"
-        displayOutput outputLog
+        table_ [class_ "table table-sm table-hover command-output"] $
+          case outputLog of
+            Just outputs
+              | not (null outputs) -> mapM_ displayOutput outputs
+            _ -> span_ [class_ "text-muted"] "No output available."
     Nothing -> notFoundAction
  where
-  displayOutput :: Maybe Output -> Html ()
-  displayOutput Nothing = span_ [class_ "text-muted"] "No output available."
-  displayOutput (Just output) = pre_ (code_ (toHtml (unlines output)))
+  displayOutput :: Output -> Html ()
+  displayOutput output =
+    tr_ $ do
+      td_ $ pre_ $ code_ (toHtml (unlines (outputLines output)))
+      td_ [class_ "text-muted"] $ small_ $ toHtml (formatUTCTime (outputTime output))
 
 type Port = Int
 
