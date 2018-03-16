@@ -113,7 +113,7 @@ renderDeployJobs jobs = div_ [class_ "card"] $ do
       th_ "Job"
       th_ "Deployment"
       th_ "Tag"
-      th_ "Time"
+      th_ "Created At"
       th_ "Result"
     mapM_ renderJob jobs
  where
@@ -121,8 +121,8 @@ renderDeployJobs jobs = div_ [class_ "card"] $ do
   renderJob (job, r) = tr_ $ do
     td_ (jobLink job)
     td_ (toHtml (unDeploymentName (deploymentName job)))
-    td_ (toHtml (formatUTCTime (deploymentTime job)))
     td_ (toHtml (unTag (deploymentTag job)))
+    td_ (toHtml (formatUTCTime (deploymentTime job)))
     case r of
       Just JobSuccessful      -> td_ [class_ "text-success"] "Successful"
       Just (JobFailed reason) -> td_ [class_ "text-danger"] (toHtml reason)
