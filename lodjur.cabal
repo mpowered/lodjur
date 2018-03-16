@@ -20,12 +20,14 @@ executable          lodjur
                   , hashable
                   , http-types
                   , lucid
+                  , monad-control
                   , mtl
                   , optparse-applicative >= 0.14 && < 0.15
-                  , process
-                  , scotty
                   , postgresql-simple
+                  , process
+                  , resource-pool
+                  , scotty
                   , text
                   , time
-                  , uuid
                   , unordered-containers
+                  , uuid

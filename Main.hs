@@ -5,9 +5,11 @@ module Main where
 
 import qualified Data.HashSet               as HashSet
 import           Data.Semigroup             ((<>))
+import           Data.Word
 import           Database.PostgreSQL.Simple
 import           Options.Applicative
 
+import qualified Lodjur.Database            as Database
 import qualified Lodjur.Deployer            as Deployer
 import           Lodjur.Deployment
 import qualified Lodjur.EventLogger         as EventLogger
@@ -24,15 +26,23 @@ main = startServices =<< execParser opts
       "Mpowered's Nixops Deployment Frontend"
     )
 
+  stripes = 4
+  ttl = 5
+  connsPerStripe = 4
+
   startServices Options {..} = do
     let deploymentNames = HashSet.fromList nixopsDeployments
-    pool <- newPool ConnectInfo
+    pool <- Database.newPool ConnectInfo
       { connectHost     = databaseHost
       , connectPort     = databasePort
-      , connectName     = databaseName
+      , connectDatabase = databaseName
       , connectUser     = databaseUser
       , connectPassword = databasePassword
       }
+      stripes
+      ttl
+      connsPerStripe
+
     eventLogger  <- spawn =<< EventLogger.initialize pool
     outputLogger <- spawn =<< OutputLogger.initialize pool
     deployer     <-
@@ -41,7 +51,7 @@ main = startServices =<< execParser opts
                                 outputLogger
                                 deploymentNames
                                 gitWorkingDir
-                                conn
+                                pool
     runServer port deployer eventLogger
 
 data Options = Options

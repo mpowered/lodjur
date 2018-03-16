@@ -29,7 +29,6 @@ import qualified Data.Text                as Text
 import           Data.Time.Clock
 import qualified Data.UUID                as UUID
 import qualified Data.UUID.V4             as UUID
-import           Database.SQLite.Simple
 import           System.Exit
 import           System.IO
 import           System.IO.Error          (isEOFError)
@@ -55,7 +54,7 @@ data Deployer = Deployer
   , outputLogger    :: Ref OutputLogger
   , deploymentNames :: HashSet DeploymentName
   , gitWorkingDir   :: FilePath
-  , conn            :: Connection
+  , pool            :: Database.DbPool
   }
 
 data DeployMessage r where
@@ -73,10 +72,10 @@ initialize
   -> Ref OutputLogger
   -> HashSet DeploymentName
   -> FilePath
-  -> Connection
+  -> Database.DbPool
   -> IO Deployer
-initialize eventLogger outputLogger deploymentNames gitWorkingDir conn = do
-  Database.initialize conn
+initialize eventLogger outputLogger deploymentNames gitWorkingDir pool = do
+  Database.initialize pool
   return Deployer {state = Idle, ..}
 
 data GitFailed = GitFailed String String Int
@@ -185,7 +184,7 @@ instance Process Deployer where
           jobId <- UUID.toText <$> UUID.nextRandom
           let job = DeploymentJob {..}
           void (forkFinally (deploy eventLogger outputLogger gitWorkingDir job) (notifyDeployFinished self eventLogger job))
-          Database.insertJob conn job Nothing
+          Database.insertJob pool job Nothing
           return ( a { state = Deploying job } , Just job)
         -- We can't deploy to an unknown deployment.
         | otherwise -> do
@@ -198,7 +197,7 @@ instance Process Deployer where
       (_, GetDeploymentNames) ->
         return (a, HashSet.toList deploymentNames)
       (_, GetJobs) -> do
-        jobs <- Database.getAllJobs conn
+        jobs <- Database.getAllJobs pool
         return (a, jobs)
       (_, GetTags) -> do
         tags <- gitListTags gitWorkingDir
@@ -208,7 +207,7 @@ instance Process Deployer where
 
       -- Private messages:
       (_, FinishJob job result) -> do
-        Database.updateJobResult conn (jobId job) result
+        Database.updateJobResult pool (jobId job) result
         return a { state = Idle }
 
   terminate Deployer {state} = case state of

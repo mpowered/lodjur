@@ -9,16 +9,14 @@ module Lodjur.EventLogger
   , EventLogMessage (..)
   ) where
 
-import           Database.SQLite.Simple
-
 import qualified Lodjur.Database        as Database
 import           Lodjur.Deployment
 import           Lodjur.Process
 
-newtype EventLogger = EventLogger Connection
+newtype EventLogger = EventLogger Database.DbPool
 
-initialize :: Connection -> IO EventLogger
-initialize conn = return (EventLogger conn)
+initialize :: Database.DbPool -> IO EventLogger
+initialize pool = return (EventLogger pool)
 
 data EventLogMessage r where
   -- Public messages:
@@ -28,12 +26,12 @@ data EventLogMessage r where
 instance Process EventLogger where
   type Message EventLogger = EventLogMessage
 
-  receive _self (a@(EventLogger conn), AppendEvent jobid event) = do
-    Database.insertEvent conn (jobEventTime event) jobid event
+  receive _self (a@(EventLogger pool), AppendEvent jobid event) = do
+    Database.insertEvent pool (jobEventTime event) jobid event
     return a
 
-  receive _self (a@(EventLogger conn), GetEventLogs) = do
-    logs <- Database.getAllEventLogs conn
+  receive _self (a@(EventLogger pool), GetEventLogs) = do
+    logs <- Database.getAllEventLogs pool
     return (a, logs)
 
-  terminate (EventLogger conn) = close conn
+  terminate (EventLogger pool) = Database.destroyPool pool
