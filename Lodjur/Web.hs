@@ -2,6 +2,7 @@
 {-# LANGUAGE OverloadedStrings #-}
 {-# LANGUAGE RecordWildCards   #-}
 {-# LANGUAGE TupleSections     #-}
+{-# LANGUAGE TypeApplications  #-}
 {-# LANGUAGE ViewPatterns      #-}
 module Lodjur.Web (Port, runServer) where
 
@@ -14,8 +15,11 @@ import           Data.Semigroup
 import           Data.Text                 (Text)
 import qualified Data.Text                 as Text
 import qualified Data.Text.Lazy            as Lazy
-import           Data.Time.Clock           (UTCTime, getCurrentTime)
-import           Data.Time.Format          (formatTime, defaultTimeLocale)
+import           Data.Time.Clock           (DiffTime, UTCTime,
+                                            diffTimeToPicoseconds,
+                                            getCurrentTime, utctDayTime)
+import           Data.Time.Clock.POSIX
+import           Data.Time.Format          (defaultTimeLocale, formatTime)
 import           Lucid.Base                (Html, toHtml)
 import qualified Lucid.Base                as Html
 import           Lucid.Bootstrap
@@ -45,6 +49,9 @@ renderHtml = html . Html.renderText
 formatUTCTime :: UTCTime -> String
 formatUTCTime = formatTime defaultTimeLocale "%c"
 
+hourMinSec :: UTCTime -> String
+hourMinSec = formatTime defaultTimeLocale "%H:%M:%S"
+
 renderLayout :: Html () -> [Html ()] -> Html () -> Action ()
 renderLayout title breadcrumbs contents =
   renderHtml $ doctypehtml_ $ html_ $ do
@@ -57,8 +64,11 @@ renderLayout title breadcrumbs contents =
         ]
       style_ " .breadcrumb-nav { background-color: #eee; } \
              \ .breadcrumb { background-color: transparent; } \
-             \ .command-output pre { margin-bottom: 0; } \
-             \ .command-output td { padding: 0; border-top: 0; } \
+             \ .command-output { position: relative; } \
+             \ .command-output { overflow: auto; } \
+             \ .command-output .timestamp { position: absolute; display: inline-block; padding: 0 .25em; right: 0; background: #fff; z-index: 2; } \
+             \ .command-output .line:hover { background: #eee; } \
+             \ .command-output .line:hover .timestamp { background: #eee; } \
              \ "
     body_ $ do
       nav_ [class_ "navbar navbar-dark bg-dark"] $
@@ -261,18 +271,27 @@ showJobAction = do
         renderEventLog eventLog
       div_ [class_ "row mt-2"] $ div_ [class_ "col"] $ do
         h2_ [class_ "mb-3"] "Command Output"
-        table_ [class_ "table table-sm table-hover command-output"] $
+        div_ [class_ "command-output"] $ pre_ $
           case outputLog of
             Just outputs
-              | not (null outputs) -> mapM_ displayOutput outputs
+              | not (null outputs) -> foldM_ displayOutput Nothing outputs
             _ -> span_ [class_ "text-muted"] "No output available."
     Nothing -> notFoundAction
  where
-  displayOutput :: Output -> Html ()
-  displayOutput output =
-    tr_ $ do
-      td_ $ pre_ $ code_ (toHtml (unlines (outputLines output)))
-      td_ [class_ "text-muted"] $ small_ $ toHtml (formatUTCTime (outputTime output))
+  displayOutput :: Maybe UTCTime -> Output -> Html (Maybe UTCTime)
+  displayOutput previousTime output = div_ [class_ "line"] $ do
+    case previousTime of
+      Just t
+        | t `sameSecond` outputTime output -> return ()
+      _ -> span_ [class_ "timestamp"]
+           $ code_
+           $ small_
+           $ toHtml (hourMinSec (outputTime output))
+    toHtml (unlines (outputLines output))
+    return (Just (outputTime output))
+  sameSecond t1 t2 = toSeconds t1 == toSeconds t2
+  toSeconds :: UTCTime -> Integer
+  toSeconds = round . utcTimeToPOSIXSeconds
 
 type Port = Int
 
