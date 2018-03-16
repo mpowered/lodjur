@@ -38,8 +38,8 @@ readState = lift (asks envDeployer) >>= liftIO . (? GetCurrentState)
 renderHtml :: Html () -> Action ()
 renderHtml = html . Html.renderText
 
-renderLayout :: Html () -> Html () -> Action ()
-renderLayout title contents = renderHtml $ doctypehtml_ $ html_ $ do
+renderLayout :: Html () -> [Html ()] -> Html () -> Action ()
+renderLayout title breadcrumbs contents = renderHtml $ doctypehtml_ $ html_ $ do
   head_ $ do
     title_ title
     link_
@@ -47,7 +47,17 @@ renderLayout title contents = renderHtml $ doctypehtml_ $ html_ $ do
       , href_
         "https://maxcdn.bootstrapcdn.com/bootstrap/4.0.0/css/bootstrap.min.css"
       ]
-  body_ (container_ contents)
+  body_ $
+    container_ $ do
+      nav_ $ ol_ [class_ "breadcrumb mt-4"] (toBreadcrumbItems (homeLink : breadcrumbs))
+      contents
+  where
+    toBreadcrumbItems :: [Html ()] -> Html ()
+    toBreadcrumbItems [] = return ()
+    toBreadcrumbItems elements = do
+      foldMap (li_ [class_ "breadcrumb-item"]) (init elements)
+      li_ [class_ "breadcrumb-item active"] (last elements)
+    homeLink = a_ [href_ "/"] "Lodjur"
 
 renderEventLog :: EventLog -> Html ()
 renderEventLog []       = p_ [class_ "text-secondary"] "No events available."
@@ -137,7 +147,7 @@ renderDeployCard deploymentNames tags state = do
 notFoundAction :: Action ()
 notFoundAction = do
   status status404
-  renderLayout "Not Found" $ do
+  renderLayout "Not Found" [] $ do
     h1_ [class_ "mt-5"] "Not Found"
     p_ [class_ "lead"] $ do
       "The requested page could not be found. Try "
@@ -147,15 +157,21 @@ notFoundAction = do
 badRequestAction :: Html () -> Action ()
 badRequestAction message = do
   status status400
-  renderLayout "Bad request!" $ do
+  renderLayout "Bad request!" [] $ do
     h1_ [class_ "mt-5"] "Bad request!"
     p_  [class_ "lead"] message
 
+jobIdHref :: JobId -> Text
+jobIdHref jobId = "/jobs/" <> jobId
+
 jobHref :: DeploymentJob -> Text
-jobHref job = "/jobs/" <> jobId job
+jobHref = jobIdHref . jobId
+
+jobIdLink :: JobId -> Html ()
+jobIdLink jobId = a_ [href_ (jobIdHref jobId)] (toHtml jobId)
 
 jobLink :: DeploymentJob -> Html ()
-jobLink job = a_ [href_ (jobHref job)] (toHtml (jobId job))
+jobLink = jobIdLink . jobId
 
 homeAction :: Action ()
 homeAction = do
@@ -164,10 +180,7 @@ homeAction = do
   tags            <- liftIO $ deployer ? GetTags
   deployState     <- liftIO $ deployer ? GetCurrentState
   jobs            <- liftIO $ deployer ? GetJobs
-  renderLayout "Lodjur Deployment Manager" $ do
-    div_ [class_ "row"] $ div_ [class_ "col"] $ do
-      h1_ [class_ "mt-5"] "Lodjur"
-      p_  [class_ "lead"] "Mpowered's Nixops Deployment Frontend"
+  renderLayout "Lodjur Deployment Manager" [] $ do
     div_ [class_ "row"] $ div_ [class_ "col"] $ renderDeployCard
       deploymentNames
       tags
@@ -192,31 +205,25 @@ newDeployAction = readState >>= \case
 
 showJobAction :: Action ()
 showJobAction = do
-  jobId         <- param "job-id"
-  eventLogger   <- lift (asks envEventLogger)
-  outputLogger  <- lift (asks envOutputLogger)
-  eventLogs     <- liftIO $ eventLogger ? GetEventLogs
+  jobId        <- param "job-id"
+  eventLogger  <- lift (asks envEventLogger)
+  outputLogger <- lift (asks envOutputLogger)
+  eventLogs    <- liftIO $ eventLogger ? GetEventLogs
   outputLog    <- liftIO $ HashMap.lookup jobId <$> outputLogger ? GetOutputLogs
   case HashMap.lookup jobId eventLogs of
-    Just eventLog -> do
-      let title = "Job Details"
-      renderLayout title $ do
-        h1_ [class_ "mt-5"] title
-        p_  [class_ "lead"] (toHtml jobId)
+    Just eventLog ->
+      renderLayout "Job Details" ["Jobs", jobIdLink jobId] $ do
         div_ [class_ "row mt-5"] $ div_ [class_ "col"] $ do
           h2_ [class_ "mb-3"] "Event Log"
           renderEventLog eventLog
         div_ [class_ "row mt-2"] $ div_ [class_ "col"] $ do
-          h2_   [class_ "mb-3"]       "Command Output"
+          h2_ [class_ "mb-3"] "Command Output"
           displayOutput outputLog
     Nothing -> notFoundAction
-
-  where
-    displayOutput :: Maybe Output -> Html ()
-    displayOutput Nothing =
-      span_ [class_ "text-muted"] "No output available."
-    displayOutput (Just output) =
-      pre_ (code_ (toHtml (unlines output)))
+ where
+  displayOutput :: Maybe Output -> Html ()
+  displayOutput Nothing = span_ [class_ "text-muted"] "No output available."
+  displayOutput (Just output) = pre_ (code_ (toHtml (unlines output)))
 
 type Port = Int
 
