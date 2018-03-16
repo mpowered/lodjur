@@ -14,7 +14,7 @@ import           Data.Semigroup
 import           Data.Text                 (Text)
 import qualified Data.Text                 as Text
 import qualified Data.Text.Lazy            as Lazy
-import           Data.Time.Clock           (getCurrentTime)
+import           Data.Time.Clock           (UTCTime, getCurrentTime)
 import           Data.Time.Format          (formatTime, defaultTimeLocale)
 import           Lucid.Base                (Html, toHtml)
 import qualified Lucid.Base                as Html
@@ -41,6 +41,9 @@ readState = lift (asks envDeployer) >>= liftIO . (? GetCurrentState)
 
 renderHtml :: Html () -> Action ()
 renderHtml = html . Html.renderText
+
+formatUTCTime :: UTCTime -> String
+formatUTCTime = formatTime defaultTimeLocale "%c"
 
 renderLayout :: Html () -> [Html ()] -> Html () -> Action ()
 renderLayout title breadcrumbs contents =
@@ -86,17 +89,17 @@ renderEventLog eventLog = table_ [class_ "table table-striped"] $ do
     JobRunning startedAt -> do
       td_ $ span_ [class_ "text-primary"] "Started"
       td_ "tag"
-      td_ (toHtml (show startedAt))
+      td_ (toHtml (formatUTCTime startedAt))
       td_ ""
     JobFinished JobSuccessful finishedAt -> do
       td_ $ span_ [class_ "text-success"] "Finished"
       td_ "tag"
-      td_ (toHtml (show finishedAt))
+      td_ (toHtml (formatUTCTime finishedAt))
       td_ ""
     JobFinished (JobFailed e) finishedAt -> do
       td_ $ span_ [class_ "text-danger"] "Failed"
       td_ "tag"
-      td_ (toHtml (show finishedAt))
+      td_ (toHtml (formatUTCTime finishedAt))
       td_ [style_ "color: red;"] (toHtml e)
 
 renderDeployJobs :: DeploymentJobs -> Html ()
@@ -116,7 +119,7 @@ renderDeployJobs jobs = div_ [class_ "card"] $ do
   renderJob (job, r) = tr_ $ do
     td_ (jobLink job)
     td_ (toHtml (unDeploymentName (deploymentName job)))
-    td_ (toHtml (formatTime defaultTimeLocale "%c" (deploymentTime job)))
+    td_ (toHtml (formatUTCTime (deploymentTime job)))
     td_ (toHtml (unTag (deploymentTag job)))
     case r of
       Just JobSuccessful      -> td_ [class_ "text-success"] "Successful"
