@@ -44,7 +44,7 @@ insertJob :: DbPool -> DeploymentJob -> Maybe JobResult -> IO ()
 insertJob pool DeploymentJob {..} = \case
   Just JobSuccessful -> withConn pool $ \conn ->
     void $ execute conn
-    "INSERT INTO deployment_job (id, time, deployment_name, tag, result) VALUES (?, ?, ?, ?)"
+    "INSERT INTO deployment_job (id, time, deployment_name, tag, result) VALUES (?, ?, ?, ?, ?)"
     ( jobId
     , deploymentTime
     , unDeploymentName deploymentName
@@ -53,7 +53,7 @@ insertJob pool DeploymentJob {..} = \case
     )
   Just (JobFailed errMsg) -> withConn pool $ \conn ->
     void $ execute conn
-    "INSERT INTO deployment_job (id, time, deployment_name, tag, result, error_message) VALUES (?, ?, ?, ?, ?)"
+    "INSERT INTO deployment_job (id, time, deployment_name, tag, result, error_message) VALUES (?, ?, ?, ?, ?, ?)"
     ( jobId
     , deploymentTime
     , unDeploymentName deploymentName
@@ -63,7 +63,7 @@ insertJob pool DeploymentJob {..} = \case
     )
   Nothing -> withConn pool $ \conn ->
     void $ execute conn
-    "INSERT INTO deployment_job (id, time, deployment_name, tag) VALUES (?, ?, ?)"
+    "INSERT INTO deployment_job (id, time, deployment_name, tag) VALUES (?, ?, ?, ?)"
     ( jobId
     , deploymentTime
     , unDeploymentName deploymentName
