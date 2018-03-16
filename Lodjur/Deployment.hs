@@ -25,6 +25,7 @@ data DeploymentJob = DeploymentJob
   { jobId          :: JobId
   , deploymentName :: DeploymentName
   , deploymentTag  :: Tag
+  , deploymentTime :: UTCTime
   } deriving (Show, Eq)
 
 data JobResult

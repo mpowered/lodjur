@@ -59,7 +59,7 @@ data Deployer = Deployer
 
 data DeployMessage r where
   -- Public messages:
-  Deploy :: DeploymentName -> Tag -> DeployMessage (Sync (Maybe DeploymentJob))
+  Deploy :: DeploymentName -> Tag -> UTCTime -> DeployMessage (Sync (Maybe DeploymentJob))
   GetCurrentState :: DeployMessage (Sync DeployState)
   GetJobs :: DeployMessage (Sync DeploymentJobs)
   GetDeploymentNames :: DeployMessage (Sync [DeploymentName])
@@ -178,7 +178,7 @@ instance Process Deployer where
 
   receive self (a@Deployer{..}, msg)=
     case (state, msg) of
-      (Idle     , Deploy deploymentName deploymentTag)
+      (Idle     , Deploy deploymentName deploymentTag deploymentTime)
         -- We require the deployment name to be known.
         | HashSet.member deploymentName deploymentNames -> do
           jobId <- UUID.toText <$> UUID.nextRandom

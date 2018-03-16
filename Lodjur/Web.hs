@@ -14,6 +14,8 @@ import           Data.Semigroup
 import           Data.Text                 (Text)
 import qualified Data.Text                 as Text
 import qualified Data.Text.Lazy            as Lazy
+import           Data.Time.Clock           (getCurrentTime)
+import           Data.Time.Format          (formatTime, defaultTimeLocale)
 import           Lucid.Base                (Html, toHtml)
 import qualified Lucid.Base                as Html
 import           Lucid.Bootstrap
@@ -99,6 +101,7 @@ renderDeployJobs jobs = div_ [class_ "card"] $ do
       th_ "Job"
       th_ "Deployment"
       th_ "Tag"
+      th_ "Time"
       th_ "Result"
     mapM_ renderJob jobs
  where
@@ -106,6 +109,7 @@ renderDeployJobs jobs = div_ [class_ "card"] $ do
   renderJob (job, r) = tr_ $ do
     td_ (jobLink job)
     td_ (toHtml (unDeploymentName (deploymentName job)))
+    td_ (toHtml (formatTime defaultTimeLocale "%c" (deploymentTime job)))
     td_ (toHtml (unTag (deploymentTag job)))
     case r of
       Just JobSuccessful      -> td_ [class_ "text-success"] "Successful"
@@ -222,7 +226,8 @@ newDeployAction = readState >>= \case
     deployer <- lift (asks envDeployer)
     dName    <- DeploymentName <$> param "deployment-name"
     tag      <- Tag <$> param "tag"
-    liftIO (deployer ? Deploy dName tag) >>= \case
+    now      <- liftIO getCurrentTime
+    liftIO (deployer ? Deploy dName tag now) >>= \case
       Just job -> do
         status status302
         setHeader "Location" (Lazy.fromStrict (jobHref job))

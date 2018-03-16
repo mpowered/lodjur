@@ -33,27 +33,29 @@ withConn pool a =
 initialize :: DbPool -> IO ()
 initialize pool = withConn pool $ \conn -> do
   void $ execute_ conn
-    "CREATE TABLE IF NOT EXISTS deployment_job (id TEXT NOT NULL, deployment_name TEXT NOT NULL, tag TEXT NOT NULL, result TEXT NULL, error_message TEXT NULL)"
+    "CREATE TABLE IF NOT EXISTS deployment_job (id TEXT PRIMARY KEY, time TIMESTAMP NOT NULL, deployment_name TEXT NOT NULL, tag TEXT NOT NULL, result TEXT NULL, error_message TEXT NULL)"
   void $ execute_ conn
-    "CREATE TABLE IF NOT EXISTS event_log (time TIMESTAMP NOT NULL, job_id TEXT NOT NULL, event JSONB NOT NULL)"
+    "CREATE TABLE IF NOT EXISTS event_log (time TIMESTAMP NOT NULL, job_id TEXT NOT NULL REFERENCES deployment_job(id) ON DELETE CASCADE ON UPDATE CASCADE, event JSONB NOT NULL)"
   void $ execute_ conn
-    "CREATE TABLE IF NOT EXISTS output_log (time TIMESTAMP NOT NULL, job_id TEXT NOT NULL, output TEXT NOT NULL)"
+    "CREATE TABLE IF NOT EXISTS output_log (time TIMESTAMP NOT NULL, job_id TEXT NOT NULL REFERENCES deployment_job(id) ON DELETE CASCADE ON UPDATE CASCADE, output TEXT NOT NULL)"
 
 
 insertJob :: DbPool -> DeploymentJob -> Maybe JobResult -> IO ()
 insertJob pool DeploymentJob {..} = \case
   Just JobSuccessful -> withConn pool $ \conn ->
     void $ execute conn
-    "INSERT INTO deployment_job (id, deployment_name, tag, result) VALUES (?, ?, ?, ?)"
+    "INSERT INTO deployment_job (id, time, deployment_name, tag, result) VALUES (?, ?, ?, ?)"
     ( jobId
+    , deploymentTime
     , unDeploymentName deploymentName
     , unTag deploymentTag
     , "successful" :: Text
     )
   Just (JobFailed errMsg) -> withConn pool $ \conn ->
     void $ execute conn
-    "INSERT INTO deployment_job (id, deployment_name, tag, result, error_message) VALUES (?, ?, ?, ?, ?)"
+    "INSERT INTO deployment_job (id, time, deployment_name, tag, result, error_message) VALUES (?, ?, ?, ?, ?)"
     ( jobId
+    , deploymentTime
     , unDeploymentName deploymentName
     , unTag deploymentTag
     , "failed" :: Text
@@ -61,8 +63,12 @@ insertJob pool DeploymentJob {..} = \case
     )
   Nothing -> withConn pool $ \conn ->
     void $ execute conn
-    "INSERT INTO deployment_job (id, deployment_name, tag) VALUES (?, ?, ?)"
-    (jobId, unDeploymentName deploymentName, unTag deploymentTag)
+    "INSERT INTO deployment_job (id, time, deployment_name, tag) VALUES (?, ?, ?)"
+    ( jobId
+    , deploymentTime
+    , unDeploymentName deploymentName
+    , unTag deploymentTag
+    )
 
 updateJobResult :: DbPool -> JobId -> JobResult -> IO ()
 updateJobResult pool jobId = \case
@@ -83,11 +89,11 @@ updateJobResult pool jobId = \case
 getAllJobs :: DbPool -> IO [(DeploymentJob, Maybe JobResult)]
 getAllJobs pool = withConn pool $ \conn ->
   mapM parseJob =<< query_ conn
-  "SELECT id, deployment_name, tag, result, error_message FROM deployment_job"
+  "SELECT id, time, deployment_name, tag, result, error_message FROM deployment_job ORDER BY time DESC"
  where
-  parseJob (jobId, name, tag, mResult, mMsg) =
+  parseJob (jobId, t, name, tag, mResult, mMsg) =
     let
-      job = DeploymentJob jobId (DeploymentName name) (Tag tag)
+      job = DeploymentJob jobId (DeploymentName name) (Tag tag) t
     in
       case (mResult, mMsg) of
         (Just "failed", Just errorMessage) ->
