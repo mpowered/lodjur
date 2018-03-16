@@ -3,7 +3,9 @@
 module Lodjur.Deployment where
 
 import           Data.Aeson
+import           Data.HashMap.Strict (HashMap)
 import           Data.Text           (Text)
+import           Data.Time.Clock     (UTCTime)
 import           Data.String
 import           GHC.Generics        (Generic)
 import           Data.Hashable       (Hashable)
@@ -31,3 +33,23 @@ data JobResult
 
 instance ToJSON JobResult
 instance FromJSON JobResult
+
+data JobEvent
+  = JobRunning UTCTime
+  | JobFinished JobResult UTCTime
+  deriving (Show, Eq, Generic)
+
+instance ToJSON JobEvent
+instance FromJSON JobEvent
+
+type EventLogs = HashMap JobId EventLog
+
+type EventLog = [JobEvent]
+
+jobEventTime :: JobEvent -> UTCTime
+jobEventTime (JobRunning t   ) = t
+jobEventTime (JobFinished _ t) = t
+
+type Output = [String]
+
+type OutputLogs = HashMap JobId Output
