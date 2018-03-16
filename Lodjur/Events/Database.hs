@@ -1,5 +1,5 @@
 {-# LANGUAGE OverloadedStrings #-}
-module Lodjur.EventLogger.Database where
+module Lodjur.Events.Database where
 
 import           Control.Exception
 import           Control.Monad              (void, foldM)
@@ -10,6 +10,7 @@ import           Database.PostgreSQL.Simple
 
 import           Lodjur.Database
 import           Lodjur.Deployment
+import           Lodjur.Events
 
 initialize :: DbPool -> IO ()
 initialize pool = withConn pool $ \conn ->

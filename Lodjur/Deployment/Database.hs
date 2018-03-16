@@ -2,7 +2,7 @@
 {-# LANGUAGE LambdaCase        #-}
 {-# LANGUAGE OverloadedStrings #-}
 {-# LANGUAGE RecordWildCards   #-}
-module Lodjur.Deployer.Database where
+module Lodjur.Deployment.Database where
 
 import           Control.Monad              (void)
 import           Data.Text                  (Text)

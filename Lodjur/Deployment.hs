@@ -2,10 +2,8 @@
 {-# LANGUAGE GeneralizedNewtypeDeriving #-}
 module Lodjur.Deployment where
 
-import           Control.Exception   (Exception)
 import           Data.Aeson
 import           Data.Hashable       (Hashable)
-import           Data.HashMap.Strict (HashMap)
 import           Data.String
 import           Data.Text           (Text)
 import           Data.Time.Clock     (UTCTime)
@@ -35,29 +33,3 @@ data JobResult
 
 instance ToJSON JobResult
 instance FromJSON JobResult
-
-data JobEvent
-  = JobRunning UTCTime
-  | JobFinished JobResult UTCTime
-  deriving (Show, Eq, Generic)
-
-instance ToJSON JobEvent
-instance FromJSON JobEvent
-
-type EventLogs = HashMap JobId EventLog
-
-type EventLog = [JobEvent]
-
-jobEventTime :: JobEvent -> UTCTime
-jobEventTime (JobRunning t   ) = t
-jobEventTime (JobFinished _ t) = t
-
-data Output = Output { outputTime :: UTCTime, outputLines :: [String] }
-
-type OutputLogs = HashMap JobId [Output]
-
-newtype EventDecodeFailed = EventDecodeFailed String
-  deriving (Eq, Show)
-
-instance Exception EventDecodeFailed
-

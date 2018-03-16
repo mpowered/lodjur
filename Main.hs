@@ -10,10 +10,10 @@ import           Database.PostgreSQL.Simple
 import           Options.Applicative
 
 import qualified Lodjur.Database            as Database
-import qualified Lodjur.Deployer            as Deployer
 import           Lodjur.Deployment
-import qualified Lodjur.EventLogger         as EventLogger
-import qualified Lodjur.OutputLogger        as OutputLogger
+import qualified Lodjur.Deployment.Deployer            as Deployer
+import qualified Lodjur.Events.EventLogger         as EventLogger
+import qualified Lodjur.Output.OutputLogger        as OutputLogger
 import           Lodjur.Process
 import           Lodjur.Web
 

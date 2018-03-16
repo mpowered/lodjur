@@ -1,6 +1,6 @@
 {-# LANGUAGE GADTs        #-}
 {-# LANGUAGE TypeFamilies #-}
-module Lodjur.OutputLogger
+module Lodjur.Output.OutputLogger
   ( Output (..)
   , OutputLogs
   , OutputLogger
@@ -12,7 +12,8 @@ import           Data.Time.Clock
 
 import           Lodjur.Database              (DbPool)
 import           Lodjur.Deployment
-import qualified Lodjur.OutputLogger.Database as Database
+import           Lodjur.Output
+import qualified Lodjur.Output.Database as Database
 import           Lodjur.Process
 
 newtype OutputLogger = OutputLogger DbPool

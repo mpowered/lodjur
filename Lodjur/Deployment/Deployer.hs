@@ -4,7 +4,7 @@
 {-# LANGUAGE RankNTypes        #-}
 {-# LANGUAGE RecordWildCards   #-}
 {-# LANGUAGE TypeFamilies      #-}
-module Lodjur.Deployer
+module Lodjur.Deployment.Deployer
   ( Tag (..)
   , DeploymentName (..)
   , JobId
@@ -19,27 +19,28 @@ module Lodjur.Deployer
   ) where
 
 import           Control.Concurrent
-import           Control.Exception        (Exception, SomeException, throwIO,
-                                           tryJust)
-import           Control.Monad            (void)
-import           Data.HashSet             (HashSet)
-import qualified Data.HashSet             as HashSet
+import           Control.Exception          (Exception, SomeException, throwIO,
+                                             tryJust)
+import           Control.Monad              (void)
+import           Data.HashSet               (HashSet)
+import qualified Data.HashSet               as HashSet
 import           Data.Semigroup
-import qualified Data.Text                as Text
+import qualified Data.Text                  as Text
 import           Data.Time.Clock
-import qualified Data.UUID                as UUID
-import qualified Data.UUID.V4             as UUID
+import qualified Data.UUID                  as UUID
+import qualified Data.UUID.V4               as UUID
 import           System.Exit
 import           System.IO
-import           System.IO.Error          (isEOFError)
+import           System.IO.Error            (isEOFError)
 import           System.Process
 
-import           Lodjur.Database          (DbPool)
-import qualified Lodjur.Deployer.Database as Database
+import           Lodjur.Database            (DbPool)
 import           Lodjur.Deployment
-import           Lodjur.EventLogger       (EventLogMessage (..), EventLogger,
-                                           JobEvent (..))
-import           Lodjur.OutputLogger      (OutputLogMessage (..), OutputLogger)
+import qualified Lodjur.Deployment.Database as Database
+import           Lodjur.Events.EventLogger  (EventLogMessage (..), EventLogger,
+                                             JobEvent (..))
+import           Lodjur.Output.OutputLogger (OutputLogMessage (..),
+                                             OutputLogger)
 import           Lodjur.Process
 
 data DeployState

@@ -24,9 +24,9 @@ import           Lucid.Html5
 import           Network.HTTP.Types.Status
 import           Web.Scotty.Trans
 
-import           Lodjur.Deployer
-import           Lodjur.EventLogger
-import           Lodjur.OutputLogger
+import           Lodjur.Deployment.Deployer
+import           Lodjur.Events.EventLogger
+import           Lodjur.Output.OutputLogger
 import           Lodjur.Process
 
 data Env = Env

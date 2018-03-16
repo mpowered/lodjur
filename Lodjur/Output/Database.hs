@@ -1,12 +1,13 @@
 {-# LANGUAGE FlexibleContexts  #-}
 {-# LANGUAGE OverloadedStrings #-}
-module Lodjur.OutputLogger.Database where
+module Lodjur.Output.Database where
 
 import           Control.Monad              (void)
 import qualified Data.HashMap.Strict        as HashMap
 import           Database.PostgreSQL.Simple
 
 import           Lodjur.Database
+import           Lodjur.Output
 import           Lodjur.Deployment
 
 initialize :: DbPool -> IO ()

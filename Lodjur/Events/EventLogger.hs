@@ -1,6 +1,6 @@
 {-# LANGUAGE GADTs        #-}
 {-# LANGUAGE TypeFamilies #-}
-module Lodjur.EventLogger
+module Lodjur.Events.EventLogger
   ( JobEvent (..)
   , EventLogs
   , EventLog
@@ -11,7 +11,8 @@ module Lodjur.EventLogger
 
 import           Lodjur.Database          (DbPool)
 import           Lodjur.Deployment
-import qualified Lodjur.EventLogger.Database as Database
+import           Lodjur.Events
+import qualified Lodjur.Events.Database as Database
 import           Lodjur.Process
 
 newtype EventLogger = EventLogger DbPool
