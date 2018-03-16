@@ -52,17 +52,24 @@ renderLayout title breadcrumbs contents =
         , href_
           "https://maxcdn.bootstrapcdn.com/bootstrap/4.0.0/css/bootstrap.min.css"
         ]
-    body_ $ container_ $ do
-      nav_ $ ol_ [class_ "breadcrumb mt-4"]
-                 (toBreadcrumbItems (homeLink : breadcrumbs))
-      contents
+      style_ " .breadcrumb-nav { background-color: #eee; } \
+             \ .breadcrumb { background-color: transparent; } \
+             \ "
+    body_ $ do
+      nav_ [class_ "navbar navbar-dark bg-dark"] $
+        div_ [class_ "container"] $
+          a_ [class_ "navbar-brand", href_ "/"] "Lodjur"
+      nav_ [class_ "breadcrumb-nav"] $
+        div_ [class_ "container"] $
+          ol_ [class_ "breadcrumb"] (toBreadcrumbItems (homeLink : breadcrumbs))
+      container_ contents
  where
   toBreadcrumbItems :: [Html ()] -> Html ()
   toBreadcrumbItems []       = return ()
   toBreadcrumbItems elements = do
     foldMap (li_ [class_ "breadcrumb-item"])  (init elements)
     li_     [class_ "breadcrumb-item active"] (last elements)
-  homeLink = a_ [href_ "/"] "Lodjur"
+  homeLink = a_ [href_ "/"] "Home"
 
 renderEventLog :: EventLog -> Html ()
 renderEventLog []       = p_ [class_ "text-secondary"] "No events available."
