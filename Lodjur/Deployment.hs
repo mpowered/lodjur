@@ -2,13 +2,14 @@
 {-# LANGUAGE GeneralizedNewtypeDeriving #-}
 module Lodjur.Deployment where
 
+import           Control.Exception   (Exception)
 import           Data.Aeson
+import           Data.Hashable       (Hashable)
 import           Data.HashMap.Strict (HashMap)
+import           Data.String
 import           Data.Text           (Text)
 import           Data.Time.Clock     (UTCTime)
-import           Data.String
 import           GHC.Generics        (Generic)
-import           Data.Hashable       (Hashable)
 
 newtype Tag =
   Tag { unTag :: Text }
@@ -53,3 +54,9 @@ jobEventTime (JobFinished _ t) = t
 type Output = [String]
 
 type OutputLogs = HashMap JobId Output
+
+newtype EventDecodeFailed = EventDecodeFailed String
+  deriving (Eq, Show)
+
+instance Exception EventDecodeFailed
+

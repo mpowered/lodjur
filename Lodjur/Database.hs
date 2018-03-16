@@ -1,61 +1,57 @@
+{-# LANGUAGE FlexibleContexts  #-}
 {-# LANGUAGE LambdaCase        #-}
 {-# LANGUAGE OverloadedStrings #-}
 {-# LANGUAGE RecordWildCards   #-}
 {-# LANGUAGE ViewPatterns      #-}
 module Lodjur.Database where
 
-import           Control.Concurrent     (threadDelay)
-import           Control.Exception      (Exception, throwIO, tryJust)
-import           Control.Monad          (foldM)
+import           Control.Exception           (throwIO)
+import           Control.Monad               (foldM, void)
 import           Data.Aeson
-import qualified Data.HashMap.Strict    as HashMap
-import           Data.Text              (Text)
-import           Data.Time.Clock        (UTCTime)
-import           Database.SQLite.Simple
+import qualified Data.HashMap.Strict         as HashMap
+import           Data.Pool
+import           Data.Text                   (Text)
+import           Data.Time.Clock             (NominalDiffTime, UTCTime)
+import           Database.PostgreSQL.Simple
 
 import           Lodjur.Deployment
 
-newtype EventDecodeFailed = EventDecodeFailed String
-  deriving (Eq, Show)
+type DbPool = Pool Connection
 
-instance Exception EventDecodeFailed
+newPool :: ConnectInfo -> Int -> NominalDiffTime -> Int -> IO DbPool
+newPool ci = createPool (connect ci) close
 
-retryIfBusy :: IO a -> IO a
-retryIfBusy a = do
-  e <- tryJust isBusy a
-  case e of
-    Left _ -> threadDelay 10 >> retryIfBusy a
-    Right r -> return r
- where
-  isBusy sqlerr
-    | sqlError sqlerr == ErrorBusy = Just ()
-    | otherwise                     = Nothing
+destroyPool :: DbPool -> IO ()
+destroyPool = destroyAllResources
 
-initialize :: Connection -> IO ()
-initialize conn = retryIfBusy $ do
-  execute_
-    conn
+withConn :: DbPool -> (Connection -> IO a) -> IO a
+withConn pool a =
+  withResource pool $ \conn ->
+    withTransaction conn $
+      a conn
+
+initialize :: DbPool -> IO ()
+initialize pool = withConn pool $ \conn -> do
+  void $ execute_ conn
     "CREATE TABLE IF NOT EXISTS deployment_job (id TEXT NOT NULL, deployment_name TEXT NOT NULL, tag TEXT NOT NULL, result TEXT NULL, error_message TEXT NULL)"
-  execute_
-    conn
-    "CREATE TABLE IF NOT EXISTS job_event_log (time TEXT, job_id TEXT, event TEXT)"
-  execute_
-    conn
-    "CREATE TABLE IF NOT EXISTS job_output_log (time TEXT, job_id TEXT, output TEXT)"
+  void $ execute_ conn
+    "CREATE TABLE IF NOT EXISTS event_log (time TIMESTAMP NOT NULL, job_id TEXT NOT NULL, event JSONB NOT NULL)"
+  void $ execute_ conn
+    "CREATE TABLE IF NOT EXISTS output_log (time TIMESTAMP NOT NULL, job_id TEXT NOT NULL, output TEXT NOT NULL)"
 
 
-insertJob :: Connection -> DeploymentJob -> Maybe JobResult -> IO ()
-insertJob conn DeploymentJob {..} = \case
-  Just JobSuccessful -> retryIfBusy $ execute
-    conn
+insertJob :: DbPool -> DeploymentJob -> Maybe JobResult -> IO ()
+insertJob pool DeploymentJob {..} = \case
+  Just JobSuccessful -> withConn pool $ \conn ->
+    void $ execute conn
     "INSERT INTO deployment_job (id, deployment_name, tag, result) VALUES (?, ?, ?, ?)"
     ( jobId
     , unDeploymentName deploymentName
     , unTag deploymentTag
     , "successful" :: Text
     )
-  Just (JobFailed errMsg) -> retryIfBusy $ execute
-    conn
+  Just (JobFailed errMsg) -> withConn pool $ \conn ->
+    void $ execute conn
     "INSERT INTO deployment_job (id, deployment_name, tag, result, error_message) VALUES (?, ?, ?, ?, ?)"
     ( jobId
     , unDeploymentName deploymentName
@@ -63,31 +59,31 @@ insertJob conn DeploymentJob {..} = \case
     , "failed" :: Text
     , errMsg
     )
-  Nothing -> retryIfBusy $ execute
-    conn
+  Nothing -> withConn pool $ \conn ->
+    void $ execute conn
     "INSERT INTO deployment_job (id, deployment_name, tag) VALUES (?, ?, ?)"
     (jobId, unDeploymentName deploymentName, unTag deploymentTag)
 
-updateJobResult :: Connection -> JobId -> JobResult -> IO ()
-updateJobResult conn jobId = \case
-  JobSuccessful -> retryIfBusy $ execute
-    conn
+updateJobResult :: DbPool -> JobId -> JobResult -> IO ()
+updateJobResult pool jobId = \case
+  JobSuccessful -> withConn pool $ \conn ->
+    void $ execute conn
     "UPDATE deployment_job SET result = ? WHERE id = ?"
     ( "successful" :: Text
     , jobId
     )
-  (JobFailed errMsg) -> retryIfBusy $ execute
-    conn
+  (JobFailed errMsg) -> withConn pool $ \conn ->
+    void $ execute conn
     "UPDATE deployment_job SET result = ?, error_message = ? WHERE id = ?"
     ( "successful" :: Text
     , errMsg
     , jobId
     )
 
-getAllJobs :: Connection -> IO [(DeploymentJob, Maybe JobResult)]
-getAllJobs conn = mapM parseJob =<< retryIfBusy (query_
-  conn
-  "SELECT id, deployment_name, tag, result, error_message FROM deployment_job")
+getAllJobs :: DbPool -> IO [(DeploymentJob, Maybe JobResult)]
+getAllJobs pool = withConn pool $ \conn ->
+  mapM parseJob =<< query_ conn
+  "SELECT id, deployment_name, tag, result, error_message FROM deployment_job"
  where
   parseJob (jobId, name, tag, mResult, mMsg) =
     let
@@ -97,35 +93,37 @@ getAllJobs conn = mapM parseJob =<< retryIfBusy (query_
         (Just "failed", Just errorMessage) ->
           return (job, Just (JobFailed errorMessage))
         (Just "successful", Nothing) -> return (job, Just JobSuccessful)
-        (Nothing          , Nothing) -> return (job, Nothing)
+        (Nothing, Nothing) -> return (job, Nothing)
         (Just result, _) ->
           fail ("Invalid result in database: " ++ result)
         (Nothing, Just msg) ->
           fail ("Unexpected message in database: " ++ show msg)
 
-insertEvent :: ToJSON event => Connection -> UTCTime -> JobId -> event -> IO ()
-insertEvent conn t jobid event = retryIfBusy $ execute
-  conn
-  "INSERT INTO job_event_log (time, job_id, event) VALUES (?, ?, ?)"
-  (t, jobid, encode event)
+insertEvent :: DbPool -> UTCTime -> JobId -> JobEvent -> IO ()
+insertEvent pool t jobid event = withConn pool $ \conn ->
+  void $ execute conn
+  "INSERT INTO event_log (time, job_id, event) VALUES (?, ?, ?)"
+  (t, jobid, toJSON event)
 
-getAllEventLogs :: Connection -> IO EventLogs
-getAllEventLogs conn = retryIfBusy $ mkEventLog
-  =<< query_ conn "SELECT job_id, event FROM job_event_log ORDER BY time ASC"
+getAllEventLogs :: DbPool -> IO EventLogs
+getAllEventLogs pool = withConn pool $ \conn ->
+  mkEventLog =<< query_ conn
+  "SELECT job_id, event FROM event_log ORDER BY time ASC"
  where
   mkEventLog = foldM mergeEvent mempty
-  mergeEvent m (jobid, eitherDecode -> event) = case event of
-    Left  msg -> throwIO $ EventDecodeFailed msg
-    Right e   -> return $ HashMap.insertWith (++) jobid [e] m
+  mergeEvent m (jobid, fromJSON -> event) = case event of
+    Error  msg -> throwIO $ EventDecodeFailed msg
+    Success e  -> return $ HashMap.insertWith (++) jobid [e] m
 
-appendOutput :: Connection -> UTCTime -> JobId -> Output -> IO ()
-appendOutput conn t jobid output = retryIfBusy $
-  execute conn "INSERT INTO job_output_log (time, job_id, output) VALUES (?, ?, ?)"
-    (t, jobid, unlines output)
+appendOutput :: DbPool -> UTCTime -> JobId -> Output -> IO ()
+appendOutput pool t jobid output = withConn pool $ \conn ->
+  void $ execute conn
+  "INSERT INTO output_log (time, job_id, output) VALUES (?, ?, ?)"
+  (t, jobid, unlines output)
 
-getAllOutputLogs :: Connection -> IO OutputLogs
-getAllOutputLogs conn = retryIfBusy $
-  mkOutput <$> query_ conn "SELECT job_id, output FROM job_output_log ORDER BY time ASC"
+getAllOutputLogs :: DbPool -> IO OutputLogs
+getAllOutputLogs pool =
+  withConn pool $ \conn -> mkOutput <$> query_ conn "SELECT job_id, output FROM output_log ORDER BY time ASC"
  where
   mkOutput = foldr mergeOutput mempty
   mergeOutput (jobid, output) = HashMap.insertWith (++) jobid (lines output)
