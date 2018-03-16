@@ -2,7 +2,6 @@
 {-# LANGUAGE OverloadedStrings #-}
 {-# LANGUAGE RecordWildCards   #-}
 {-# LANGUAGE TupleSections     #-}
-{-# LANGUAGE TypeApplications  #-}
 {-# LANGUAGE ViewPatterns      #-}
 module Lodjur.Web (Port, runServer) where
 
@@ -15,9 +14,7 @@ import           Data.Semigroup
 import           Data.Text                 (Text)
 import qualified Data.Text                 as Text
 import qualified Data.Text.Lazy            as Lazy
-import           Data.Time.Clock           (DiffTime, UTCTime,
-                                            diffTimeToPicoseconds,
-                                            getCurrentTime, utctDayTime)
+import           Data.Time.Clock           (UTCTime, getCurrentTime)
 import           Data.Time.Clock.POSIX
 import           Data.Time.Format          (defaultTimeLocale, formatTime)
 import           Lucid.Base                (Html, toHtml)

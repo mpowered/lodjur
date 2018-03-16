@@ -1,5 +1,5 @@
-{-# LANGUAGE GADTs                      #-}
-{-# LANGUAGE TypeFamilies               #-}
+{-# LANGUAGE GADTs        #-}
+{-# LANGUAGE TypeFamilies #-}
 module Lodjur.OutputLogger
   ( Output (..)
   , OutputLogs
@@ -10,14 +10,17 @@ module Lodjur.OutputLogger
 
 import           Data.Time.Clock
 
-import qualified Lodjur.Database        as Database
+import           Lodjur.Database              (DbPool)
 import           Lodjur.Deployment
+import qualified Lodjur.OutputLogger.Database as Database
 import           Lodjur.Process
 
-newtype OutputLogger = OutputLogger Database.DbPool
+newtype OutputLogger = OutputLogger DbPool
 
-initialize :: Database.DbPool -> IO OutputLogger
-initialize pool = return (OutputLogger pool)
+initialize :: DbPool -> IO OutputLogger
+initialize pool = do
+  Database.initialize pool
+  return (OutputLogger pool)
 
 data OutputLogMessage r where
   -- Public messages:
@@ -36,4 +39,4 @@ instance Process OutputLogger where
     logs <- Database.getAllOutputLogs pool
     return (a, logs)
 
-  terminate (OutputLogger pool) = Database.destroyPool pool
+  terminate _ = return ()

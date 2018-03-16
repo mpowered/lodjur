@@ -1,5 +1,5 @@
-{-# LANGUAGE GADTs             #-}
-{-# LANGUAGE TypeFamilies      #-}
+{-# LANGUAGE GADTs        #-}
+{-# LANGUAGE TypeFamilies #-}
 module Lodjur.EventLogger
   ( JobEvent (..)
   , EventLogs
@@ -9,14 +9,17 @@ module Lodjur.EventLogger
   , EventLogMessage (..)
   ) where
 
-import qualified Lodjur.Database        as Database
+import           Lodjur.Database          (DbPool)
 import           Lodjur.Deployment
+import qualified Lodjur.EventLogger.Database as Database
 import           Lodjur.Process
 
-newtype EventLogger = EventLogger Database.DbPool
+newtype EventLogger = EventLogger DbPool
 
-initialize :: Database.DbPool -> IO EventLogger
-initialize pool = return (EventLogger pool)
+initialize :: DbPool -> IO EventLogger
+initialize pool = do
+  Database.initialize pool
+  return (EventLogger pool)
 
 data EventLogMessage r where
   -- Public messages:
@@ -34,4 +37,4 @@ instance Process EventLogger where
     logs <- Database.getAllEventLogs pool
     return (a, logs)
 
-  terminate (EventLogger pool) = Database.destroyPool pool
+  terminate _ = return ()
