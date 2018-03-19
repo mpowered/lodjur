@@ -27,6 +27,7 @@ import           Web.Scotty.Trans
 import           Lodjur.Deployment.Deployer
 import           Lodjur.Events.EventLogger
 import           Lodjur.Git.GitAgent
+import           Lodjur.Git.GitReader
 import           Lodjur.Output.OutputLogger
 import           Lodjur.Process
 
@@ -34,7 +35,8 @@ data Env = Env
   { envDeployer     :: Ref Deployer
   , envEventLogger  :: Ref EventLogger
   , envOutputLogger :: Ref OutputLogger
-  , envGitAgent     :: Ref GitAgent
+  , envGitAgent     :: Ref GitAgent 
+  , envGitReader    :: Ref GitReader
   }
 
 type Action = ActionT Lazy.Text (ReaderT Env IO)
@@ -228,9 +230,9 @@ jobLink = jobIdLink . jobId
 homeAction :: Action ()
 homeAction = do
   deployer        <- lift (asks envDeployer)
-  gitAgent        <- lift (asks envGitAgent)
+  gitReader       <- lift (asks envGitReader)
   deploymentNames <- liftIO $ deployer ? GetDeploymentNames
-  tags            <- liftIO $ gitAgent ? GetTags
+  tags            <- liftIO $ gitReader ? GetTags
   deployState     <- liftIO $ deployer ? GetCurrentState
   jobs            <- liftIO $ deployer ? GetJobs
   renderLayout "Lodjur Deployment Manager" [] $ do
@@ -309,8 +311,9 @@ runServer
   -> Ref EventLogger
   -> Ref OutputLogger
   -> Ref GitAgent
+  -> Ref GitReader
   -> IO ()
-runServer port envDeployer envEventLogger envOutputLogger envGitAgent =
+runServer port envDeployer envEventLogger envOutputLogger envGitAgent envGitReader =
   scottyT port (`runReaderT` Env {..}) $ do
     get  "/"             homeAction
     post "/jobs"         newDeployAction
