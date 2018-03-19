@@ -7,13 +7,14 @@ executable          lodjur
     hs-source-dirs: .
     main-is:        Main.hs
     ghc-options:    -Wall -threaded -O2 -rtsopts -with-rtsopts=-N
-    other-modules:  Lodjur.EventLogger
-                  , Lodjur.Database
+    other-modules:  Lodjur.Database
                   , Lodjur.Deployment
                   , Lodjur.Deployment.Database
                   , Lodjur.Deployment.Deployer
+                  , Lodjur.Events
                   , Lodjur.Events.EventLogger
                   , Lodjur.Events.Database
+                  , Lodjur.Output
                   , Lodjur.Output.Database
                   , Lodjur.Output.OutputLogger
                   , Lodjur.Process
