@@ -64,6 +64,7 @@ renderLayout title breadcrumbs contents =
              \ .command-output { position: relative; } \
              \ .command-output { overflow: auto; } \
              \ .command-output .timestamp { position: absolute; display: inline-block; padding: 0 .25em; right: 0; background: #fff; z-index: 2; } \
+             \ .command-output .line { white-space: normal; } \
              \ .command-output .line:hover { background: #eee; } \
              \ .command-output .line:hover .timestamp { background: #eee; } \
              \ "
