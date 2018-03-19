@@ -9,9 +9,7 @@ import           Data.Text           (Text)
 import           Data.Time.Clock     (UTCTime)
 import           GHC.Generics        (Generic)
 
-newtype Tag =
-  Tag { unTag :: Text }
-  deriving (Eq, Show, IsString)
+import           Lodjur.Git
 
 newtype DeploymentName =
   DeploymentName { unDeploymentName :: String }

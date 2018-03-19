@@ -14,6 +14,8 @@ executable          lodjur
                   , Lodjur.Events
                   , Lodjur.Events.EventLogger
                   , Lodjur.Events.Database
+                  , Lodjur.Git
+                  , Lodjur.Git.GitAgent
                   , Lodjur.Output
                   , Lodjur.Output.Database
                   , Lodjur.Output.OutputLogger

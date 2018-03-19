@@ -10,6 +10,7 @@ import           Database.PostgreSQL.Simple
 
 import           Lodjur.Database
 import           Lodjur.Deployment
+import           Lodjur.Git
 
 initialize :: DbPool -> IO ()
 initialize pool = withConn pool $ \conn ->

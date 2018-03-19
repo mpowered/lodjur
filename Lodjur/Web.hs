@@ -6,19 +6,19 @@
 module Lodjur.Web (Port, runServer) where
 
 import           Control.Monad
-import           Control.Monad.IO.Class    (liftIO)
+import           Control.Monad.IO.Class     (liftIO)
 import           Control.Monad.Reader
-import qualified Data.HashMap.Strict       as HashMap
-import qualified Data.List                 as List
+import qualified Data.HashMap.Strict        as HashMap
+import qualified Data.List                  as List
 import           Data.Semigroup
-import           Data.Text                 (Text)
-import qualified Data.Text                 as Text
-import qualified Data.Text.Lazy            as Lazy
-import           Data.Time.Clock           (UTCTime, getCurrentTime)
+import           Data.Text                  (Text)
+import qualified Data.Text                  as Text
+import qualified Data.Text.Lazy             as Lazy
+import           Data.Time.Clock            (UTCTime, getCurrentTime)
 import           Data.Time.Clock.POSIX
-import           Data.Time.Format          (defaultTimeLocale, formatTime)
-import           Lucid.Base                (Html, toHtml)
-import qualified Lucid.Base                as Html
+import           Data.Time.Format           (defaultTimeLocale, formatTime)
+import           Lucid.Base                 (Html, toHtml)
+import qualified Lucid.Base                 as Html
 import           Lucid.Bootstrap
 import           Lucid.Html5
 import           Network.HTTP.Types.Status
@@ -26,6 +26,7 @@ import           Web.Scotty.Trans
 
 import           Lodjur.Deployment.Deployer
 import           Lodjur.Events.EventLogger
+import           Lodjur.Git.GitAgent
 import           Lodjur.Output.OutputLogger
 import           Lodjur.Process
 
@@ -33,6 +34,7 @@ data Env = Env
   { envDeployer     :: Ref Deployer
   , envEventLogger  :: Ref EventLogger
   , envOutputLogger :: Ref OutputLogger
+  , envGitAgent     :: Ref GitAgent
   }
 
 type Action = ActionT Lazy.Text (ReaderT Env IO)
@@ -226,8 +228,9 @@ jobLink = jobIdLink . jobId
 homeAction :: Action ()
 homeAction = do
   deployer        <- lift (asks envDeployer)
+  gitAgent        <- lift (asks envGitAgent)
   deploymentNames <- liftIO $ deployer ? GetDeploymentNames
-  tags            <- liftIO $ deployer ? GetTags
+  tags            <- liftIO $ gitAgent ? GetTags
   deployState     <- liftIO $ deployer ? GetCurrentState
   jobs            <- liftIO $ deployer ? GetJobs
   renderLayout "Lodjur Deployment Manager" [] $ do
@@ -294,8 +297,13 @@ showJobAction = do
 type Port = Int
 
 runServer
-  :: Port -> Ref Deployer -> Ref EventLogger -> Ref OutputLogger -> IO ()
-runServer port envDeployer envEventLogger envOutputLogger =
+  :: Port
+  -> Ref Deployer
+  -> Ref EventLogger
+  -> Ref OutputLogger
+  -> Ref GitAgent
+  -> IO ()
+runServer port envDeployer envEventLogger envOutputLogger envGitAgent =
   scottyT port (`runReaderT` Env {..}) $ do
     get  "/"             homeAction
     post "/jobs"         newDeployAction

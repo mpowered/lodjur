@@ -6,11 +6,19 @@ module Lodjur.Output.OutputLogger
   , OutputLogger
   , OutputLogMessage (..)
   , initialize
+  , logCreateProcessWithExitCode
   ) where
 
+import           Control.Concurrent
+import           Control.Exception      (tryJust)
+import           Control.Monad          (void)
 import           Data.Time.Clock
+import           System.Exit
+import           System.IO
+import           System.IO.Error        (isEOFError)
+import           System.Process
 
-import           Lodjur.Database              (DbPool)
+import           Lodjur.Database        (DbPool)
 import           Lodjur.Deployment
 import           Lodjur.Output
 import qualified Lodjur.Output.Database as Database
@@ -41,3 +49,26 @@ instance Process OutputLogger where
     return (a, logs)
 
   terminate _ = return ()
+
+logCreateProcessWithExitCode
+  :: Ref OutputLogger -> JobId -> CreateProcess -> IO ExitCode
+logCreateProcessWithExitCode outputLogger jobid cp = do
+  let cp_opts =
+        cp { std_in = NoStream, std_out = CreatePipe, std_err = CreatePipe }
+
+  (_, Just hout, Just herr, ph) <- createProcess cp_opts
+  void $ logStream outputLogger jobid hout
+  void $ logStream outputLogger jobid herr
+  waitForProcess ph
+
+logStream :: Ref OutputLogger -> JobId -> Handle -> IO ThreadId
+logStream logger jobid h = forkIO go
+ where
+  go = do
+    next <- tryJust (\e -> if isEOFError e then Just () else Nothing)
+                    (hGetLine h)
+    case next of
+      Left  _    -> return ()
+      Right line -> do
+        logger ! AppendOutput jobid [line]
+        go

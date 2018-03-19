@@ -11,9 +11,10 @@ import           Options.Applicative
 
 import qualified Lodjur.Database            as Database
 import           Lodjur.Deployment
-import qualified Lodjur.Deployment.Deployer            as Deployer
-import qualified Lodjur.Events.EventLogger         as EventLogger
-import qualified Lodjur.Output.OutputLogger        as OutputLogger
+import qualified Lodjur.Deployment.Deployer as Deployer
+import qualified Lodjur.Events.EventLogger  as EventLogger
+import qualified Lodjur.Git.GitAgent        as GitAgent
+import qualified Lodjur.Output.OutputLogger as OutputLogger
 import           Lodjur.Process
 import           Lodjur.Web
 
@@ -45,13 +46,14 @@ main = startServices =<< execParser opts
 
     eventLogger  <- spawn =<< EventLogger.initialize pool
     outputLogger <- spawn =<< OutputLogger.initialize pool
+    gitAgent     <- spawn =<< GitAgent.initialize gitWorkingDir
     deployer     <- spawn
         =<< Deployer.initialize eventLogger
                                 outputLogger
+                                gitAgent
                                 deploymentNames
-                                gitWorkingDir
                                 pool
-    runServer port deployer eventLogger outputLogger
+    runServer port deployer eventLogger outputLogger gitAgent
 
 data Options = Options
   { gitWorkingDir     :: FilePath
