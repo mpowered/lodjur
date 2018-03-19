@@ -6,7 +6,7 @@ module Lodjur.Git.GitReader
   , GitReaderMessage (..)
   ) where
 
-import qualified Data.Text                  as Text
+import qualified Data.Text          as Text
 
 import           Lodjur.Git
 import           Lodjur.Git.Command

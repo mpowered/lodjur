@@ -8,9 +8,9 @@ import           System.Exit
 import           System.Process
 
 import           Lodjur.Deployment
-import           Lodjur.Process
 import           Lodjur.Output.OutputLogger (OutputLogger,
                                              logCreateProcessWithExitCode)
+import           Lodjur.Process
 
 data GitFailed = GitFailed String String Int
   deriving (Eq, Show)

@@ -12,8 +12,8 @@ import qualified Data.Text                  as Text
 import           Lodjur.Deployment
 import           Lodjur.Git
 import           Lodjur.Git.Command
-import           Lodjur.Process
 import           Lodjur.Output.OutputLogger (OutputLogger)
+import           Lodjur.Process
 
 newtype GitAgent = GitAgent FilePath
 
