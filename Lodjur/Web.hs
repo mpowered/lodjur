@@ -294,6 +294,13 @@ showJobAction = do
   toSeconds :: UTCTime -> Integer
   toSeconds = round . utcTimeToPOSIXSeconds
 
+refreshTagsAction :: Action ()
+refreshTagsAction = do
+  gitAgent <- lift (asks envGitAgent)
+  liftIO (gitAgent ! FetchTags)
+  status status302
+  setHeader "Location" "/"
+
 type Port = Int
 
 runServer
@@ -308,4 +315,5 @@ runServer port envDeployer envEventLogger envOutputLogger envGitAgent =
     get  "/"             homeAction
     post "/jobs"         newDeployAction
     get  "/jobs/:job-id" showJobAction
+    post "/tags/refresh" refreshTagsAction
     notFound notFoundAction

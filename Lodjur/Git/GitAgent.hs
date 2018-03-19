@@ -21,23 +21,28 @@ import           Lodjur.Output.OutputLogger (OutputLogger,
 newtype GitAgent = GitAgent FilePath
 
 initialize :: FilePath -> IO GitAgent
-initialize bareRepoPath =
-  return (GitAgent bareRepoPath)
+initialize repoPath =
+  return (GitAgent repoPath)
 
 data GitAgentMessage r where
   -- Public messages:
   GetTags :: GitAgentMessage (Sync [Tag])
+  FetchTags :: GitAgentMessage Async
   Checkout :: Tag -> Ref OutputLogger -> JobId -> GitAgentMessage (Sync ())
 
 instance Process GitAgent where
   type Message GitAgent = GitAgentMessage
 
-  receive _self (a@(GitAgent bareRepoPath), GetTags) = do
-    tags <- gitListTags bareRepoPath
+  receive _self (a@(GitAgent repoPath), GetTags) = do
+    tags <- gitListTags repoPath
     return (a, tags)
 
-  receive _self (a@(GitAgent bareRepoPath), Checkout tag outputLogger jobid) = do
-    gitCheckout outputLogger jobid bareRepoPath tag
+  receive _self (a@(GitAgent repoPath), FetchTags) = do
+    gitFetchTags repoPath
+    return a
+
+  receive _self (a@(GitAgent repoPath), Checkout tag outputLogger jobid) = do
+    gitCheckout outputLogger jobid repoPath tag
     return (a, ())
 
   terminate _ = return ()
@@ -50,6 +55,9 @@ instance Exception GitFailed
 gitListTags :: FilePath -> IO [Tag]
 gitListTags workingDir = parseTags <$> gitCmd ["tag", "-l"] workingDir
   where parseTags = map Tag . filter (not . Text.null) . Text.lines . Text.pack
+
+gitFetchTags :: FilePath -> IO ()
+gitFetchTags = void . gitCmd ["fetch", "--tags"]
 
 gitCheckout :: Ref OutputLogger -> JobId -> FilePath -> Tag -> IO ()
 gitCheckout outputLogger jobid workingDir tag =
