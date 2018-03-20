@@ -8,6 +8,7 @@ module Lodjur.Output.OutputLoggers
 
 import           Lodjur.Database            (DbPool)
 import           Lodjur.Deployment          hiding (jobId)
+import qualified Lodjur.Output.Database     as Database
 import           Lodjur.Output.OutputLogger (OutputLogger)
 import qualified Lodjur.Output.OutputLogger as OutputLogger
 import           Lodjur.Process
@@ -15,7 +16,9 @@ import           Lodjur.Process
 newtype OutputLoggers = OutputLoggers DbPool
 
 initialize :: DbPool -> IO OutputLoggers
-initialize = return . OutputLoggers
+initialize pool = do
+  Database.initialize pool
+  return (OutputLoggers pool)
 
 data OutputLoggersMessage r where
   -- Public messages:
