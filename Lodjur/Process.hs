@@ -30,7 +30,7 @@ data Sync r
 data Async
 
 data QueuedMessage m where
-  SyncMessage :: m (Sync r) -> MVar r -> QueuedMessage m
+  SyncMessage :: m (Sync r) -> MVar (Either SomeException r) -> QueuedMessage m
   AsyncMessage :: m Async -> QueuedMessage m
   PoisonPill :: QueuedMessage m
 
@@ -60,7 +60,7 @@ requireAlive ref action = do
 (?) receiver msg = requireAlive receiver $ do
     res <- newEmptyMVar
     writeChan (inbox receiver) (SyncMessage msg res)
-    takeMVar res
+    either throwIO return =<< takeMVar res
 
 spawn :: Process a => a -> IO (Ref a)
 spawn initialState = do
@@ -73,7 +73,10 @@ spawn initialState = do
   receiveLoop ref state =
     readChan (inbox ref) >>= \case
       SyncMessage msg sender -> do
-        (state', response) <- receive ref (state, msg)
+        (state', response) <-
+          ( do (state', response) <- receive ref (state, msg)
+               return (state', Right response)
+          ) `catch` \e -> return (state, Left e)
         putMVar     sender response
         receiveLoop ref    state'
       AsyncMessage msg -> do
