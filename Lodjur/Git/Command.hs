@@ -7,7 +7,6 @@ import           Control.Exception          (Exception, throwIO)
 import           System.Exit
 import           System.Process
 
-import           Lodjur.Deployment
 import           Lodjur.Output.OutputLogger (OutputLogger,
                                              logCreateProcessWithExitCode)
 import           Lodjur.Process
@@ -26,11 +25,10 @@ gitCmd args gitWorkingDir = do
     ExitSuccess      -> return out
     ExitFailure code -> throwIO (GitFailed out err code)
 
-gitCmdLogged :: Ref OutputLogger -> JobId -> [String] -> FilePath -> IO String
-gitCmdLogged outputLogger jobid args gitWorkingDir = do
+gitCmdLogged :: Ref OutputLogger -> [String] -> FilePath -> IO String
+gitCmdLogged outputLogger args gitWorkingDir = do
   exitcode <- logCreateProcessWithExitCode
     outputLogger
-    jobid
     ((proc "git" args) { cwd = Just gitWorkingDir })
   case exitcode of
     ExitSuccess      -> return ""

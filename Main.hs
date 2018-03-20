@@ -3,21 +3,21 @@
 
 module Main where
 
-import           Data.ByteString            (ByteString)
-import qualified Data.HashSet               as HashSet
-import           Data.Semigroup             ((<>))
+import           Data.ByteString             (ByteString)
+import qualified Data.HashSet                as HashSet
+import           Data.Semigroup              ((<>))
 import           Data.Text                  (Text)
 import           Data.Word
 import           Database.PostgreSQL.Simple
 import           Options.Applicative
 
-import qualified Lodjur.Database            as Database
+import qualified Lodjur.Database             as Database
 import           Lodjur.Deployment
-import qualified Lodjur.Deployment.Deployer as Deployer
-import qualified Lodjur.Events.EventLogger  as EventLogger
-import qualified Lodjur.Git.GitAgent        as GitAgent
-import qualified Lodjur.Git.GitReader       as GitReader
-import qualified Lodjur.Output.OutputLogger as OutputLogger
+import qualified Lodjur.Deployment.Deployer  as Deployer
+import qualified Lodjur.Events.EventLogger   as EventLogger
+import qualified Lodjur.Git.GitAgent         as GitAgent
+import qualified Lodjur.Git.GitReader        as GitReader
+import qualified Lodjur.Output.OutputLoggers as OutputLoggers
 import           Lodjur.Process
 import           Lodjur.Web
 
@@ -30,34 +30,44 @@ main = startServices =<< execParser opts
       "Mpowered's Nixops Deployment Frontend"
     )
 
-  stripes = 4
-  ttl = 5
+  stripes        = 4
+  ttl            = 5
   connsPerStripe = 4
 
   startServices Options {..} = do
     let deploymentNames = HashSet.fromList nixopsDeployments
-    pool <- Database.newPool ConnectInfo
-      { connectHost     = databaseHost
-      , connectPort     = databasePort
-      , connectDatabase = databaseName
-      , connectUser     = databaseUser
-      , connectPassword = databasePassword
-      }
+    pool <- Database.newPool
+      ConnectInfo
+        { connectHost     = databaseHost
+        , connectPort     = databasePort
+        , connectDatabase = databaseName
+        , connectUser     = databaseUser
+        , connectPassword = databasePassword
+        }
       stripes
       ttl
       connsPerStripe
 
-    eventLogger  <- spawn =<< EventLogger.initialize pool
-    outputLogger <- spawn =<< OutputLogger.initialize pool
-    gitAgent     <- spawn =<< GitAgent.initialize gitWorkingDir
-    gitReader    <- spawn =<< GitReader.initialize gitWorkingDir
-    deployer     <- spawn
+    eventLogger   <- spawn =<< EventLogger.initialize pool
+    outputLoggers <- spawn =<< OutputLoggers.initialize pool
+    gitAgent      <- spawn =<< GitAgent.initialize gitWorkingDir
+    gitReader     <- spawn =<< GitReader.initialize gitWorkingDir
+    deployer      <-
+      spawn
         =<< Deployer.initialize eventLogger
-                                outputLogger
+                                outputLoggers
                                 gitAgent
                                 deploymentNames
                                 pool
-    runServer port (authUser, authPassword) deployer eventLogger outputLogger gitAgent gitReader githubSecretToken githubRepos
+    runServer port
+              (authUser, authPassword)
+              deployer
+              eventLogger
+              outputLoggers
+              gitAgent
+              gitReader
+              githubSecretToken
+              githubRepos
 
 data Options = Options
   { gitWorkingDir     :: FilePath
@@ -81,11 +91,12 @@ lodjur =
           ( long "git-working-dir" <> metavar "PATH" <> short 'g' <> help
             "Path to Git directory containing deployment expressions"
           )
-    <*> many (strOption
-          ( long "deployment" <> metavar "NAME" <> short 'd' <> help
-            "Names of nixops deployments to support"
+    <*> many
+          ( strOption
+            ( long "deployment" <> metavar "NAME" <> short 'd' <> help
+              "Names of nixops deployments to support"
+            )
           )
-        )
     <*> option
           auto
           (  long "port"
@@ -156,10 +167,11 @@ lodjur =
           <> help "Shared secret for Github webhooks to validate signatures"
           <> value ""
           )
-    <*> many (strOption
-          (  long "github-repo"
-          <> metavar "FULL-REPO-NAME"
-          <> short 'r'
-          <> help "Github repository name to allow webhooks for"
+    <*> many
+          ( strOption
+            (  long "github-repo"
+            <> metavar "FULL-REPO-NAME"
+            <> short 'r'
+            <> help "Github repository name to allow webhooks for"
+            )
           )
-        )

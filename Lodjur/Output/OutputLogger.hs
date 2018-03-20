@@ -1,5 +1,6 @@
-{-# LANGUAGE GADTs        #-}
-{-# LANGUAGE TypeFamilies #-}
+{-# LANGUAGE GADTs           #-}
+{-# LANGUAGE RecordWildCards #-}
+{-# LANGUAGE TypeFamilies    #-}
 module Lodjur.Output.OutputLogger
   ( Output (..)
   , OutputLogs
@@ -19,50 +20,48 @@ import           System.IO.Error        (isEOFError)
 import           System.Process
 
 import           Lodjur.Database        (DbPool)
-import           Lodjur.Deployment
+import           Lodjur.Deployment hiding (jobId)
 import           Lodjur.Output
 import qualified Lodjur.Output.Database as Database
 import           Lodjur.Process
 
-newtype OutputLogger = OutputLogger DbPool
+data OutputLogger = OutputLogger { dbPool :: DbPool , jobId :: JobId }
 
-initialize :: DbPool -> IO OutputLogger
-initialize pool = do
-  Database.initialize pool
-  return (OutputLogger pool)
+initialize :: DbPool -> JobId -> IO OutputLogger
+initialize dbPool jobId = return OutputLogger {..}
 
 data OutputLogMessage r where
   -- Public messages:
-  AppendOutput :: JobId -> [String] -> OutputLogMessage Async
+  AppendOutput :: [String] -> OutputLogMessage Async
   GetOutputLogs :: OutputLogMessage (Sync OutputLogs)
 
 instance Process OutputLogger where
   type Message OutputLogger = OutputLogMessage
 
-  receive _self (a@(OutputLogger pool), AppendOutput jobid lines') = do
+  receive _self (logger, AppendOutput lines') = do
     now <- getCurrentTime
-    Database.appendOutput pool jobid (Output now lines')
-    return a
+    Database.appendOutput (dbPool logger) (jobId logger) (Output now lines')
+    return logger
 
-  receive _self (a@(OutputLogger pool), GetOutputLogs) = do
-    logs <- Database.getAllOutputLogs pool
-    return (a, logs)
+  receive _self (logger, GetOutputLogs) = do
+    logs <- Database.getAllOutputLogs (dbPool logger)
+    return (logger, logs)
 
   terminate _ = return ()
 
 logCreateProcessWithExitCode
-  :: Ref OutputLogger -> JobId -> CreateProcess -> IO ExitCode
-logCreateProcessWithExitCode outputLogger jobid cp = do
+  :: Ref OutputLogger -> CreateProcess -> IO ExitCode
+logCreateProcessWithExitCode outputLogger cp = do
   let cp_opts =
         cp { std_in = NoStream, std_out = CreatePipe, std_err = CreatePipe }
 
   (_, Just hout, Just herr, ph) <- createProcess cp_opts
-  void $ logStream outputLogger jobid hout
-  void $ logStream outputLogger jobid herr
+  void $ logStream outputLogger hout
+  void $ logStream outputLogger herr
   waitForProcess ph
 
-logStream :: Ref OutputLogger -> JobId -> Handle -> IO ThreadId
-logStream logger jobid h = forkIO go
+logStream :: Ref OutputLogger -> Handle -> IO ThreadId
+logStream logger h = forkIO go
  where
   go = do
     next <- tryJust (\e -> if isEOFError e then Just () else Nothing)
@@ -70,5 +69,5 @@ logStream logger jobid h = forkIO go
     case next of
       Left  _    -> return ()
       Right line -> do
-        logger ! AppendOutput jobid [line]
+        logger ! AppendOutput [line]
         go

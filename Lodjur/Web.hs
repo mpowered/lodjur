@@ -41,12 +41,13 @@ import           Lodjur.Events.EventLogger
 import           Lodjur.Git.GitAgent
 import           Lodjur.Git.GitReader
 import           Lodjur.Output.OutputLogger
+import           Lodjur.Output.OutputLoggers
 import           Lodjur.Process
 
 data Env = Env
   { envDeployer             :: Ref Deployer
   , envEventLogger          :: Ref EventLogger
-  , envOutputLogger         :: Ref OutputLogger
+  , envOutputLoggers        :: Ref OutputLoggers
   , envGitAgent             :: Ref GitAgent
   , envGitReader            :: Ref GitReader
   , envGithubRepos          :: [Text]
@@ -274,15 +275,24 @@ newDeployAction = readState >>= \case
   Deploying job ->
     badRequestAction $ "Already deploying " <> jobLink job <> "."
 
+getJobLogs :: JobId -> Action (Maybe [Output])
+getJobLogs jobId = do
+  outputLoggers <- lift (asks envOutputLoggers)
+  liftIO $ do
+    logger <- outputLoggers ? SpawnOutputLogger jobId
+    logs <- logger ? GetOutputLogs
+    kill logger
+    return (HashMap.lookup jobId logs)
+
 showJobAction :: Action ()
 showJobAction = do
-  jobId        <- param "job-id"
-  eventLogger  <- lift (asks envEventLogger)
-  outputLogger <- lift (asks envOutputLogger)
-  eventLogs    <- liftIO $ eventLogger ? GetEventLogs
-  outputLog    <- liftIO $ HashMap.lookup jobId <$> outputLogger ? GetOutputLogs
+  jobId         <- param "job-id"
+  eventLogger   <- lift (asks envEventLogger)
+  eventLogs     <- liftIO $ eventLogger ? GetEventLogs
+  outputLog     <- getJobLogs jobId
   case HashMap.lookup jobId eventLogs of
-    Just eventLog -> renderLayout "Job Details" ["Jobs", jobIdLink jobId] $ do
+    Just eventLog ->
+      renderLayout "Job Details" ["Jobs", jobIdLink jobId] $ do
       div_ [class_ "row mt-5"] $ div_ [class_ "col"] $ do
         h2_ [class_ "mb-3"] "Event Log"
         renderEventLog eventLog
@@ -421,13 +431,13 @@ runServer
   -> (ByteString, ByteString)
   -> Ref Deployer
   -> Ref EventLogger
-  -> Ref OutputLogger
+  -> Ref OutputLoggers
   -> Ref GitAgent
   -> Ref GitReader
   -> ByteString
   -> [Text]
   -> IO ()
-runServer port authCreds envDeployer envEventLogger envOutputLogger envGitAgent envGitReader envGithubSecretToken envGithubRepos =
+runServer port authCreds envDeployer envEventLogger envOutputLoggers envGitAgent envGitReader envGithubSecretToken envGithubRepos =
   scottyT port (`runReaderT` Env {..}) $ do
     middleware (basicAuth (checkCredentials authCreds) authSettings)
     get  "/"             homeAction

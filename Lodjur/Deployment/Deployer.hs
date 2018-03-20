@@ -19,27 +19,29 @@ module Lodjur.Deployment.Deployer
   ) where
 
 import           Control.Concurrent
-import           Control.Exception          (Exception, SomeException, throwIO)
-import           Control.Monad              (void)
-import           Data.HashSet               (HashSet)
-import qualified Data.HashSet               as HashSet
+import           Control.Exception           (Exception, SomeException, throwIO)
+import           Control.Monad               (void)
+import           Data.HashSet                (HashSet)
+import qualified Data.HashSet                as HashSet
 import           Data.Semigroup
-import qualified Data.Text                  as Text
+import qualified Data.Text                   as Text
 import           Data.Time.Clock
-import qualified Data.UUID                  as UUID
-import qualified Data.UUID.V4               as UUID
+import qualified Data.UUID                   as UUID
+import qualified Data.UUID.V4                as UUID
 import           System.Exit
 import           System.Process
 
-import           Lodjur.Database            (DbPool)
+import           Lodjur.Database             (DbPool)
 import           Lodjur.Deployment
-import qualified Lodjur.Deployment.Database as Database
-import           Lodjur.Events.EventLogger  (EventLogMessage (..), EventLogger,
-                                             JobEvent (..))
+import qualified Lodjur.Deployment.Database  as Database
+import           Lodjur.Events.EventLogger   (EventLogMessage (..), EventLogger,
+                                              JobEvent (..))
 import           Lodjur.Git
-import           Lodjur.Git.GitAgent        (GitAgent, GitAgentMessage (..))
-import           Lodjur.Output.OutputLogger (OutputLogger,
-                                             logCreateProcessWithExitCode)
+import           Lodjur.Git.GitAgent         (GitAgent, GitAgentMessage (..))
+import           Lodjur.Output.OutputLogger  (OutputLogger,
+                                              logCreateProcessWithExitCode)
+import           Lodjur.Output.OutputLoggers (OutputLoggers)
+import qualified Lodjur.Output.OutputLoggers as OutputLoggers
 import           Lodjur.Process
 
 data DeployState
@@ -52,7 +54,7 @@ type DeploymentJobs = [(DeploymentJob, Maybe JobResult)]
 data Deployer = Deployer
   { state           :: DeployState
   , eventLogger     :: Ref EventLogger
-  , outputLogger    :: Ref OutputLogger
+  , outputLoggers   :: Ref OutputLoggers
   , gitAgent        :: Ref GitAgent
   , deploymentNames :: HashSet DeploymentName
   , pool            :: DbPool
@@ -69,12 +71,12 @@ data DeployMessage r where
 
 initialize
   :: Ref EventLogger
-  -> Ref OutputLogger
+  -> Ref OutputLoggers
   -> Ref GitAgent
   -> HashSet DeploymentName
   -> DbPool
   -> IO Deployer
-initialize eventLogger outputLogger gitAgent deploymentNames pool = do
+initialize eventLogger outputLoggers gitAgent deploymentNames pool = do
   Database.initialize pool
   return Deployer {state = Idle, ..}
 
@@ -88,11 +90,9 @@ data NixopsFailed = NixopsFailed String String Int
 
 instance Exception NixopsFailed
 
-nixopsCmdLogged :: Ref OutputLogger -> JobId -> [String] -> IO String
-nixopsCmdLogged outputLogger jobid args = do
-  exitcode <- logCreateProcessWithExitCode outputLogger
-                                           jobid
-                                           (proc "nixops" args)
+nixopsCmdLogged :: Ref OutputLogger -> [String] -> IO String
+nixopsCmdLogged outputLogger args = do
+  exitcode <- logCreateProcessWithExitCode outputLogger (proc "nixops" args)
   case exitcode of
     ExitSuccess      -> return ""
     ExitFailure code -> throwIO (NixopsFailed "" "" code)
@@ -106,9 +106,8 @@ deploy
 deploy eventLogger outputLogger gitAgent job = do
   started <- getCurrentTime
   eventLogger ! AppendEvent (jobId job) (JobRunning started)
-  _ <- gitAgent ? Checkout (deploymentTag job) outputLogger (jobId job)
+  _ <- gitAgent ? Checkout (deploymentTag job) outputLogger
   _ <- nixopsCmdLogged outputLogger
-                       (jobId job)
                        ["deploy", "-d", unDeploymentName (deploymentName job)]
   return JobSuccessful
 
@@ -134,7 +133,8 @@ instance Process Deployer where
         | HashSet.member deploymentName deploymentNames -> do
           jobId <- UUID.toText <$> UUID.nextRandom
           let job = DeploymentJob {..}
-          void (forkFinally (deploy eventLogger outputLogger gitAgent job) (notifyDeployFinished self eventLogger job))
+          logger <- outputLoggers ? OutputLoggers.SpawnOutputLogger jobId
+          void (forkFinally (deploy eventLogger logger gitAgent job) (notifyDeployFinished self eventLogger job))
           Database.insertJob pool job Nothing
           return ( a { state = Deploying job } , Just job)
         -- We can't deploy to an unknown deployment.

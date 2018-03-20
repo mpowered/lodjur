@@ -21,6 +21,7 @@ executable          lodjur
                   , Lodjur.Output
                   , Lodjur.Output.Database
                   , Lodjur.Output.OutputLogger
+                  , Lodjur.Output.OutputLoggers
                   , Lodjur.Process
                   , Lodjur.Web
     build-depends:  base   >= 4      && < 5

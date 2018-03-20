@@ -9,7 +9,6 @@ module Lodjur.Git.GitAgent
 import           Control.Monad
 import qualified Data.Text                  as Text
 
-import           Lodjur.Deployment
 import           Lodjur.Git
 import           Lodjur.Git.Command
 import           Lodjur.Output.OutputLogger (OutputLogger)
@@ -24,7 +23,7 @@ initialize repoPath =
 data GitAgentMessage r where
   -- Public messages:
   FetchTags :: GitAgentMessage Async
-  Checkout :: Tag -> Ref OutputLogger -> JobId -> GitAgentMessage (Sync ())
+  Checkout :: Tag -> Ref OutputLogger -> GitAgentMessage (Sync ())
 
 instance Process GitAgent where
   type Message GitAgent = GitAgentMessage
@@ -33,8 +32,8 @@ instance Process GitAgent where
     gitFetchTags repoPath
     return a
 
-  receive _self (a@(GitAgent repoPath), Checkout tag outputLogger jobid) = do
-    gitCheckout outputLogger jobid repoPath tag
+  receive _self (a@(GitAgent repoPath), Checkout tag outputLogger) = do
+    gitCheckout outputLogger repoPath tag
     return (a, ())
 
   terminate _ = return ()
@@ -42,11 +41,10 @@ instance Process GitAgent where
 gitFetchTags :: FilePath -> IO ()
 gitFetchTags = void . gitCmd ["fetch", "--tags", "--prune", "origin", "tag", "*"]
 
-gitCheckout :: Ref OutputLogger -> JobId -> FilePath -> Tag -> IO ()
-gitCheckout outputLogger jobid workingDir tag =
+gitCheckout :: Ref OutputLogger -> FilePath -> Tag -> IO ()
+gitCheckout outputLogger workingDir tag =
   void $ gitCmdLogged
     outputLogger
-    jobid
     [ "checkout"
     , Text.unpack (unTag tag)
     , "--recurse-submodules"
