@@ -56,7 +56,7 @@ updateJobResult pool jobId = \case
   (JobFailed errMsg) -> withConn pool $ \conn -> void $ execute
     conn
     "UPDATE deployment_job SET result = ?, error_message = ? WHERE id = ?"
-    ("successful" :: Text, errMsg, jobId)
+    ("failed" :: Text, errMsg, jobId)
 
 getAllJobs :: DbPool -> IO [(DeploymentJob, Maybe JobResult)]
 getAllJobs pool = withConn pool $ \conn -> mapM parseJob =<< query_
