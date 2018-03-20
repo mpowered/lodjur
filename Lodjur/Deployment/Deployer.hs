@@ -39,6 +39,7 @@ import           Lodjur.Events.EventLogger   (EventLogMessage (..), EventLogger,
 import           Lodjur.Git
 import           Lodjur.Git.GitAgent         (GitAgent, GitAgentMessage (..))
 import           Lodjur.Output.OutputLogger  (OutputLogger,
+                                              OutputLogMessage (..),
                                               logCreateProcessWithExitCode)
 import           Lodjur.Output.OutputLoggers (OutputLoggers)
 import qualified Lodjur.Output.OutputLoggers as OutputLoggers
@@ -122,6 +123,7 @@ notifyDeployFinished self eventLogger logger job r = do
   finished <- getCurrentTime
   let result = either (JobFailed . Text.pack . show) id r
   eventLogger ! AppendEvent (jobId job) (JobFinished result finished)
+  logger ! Fence
   kill logger
   self ! FinishJob job result
 

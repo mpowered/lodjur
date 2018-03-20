@@ -20,7 +20,7 @@ import           System.IO.Error        (isEOFError)
 import           System.Process
 
 import           Lodjur.Database        (DbPool)
-import           Lodjur.Deployment hiding (jobId)
+import           Lodjur.Deployment      hiding (jobId)
 import           Lodjur.Output
 import qualified Lodjur.Output.Database as Database
 import           Lodjur.Process
@@ -33,6 +33,7 @@ initialize dbPool jobId = return OutputLogger {..}
 data OutputLogMessage r where
   -- Public messages:
   AppendOutput :: [String] -> OutputLogMessage Async
+  Fence :: OutputLogMessage Async
   GetOutputLogs :: OutputLogMessage (Sync OutputLogs)
 
 instance Process OutputLogger where
@@ -41,6 +42,10 @@ instance Process OutputLogger where
   receive _self (logger, AppendOutput lines') = do
     now <- getCurrentTime
     Database.appendOutput (dbPool logger) (jobId logger) (Output now lines')
+    return logger
+
+  receive _self (logger, Fence) = do
+    Database.fence (dbPool logger) (jobId logger)
     return logger
 
   receive _self (logger, GetOutputLogs) = do

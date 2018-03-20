@@ -4,6 +4,7 @@ module Lodjur.Output.Database where
 
 import           Control.Monad              (void)
 import qualified Data.HashMap.Strict        as HashMap
+import           Data.Semigroup
 import           Database.PostgreSQL.Simple
 
 import           Lodjur.Database
@@ -16,10 +17,19 @@ initialize pool = withConn pool $ \conn ->
     "CREATE TABLE IF NOT EXISTS output_log (time TIMESTAMPTZ NOT NULL, job_id TEXT NOT NULL, output TEXT NOT NULL)"
 
 appendOutput :: DbPool -> JobId -> Output -> IO ()
-appendOutput pool jobid output = withConn pool $ \conn -> void $ execute
-  conn
-  "INSERT INTO output_log (time, job_id, output) VALUES (?, ?, ?)"
-  (outputTime output, jobid, unlines (outputLines output))
+appendOutput pool jobid output = withConn pool $ \conn -> do
+  void $ execute conn
+    "INSERT INTO output_log (time, job_id, output) VALUES (?, ?, ?)"
+    (outputTime output, jobid, unlines (outputLines output))
+  void $ execute conn
+    "NOTIFY output_log, ?"
+    (Only $ "APPEND " <> jobid)
+
+fence :: DbPool -> JobId -> IO ()
+fence pool jobid = withConn pool $ \conn ->
+  void $ execute conn
+    "NOTIFY output_log, ?"
+    (Only $ "FENCE " <> jobid)
 
 getAllOutputLogs :: DbPool -> IO OutputLogs
 getAllOutputLogs pool = withConn pool $ \conn -> mkOutput <$> query_
