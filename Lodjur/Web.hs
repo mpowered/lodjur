@@ -76,7 +76,8 @@ renderLayout title breadcrumbs contents =
     head_ $ do
       title_ title
       link_ [rel_ "stylesheet", href_ "/bootstrap/css/bootstrap.min.css"]
-      link_ [rel_ "stylesheet", href_ "/style.css"]
+      link_ [rel_ "stylesheet", href_ "/lodjur.css"]
+      Html.termRawWith "script" [src_ "/job.js", Html.makeAttribute "defer" "defer"] mempty
     body_ $ do
       nav_ [class_ "navbar navbar-dark bg-dark"] $
         div_ [class_ "container"] $
@@ -291,16 +292,16 @@ showJobAction = do
   case HashMap.lookup jobId eventLogs of
     Just eventLog ->
       renderLayout "Job Details" ["Jobs", jobIdLink jobId] $ do
-      div_ [class_ "row mt-5"] $ div_ [class_ "col"] $ do
-        h2_ [class_ "mb-3"] "Event Log"
-        renderEventLog eventLog
-      div_ [class_ "row mt-2"] $ div_ [class_ "col"] $ do
-        h2_ [class_ "mb-3"] "Command Output"
-        div_ [class_ "command-output"] $ pre_ $
-          case outputLog of
-            Just outputs
-              | not (null outputs) -> foldM_ displayOutput Nothing outputs
-            _ -> span_ [class_ "text-muted"] "No output available."
+        div_ [class_ "row mt-5"] $ div_ [class_ "col"] $ do
+          h2_ [class_ "mb-3"] "Event Log"
+          renderEventLog eventLog
+        div_ [class_ "row mt-2"] $ div_ [class_ "col"] $ do
+          h2_ [class_ "mb-3"] "Command Output"
+          div_ [class_ "command-output", data_ "job-id" jobId] $ pre_ $
+            case outputLog of
+              Just outputs
+                | not (null outputs) -> foldM_ displayOutput Nothing outputs
+              _ -> span_ [class_ "text-muted"] "No output available."
     Nothing -> notFoundAction
  where
   displayOutput :: Maybe UTCTime -> Output -> Html (Maybe UTCTime)
