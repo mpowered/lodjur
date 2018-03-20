@@ -4,10 +4,11 @@ let
 
   inherit (nixpkgs) pkgs;
 
-  f = { mkDerivation, aeson, base, base16-bytestring, bytestring
-      , cryptonite, hashable, http-types, lucid, monad-control, mtl
-      , optparse-applicative, postgresql-simple, process, resource-pool
-      , scotty, stdenv, text, time, unordered-containers, uuid
+  f = { mkDerivation, aeson, base, base16-bytestring, binary
+      , BoundedChan, bytestring, cryptonite, hashable, http-types, lucid
+      , monad-control, mtl, optparse-applicative, postgresql-simple
+      , process, resource-pool, scotty, stdenv, text, time
+      , unordered-containers, uuid, wai, wai-extra, wai-middleware-static
       }:
       mkDerivation {
         pname = "lodjur";
@@ -16,10 +17,11 @@ let
         isLibrary = false;
         isExecutable = true;
         executableHaskellDepends = [
-          aeson base base16-bytestring bytestring cryptonite hashable
-          http-types lucid monad-control mtl optparse-applicative
-          postgresql-simple process resource-pool scotty text time
-          unordered-containers uuid
+          aeson base base16-bytestring binary BoundedChan bytestring
+          cryptonite hashable http-types lucid monad-control mtl
+          optparse-applicative postgresql-simple process resource-pool scotty
+          text time unordered-containers uuid wai wai-extra
+          wai-middleware-static
         ];
         license = stdenv.lib.licenses.unfree;
       };
