@@ -10,7 +10,7 @@ function subscribeToOutput(outputContainer) {
       stream.addEventListener('output', function (e) {
         try {
           var event = JSON.parse(e.data);
-          console.log('Got stuff sent at', event.testDate);
+          console.log('Got stuff sent at', event.outputEventTime, 'with lines:\n', event.outputEventLines);
           //var line = document.createElement('div');
         } catch (e) {
           console.error(e);

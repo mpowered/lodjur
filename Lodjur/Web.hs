@@ -323,7 +323,10 @@ showJobAction = do
   toSeconds :: UTCTime -> Integer
   toSeconds = round . utcTimeToPOSIXSeconds
 
-data OutputEvent = OutputLineEvent { testDate :: UTCTime } deriving (Generic, ToJSON)
+data OutputEvent = OutputLineEvent
+  { outputEventTime :: UTCTime
+  , outputEventLines :: [String]
+  } deriving (Generic, ToJSON)
 
 streamOutputAction :: Action ()
 streamOutputAction = do
@@ -340,11 +343,14 @@ streamOutputAction = do
       notFoundAction
 
  where
-   streamLog logger _log send flush = do
-     now <- getCurrentTime
-     void . send $ Binary.fromByteString "event: output\n"
-     void . send $ Binary.fromLazyByteString ("data: " <> encode OutputLineEvent { testDate = now } <> "\n")
-     void . send $ Binary.fromByteString "\n"
+   streamLog logger log send flush = do
+     forM_ log $ \output -> do
+       void . send $ Binary.fromByteString "event: output\n"
+       let event = OutputLineEvent { outputEventTime = outputTime output
+                                   , outputEventLines = outputLines output
+                                   }
+       void . send $ Binary.fromLazyByteString ("data: " <> encode event <> "\n")
+       void . send $ Binary.fromByteString "\n"
      void flush
      kill logger
 
