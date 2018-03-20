@@ -56,12 +56,14 @@ main = startServices =<< execParser opts
                                 gitAgent
                                 deploymentNames
                                 pool
-    runServer port deployer eventLogger outputLogger gitAgent gitReader githubSecretToken
+    runServer port (authUser, authPassword) deployer eventLogger outputLogger gitAgent gitReader githubSecretToken
 
 data Options = Options
   { gitWorkingDir     :: FilePath
   , nixopsDeployments :: [DeploymentName]
   , port              :: Port
+  , authUser          :: ByteString
+  , authPassword      :: ByteString
   , databaseHost      :: String
   , databasePort      :: Word16
   , databaseName      :: String
@@ -91,6 +93,20 @@ lodjur =
           <> help "Port to run the web server on"
           <> showDefault
           <> value 4000
+          )
+    <*> strOption
+          (  long "auth-user"
+          <> metavar "USERNAME"
+          <> help "Basic authentication user name"
+          <> showDefault
+          <> value ""
+          )
+    <*> strOption
+          (  long "auth-password"
+          <> metavar "PASSWORD"
+          <> help "Basic authentication password"
+          <> showDefault
+          <> value ""
           )
     <*> strOption
           (  long "database-host"

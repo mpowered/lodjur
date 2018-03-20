@@ -42,3 +42,5 @@ executable          lodjur
                   , time
                   , unordered-containers
                   , uuid
+                  , wai
+                  , wai-extra

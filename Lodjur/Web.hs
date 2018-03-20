@@ -32,6 +32,8 @@ import           Lucid.Bootstrap
 import           Lucid.Html5
 import           Network.HTTP.Types.Status
 import           Web.Scotty.Trans
+import Network.Wai (rawPathInfo)
+import Network.Wai.Middleware.HttpAuth (basicAuth, AuthSettings (..), CheckCreds)
 
 import           Lodjur.Deployment.Deployer
 import           Lodjur.Events.EventLogger
@@ -355,8 +357,19 @@ refreshTagsAction = do
 
 type Port = Int
 
+authSettings :: AuthSettings
+authSettings = "Lodjur" { authIsProtected = isProtected }
+  where
+    isProtected req = return (rawPathInfo req `notElem` unauthorizedRoutes)
+    unauthorizedRoutes = ["/tags/refresh"]
+
+checkCredentials :: (ByteString, ByteString) -> CheckCreds
+checkCredentials (cUser, cPass) user pass =
+  return (user == cUser && pass == cPass)
+
 runServer
   :: Port
+  -> (ByteString, ByteString)
   -> Ref Deployer
   -> Ref EventLogger
   -> Ref OutputLogger
@@ -364,8 +377,9 @@ runServer
   -> Ref GitReader
   -> ByteString
   -> IO ()
-runServer port envDeployer envEventLogger envOutputLogger envGitAgent envGitReader envGithubSecretToken =
+runServer port authCreds envDeployer envEventLogger envOutputLogger envGitAgent envGitReader envGithubSecretToken =
   scottyT port (`runReaderT` Env {..}) $ do
+    middleware (basicAuth (checkCredentials authCreds) authSettings)
     get  "/"             homeAction
     post "/jobs"         newDeployAction
     get  "/jobs/:job-id" showJobAction
