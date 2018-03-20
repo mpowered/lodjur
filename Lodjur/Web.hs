@@ -1,3 +1,5 @@
+{-# LANGUAGE DeriveAnyClass    #-}
+{-# LANGUAGE DeriveGeneric     #-}
 {-# LANGUAGE FlexibleContexts  #-}
 {-# LANGUAGE LambdaCase        #-}
 {-# LANGUAGE OverloadedStrings #-}
@@ -13,6 +15,7 @@ import           Crypto.Hash
 import           Crypto.MAC.HMAC
 import           Data.Aeson
 import           Data.Aeson.Types
+import qualified Data.Binary.Builder             as Binary
 import           Data.ByteString                 (ByteString)
 import qualified Data.ByteString.Base16          as Base16
 import qualified Data.ByteString.Lazy            as LByteString
@@ -27,6 +30,7 @@ import qualified Data.Text.Lazy                  as LText
 import           Data.Time.Clock                 (UTCTime, getCurrentTime)
 import           Data.Time.Clock.POSIX
 import           Data.Time.Format                (defaultTimeLocale, formatTime)
+import           GHC.Generics                    (Generic)
 import           Lucid.Base                      (Html, toHtml)
 import qualified Lucid.Base                      as Html
 import           Lucid.Bootstrap
@@ -76,7 +80,8 @@ renderLayout title breadcrumbs contents =
     head_ $ do
       title_ title
       link_ [rel_ "stylesheet", href_ "/bootstrap/css/bootstrap.min.css"]
-      link_ [rel_ "stylesheet", href_ "/style.css"]
+      link_ [rel_ "stylesheet", href_ "/lodjur.css"]
+      Html.termRawWith "script" [src_ "/job.js", Html.makeAttribute "defer" "defer"] mempty
     body_ $ do
       nav_ [class_ "navbar navbar-dark bg-dark"] $
         div_ [class_ "container"] $
@@ -291,16 +296,16 @@ showJobAction = do
   case HashMap.lookup jobId eventLogs of
     Just eventLog ->
       renderLayout "Job Details" ["Jobs", jobIdLink jobId] $ do
-      div_ [class_ "row mt-5"] $ div_ [class_ "col"] $ do
-        h2_ [class_ "mb-3"] "Event Log"
-        renderEventLog eventLog
-      div_ [class_ "row mt-2"] $ div_ [class_ "col"] $ do
-        h2_ [class_ "mb-3"] "Command Output"
-        div_ [class_ "command-output"] $ pre_ $
-          case outputLog of
-            Just outputs
-              | not (null outputs) -> foldM_ displayOutput Nothing outputs
-            _ -> span_ [class_ "text-muted"] "No output available."
+        div_ [class_ "row mt-5"] $ div_ [class_ "col"] $ do
+          h2_ [class_ "mb-3"] "Event Log"
+          renderEventLog eventLog
+        div_ [class_ "row mt-2"] $ div_ [class_ "col"] $ do
+          h2_ [class_ "mb-3"] "Command Output"
+          div_ [class_ "command-output", data_ "job-id" jobId] $ pre_ $
+            case outputLog of
+              Just outputs
+                | not (null outputs) -> foldM_ displayOutput Nothing outputs
+              _ -> span_ [class_ "text-muted"] "No output available."
     Nothing -> notFoundAction
  where
   displayOutput :: Maybe UTCTime -> Output -> Html (Maybe UTCTime)
@@ -317,6 +322,37 @@ showJobAction = do
   sameSecond t1 t2 = toSeconds t1 == toSeconds t2
   toSeconds :: UTCTime -> Integer
   toSeconds = round . utcTimeToPOSIXSeconds
+
+data OutputEvent = OutputLineEvent
+  { outputEventTime :: UTCTime
+  , outputEventLines :: [String]
+  } deriving (Generic, ToJSON)
+
+streamOutputAction :: Action ()
+streamOutputAction = do
+  jobId         <- param "job-id"
+  outputLoggers <- lift (asks envOutputLoggers)
+  logger <- liftIO (outputLoggers ? SpawnOutputLogger jobId)
+  mlog <- liftIO (logger ? GetOutputLogs)
+  case HashMap.lookup jobId mlog of
+    Just outputLog -> do
+      setHeader "Content-Type" "text/event-stream"
+      stream (streamLog logger outputLog)
+    Nothing -> do
+      liftIO (kill logger)
+      notFoundAction
+
+ where
+   streamLog logger log send flush = do
+     forM_ log $ \output -> do
+       void . send $ Binary.fromByteString "event: output\n"
+       let event = OutputLineEvent { outputEventTime = outputTime output
+                                   , outputEventLines = outputLines output
+                                   }
+       void . send $ Binary.fromLazyByteString ("data: " <> encode event <> "\n")
+       void . send $ Binary.fromByteString "\n"
+     void flush
+     kill logger
 
 data GithubRepository = GithubRepository
   { repositoryId       :: Integer
@@ -437,10 +473,14 @@ runServer
   -> IO ()
 runServer port authCreds envDeployer envEventLogger envOutputLoggers envGitAgent envGitReader envGithubSecretToken envGithubRepos =
   scottyT port (`runReaderT` Env {..}) $ do
+    -- Middleware
     middleware (basicAuth (checkCredentials authCreds) authSettings)
     middleware (staticPolicy (addBase "static"))
-    get  "/"             homeAction
-    post "/jobs"         newDeployAction
-    get  "/jobs/:job-id" showJobAction
-    post "/tags/refresh" refreshTagsAction
+    -- Routes
+    get  "/"                    homeAction
+    post "/jobs"                newDeployAction
+    get  "/jobs/:job-id"        showJobAction
+    get  "/jobs/:job-id/output" streamOutputAction
+    post "/tags/refresh"        refreshTagsAction
+    -- Fallback
     notFound notFoundAction

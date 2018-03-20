@@ -26,9 +26,10 @@ executable          lodjur
                   , Lodjur.Web
     build-depends:  base   >= 4      && < 5
                   , aeson
-                  , bytestring
                   , base16-bytestring
                   , BoundedChan >= 1.0.3 && < 1.1
+                  , binary
+                  , bytestring
                   , cryptonite
                   , hashable
                   , http-types
