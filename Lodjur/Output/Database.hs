@@ -2,9 +2,14 @@
 {-# LANGUAGE OverloadedStrings #-}
 module Lodjur.Output.Database where
 
-import           Control.Monad              (void)
+import           Control.Concurrent.BoundedChan
+import           Control.Monad              (void, unless, when)
 import qualified Data.HashMap.Strict        as HashMap
+import           Data.Maybe                 (isNothing)
+import qualified Data.Text.Encoding         as Text
+import           Data.Time.Clock
 import           Database.PostgreSQL.Simple
+import           Database.PostgreSQL.Simple.Notification
 
 import           Lodjur.Database
 import           Lodjur.Output
@@ -35,13 +40,63 @@ notify :: Connection -> JobId -> IO ()
 notify conn jobid =
   void $ execute conn "NOTIFY output_log, ?" (Only jobid)
 
-getOutputLog :: DbPool -> JobId -> IO [Output]
-getOutputLog pool jobid = withConn pool $ \conn -> mkOutput <$> query
-  conn
-  "SELECT time, output FROM output_log WHERE job_id = ? ORDER BY time ASC"
-  (Only jobid)
+listen :: Connection -> IO ()
+listen conn =
+  void $ execute_ conn "LISTEN output_log"
+
+unlisten :: Connection -> IO ()
+unlisten conn =
+  void $ execute_ conn "UNLISTEN output_log"
+
+waitJobNotification :: Connection -> JobId -> IO ()
+waitJobNotification conn jobid = do
+  n <- getNotification conn
+  unless (Text.encodeUtf8 jobid == notificationData n) $
+    waitJobNotification conn jobid
+
+getOutputLog :: DbPool -> Maybe UTCTime -> Maybe UTCTime -> JobId -> IO [Output]
+getOutputLog pool since before jobid = withConn pool $ \conn -> mkOutput <$>
+  case (since, before) of
+    (Just s, Just b) -> query conn
+                "SELECT time, output FROM output_log WHERE job_id = ? AND time > ? AND time <= ? ORDER BY time ASC"
+                (jobid, s, b)
+    (Just s, Nothing) -> query conn
+                "SELECT time, output FROM output_log WHERE job_id = ? AND time > ? ORDER BY time ASC"
+                (jobid, s)
+    (Nothing, Just b) -> query conn
+                "SELECT time, output FROM output_log WHERE job_id = ? AND time <= ? ORDER BY time ASC"
+                (jobid, b)
+    (Nothing, Nothing) -> query conn
+                "SELECT time, output FROM output_log WHERE job_id = ? ORDER BY time ASC"
+                (Only jobid)
  where
   mkOutput = map (\(time, output) -> Output time (lines output))
+
+streamOutputLog :: DbPool -> JobId -> Maybe UTCTime -> BoundedChan Output -> IO ()
+streamOutputLog pool jobid s chan = withConnNoTran pool $ \conn -> do
+  listen conn
+  go conn s Nothing
+  unlisten conn
+ where
+  go conn since til = do
+    til' <- maybe (nextFence conn) (return . Just) til
+    output <- getOutputLog pool since til' jobid
+    writeList2Chan chan output
+    when (isNothing til') $ do
+        waitJobNotification conn jobid
+        go conn (lastSeen since output) Nothing
+
+  lastSeen since [] = since
+  lastSeen _     os = Just $ outputTime $ last os
+
+  nextFence conn = do
+    rs <- query
+            conn
+            "SELECT min(time) FROM output_log_fence WHERE job_id = ? ORDER BY time ASC"
+            (Only jobid)
+    case rs of
+      [Only mt] -> return mt
+      _         -> return Nothing
 
 getAllOutputLogs :: DbPool -> IO OutputLogs
 getAllOutputLogs pool = withConn pool $ \conn -> mkOutput <$> query_

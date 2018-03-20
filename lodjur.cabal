@@ -28,6 +28,7 @@ executable          lodjur
                   , aeson
                   , bytestring
                   , base16-bytestring
+                  , BoundedChan >= 1.0.3 && < 1.1
                   , cryptonite
                   , hashable
                   , http-types

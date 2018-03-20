@@ -15,3 +15,6 @@ destroyPool = destroyAllResources
 
 withConn :: DbPool -> (Connection -> IO a) -> IO a
 withConn pool a = withResource pool $ \conn -> withTransaction conn $ a conn
+
+withConnNoTran :: DbPool -> (Connection -> IO a) -> IO a
+withConnNoTran = withResource
