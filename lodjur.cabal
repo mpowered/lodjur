@@ -45,3 +45,4 @@ executable          lodjur
                   , uuid
                   , wai
                   , wai-extra
+                  , wai-middleware-static

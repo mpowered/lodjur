@@ -35,6 +35,7 @@ import           Network.HTTP.Types.Status
 import           Network.Wai                     (rawPathInfo)
 import           Network.Wai.Middleware.HttpAuth (AuthSettings (..), CheckCreds,
                                                   basicAuth)
+import           Network.Wai.Middleware.Static   (addBase, staticPolicy)
 import           Web.Scotty.Trans
 
 import           Lodjur.Deployment.Deployer
@@ -74,20 +75,8 @@ renderLayout title breadcrumbs contents =
   renderHtml $ doctypehtml_ $ html_ $ do
     head_ $ do
       title_ title
-      link_
-        [ rel_ "stylesheet"
-        , href_
-          "https://maxcdn.bootstrapcdn.com/bootstrap/4.0.0/css/bootstrap.min.css"
-        ]
-      style_ " .breadcrumb-nav { background-color: #eee; } \
-             \ .breadcrumb { background-color: transparent; } \
-             \ .command-output { position: relative; } \
-             \ .command-output { overflow: auto; } \
-             \ .command-output .timestamp { position: absolute; display: inline-block; padding: 0 .25em; right: 0; background: #fff; z-index: 2; } \
-             \ .command-output .line { white-space: normal; } \
-             \ .command-output .line:hover { background: #eee; } \
-             \ .command-output .line:hover .timestamp { background: #eee; } \
-             \ "
+      link_ [rel_ "stylesheet", href_ "/bootstrap/css/bootstrap.min.css"]
+      link_ [rel_ "stylesheet", href_ "/style.css"]
     body_ $ do
       nav_ [class_ "navbar navbar-dark bg-dark"] $
         div_ [class_ "container"] $
@@ -449,6 +438,7 @@ runServer
 runServer port authCreds envDeployer envEventLogger envOutputLoggers envGitAgent envGitReader envGithubSecretToken envGithubRepos =
   scottyT port (`runReaderT` Env {..}) $ do
     middleware (basicAuth (checkCredentials authCreds) authSettings)
+    middleware (staticPolicy (addBase "static"))
     get  "/"             homeAction
     post "/jobs"         newDeployAction
     get  "/jobs/:job-id" showJobAction
