@@ -40,7 +40,7 @@ instance Process GitAgent where
   terminate _ = return ()
 
 gitFetchTags :: FilePath -> IO ()
-gitFetchTags = void . gitCmd ["fetch", "--tags", "--prune"]
+gitFetchTags = void . gitCmd ["fetch", "--tags", "--prune", "origin", "tag", "*"]
 
 gitCheckout :: Ref OutputLogger -> JobId -> FilePath -> Tag -> IO ()
 gitCheckout outputLogger jobid workingDir tag =
