@@ -1,3 +1,4 @@
+{-# LANGUAGE FlexibleContexts  #-}
 {-# LANGUAGE LambdaCase        #-}
 {-# LANGUAGE OverloadedStrings #-}
 {-# LANGUAGE RecordWildCards   #-}
@@ -335,6 +336,30 @@ instance FromJSON GithubPushEvent where
     return GithubPushEvent {..}
   parseJSON invalid = typeMismatch "GithubPushEvent" invalid
 
+data GithubCreateEvent = GithubCreateEvent
+  { createRef        :: Text
+  , createRepository :: GithubRepository
+  } deriving (Eq, Show)
+
+instance FromJSON GithubCreateEvent where
+  parseJSON (Object o) = do
+    createRef        <- o .: "ref"
+    createRepository <- o .: "repository"
+    return GithubCreateEvent {..}
+  parseJSON invalid = typeMismatch "GithubCreateEvent" invalid
+
+data GithubDeleteEvent = GithubDeleteEvent
+  { deleteRef        :: Text
+  , deleteRepository :: GithubRepository
+  } deriving (Eq, Show)
+
+instance FromJSON GithubDeleteEvent where
+  parseJSON (Object o) = do
+    deleteRef        <- o .: "ref"
+    deleteRepository <- o .: "repository"
+    return GithubDeleteEvent {..}
+  parseJSON invalid = typeMismatch "GithubDeleteEvent" invalid
+
 secureJsonData :: FromJSON a => Action a
 secureJsonData = do
   key <- lift (asks envGithubSecretToken)
@@ -355,15 +380,29 @@ matchRepo rs r = r `elem` rs
 
 refreshTagsAction :: Action ()
 refreshTagsAction = do
-  event <- secureJsonData
-  repos <- lift (asks envGithubRepos)
-  if matchRepo repos (repositoryFullName $ pushRepository event)
-    then do
-      gitAgent <- lift (asks envGitAgent)
-      liftIO (gitAgent ! FetchTags)
-      text "Queued FetchTags"
-    else
-      text "Ignored refresh request for uninteresting repository"
+  event <- header "X-GitHub-Event"
+  case event of
+    Just "push" -> do
+      payload <- secureJsonData
+      refresh (repositoryFullName $ pushRepository payload)
+    Just "create" -> do
+      payload <- secureJsonData
+      refresh (repositoryFullName $ createRepository payload)
+    Just "delete" -> do
+      payload <- secureJsonData
+      refresh (repositoryFullName $ deleteRepository payload)
+    _ ->
+      raise "Unsupported event"
+ where
+  refresh repo = do
+    repos <- lift (asks envGithubRepos)
+    if matchRepo repos repo
+      then do
+        gitAgent <- lift (asks envGitAgent)
+        liftIO (gitAgent ! FetchTags)
+        text "Queued FetchTags"
+      else
+        text "Ignored refresh request for uninteresting repository"
 
 type Port = Int
 
