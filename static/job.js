@@ -1,14 +1,24 @@
 function subscribeToOutput(outputContainer) {
-  var preElement = outputContainer.children.first;
-  var jobId = outputContainer.dataset.jobId;
+  try {
+    var preElement = outputContainer.children.first;
+    var jobId = outputContainer.dataset.jobId;
 
-  console.info('Starting streaming of deploy output for job:', jobId);
+    console.info('Starting streaming of deploy output for job:', jobId);
 
-  if (jobId) {
-    var stream = new EventSource('/todo');
-    stream.onmessage = function (e) {
-      //var line = document.createElement('div');
-    };
+    if (jobId) {
+      var stream = new EventSource('/jobs/' + jobId + '/output');
+      stream.addEventListener('output', function (e) {
+        try {
+          var event = JSON.parse(e.data);
+          console.log('Got stuff sent at', event.testDate);
+          //var line = document.createElement('div');
+        } catch (e) {
+          console.error(e);
+        }
+      });
+    }
+  } catch (e) {
+    console.error(e);
   }
 };
 

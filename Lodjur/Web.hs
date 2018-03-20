@@ -1,3 +1,5 @@
+{-# LANGUAGE DeriveAnyClass    #-}
+{-# LANGUAGE DeriveGeneric     #-}
 {-# LANGUAGE FlexibleContexts  #-}
 {-# LANGUAGE LambdaCase        #-}
 {-# LANGUAGE OverloadedStrings #-}
@@ -13,6 +15,7 @@ import           Crypto.Hash
 import           Crypto.MAC.HMAC
 import           Data.Aeson
 import           Data.Aeson.Types
+import qualified Data.Binary.Builder             as Binary
 import           Data.ByteString                 (ByteString)
 import qualified Data.ByteString.Base16          as Base16
 import qualified Data.ByteString.Lazy            as LByteString
@@ -27,6 +30,7 @@ import qualified Data.Text.Lazy                  as LText
 import           Data.Time.Clock                 (UTCTime, getCurrentTime)
 import           Data.Time.Clock.POSIX
 import           Data.Time.Format                (defaultTimeLocale, formatTime)
+import           GHC.Generics                    (Generic)
 import           Lucid.Base                      (Html, toHtml)
 import qualified Lucid.Base                      as Html
 import           Lucid.Bootstrap
@@ -319,6 +323,31 @@ showJobAction = do
   toSeconds :: UTCTime -> Integer
   toSeconds = round . utcTimeToPOSIXSeconds
 
+data OutputEvent = OutputLineEvent { testDate :: UTCTime } deriving (Generic, ToJSON)
+
+streamOutputAction :: Action ()
+streamOutputAction = do
+  jobId         <- param "job-id"
+  outputLoggers <- lift (asks envOutputLoggers)
+  logger <- liftIO (outputLoggers ? SpawnOutputLogger jobId)
+  mlog <- liftIO (logger ? GetOutputLogs)
+  case HashMap.lookup jobId mlog of
+    Just outputLog -> do
+      setHeader "Content-Type" "text/event-stream"
+      stream (streamLog logger outputLog)
+    Nothing -> do
+      liftIO (kill logger)
+      notFoundAction
+
+ where
+   streamLog logger _log send flush = do
+     now <- getCurrentTime
+     void . send $ Binary.fromByteString "event: output\n"
+     void . send $ Binary.fromLazyByteString ("data: " <> encode OutputLineEvent { testDate = now } <> "\n")
+     void . send $ Binary.fromByteString "\n"
+     void flush
+     kill logger
+
 data GithubRepository = GithubRepository
   { repositoryId       :: Integer
   , repositoryName     :: Text
@@ -438,10 +467,14 @@ runServer
   -> IO ()
 runServer port authCreds envDeployer envEventLogger envOutputLoggers envGitAgent envGitReader envGithubSecretToken envGithubRepos =
   scottyT port (`runReaderT` Env {..}) $ do
+    -- Middleware
     middleware (basicAuth (checkCredentials authCreds) authSettings)
     middleware (staticPolicy (addBase "static"))
-    get  "/"             homeAction
-    post "/jobs"         newDeployAction
-    get  "/jobs/:job-id" showJobAction
-    post "/tags/refresh" refreshTagsAction
+    -- Routes
+    get  "/"                    homeAction
+    post "/jobs"                newDeployAction
+    get  "/jobs/:job-id"        showJobAction
+    get  "/jobs/:job-id/output" streamOutputAction
+    post "/tags/refresh"        refreshTagsAction
+    -- Fallback
     notFound notFoundAction
