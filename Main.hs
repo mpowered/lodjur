@@ -3,6 +3,7 @@
 
 module Main where
 
+import           Data.ByteString            (ByteString)
 import qualified Data.HashSet               as HashSet
 import           Data.Semigroup             ((<>))
 import           Data.Word
@@ -55,7 +56,7 @@ main = startServices =<< execParser opts
                                 gitAgent
                                 deploymentNames
                                 pool
-    runServer port deployer eventLogger outputLogger gitAgent gitReader
+    runServer port deployer eventLogger outputLogger gitAgent gitReader githubSecretToken
 
 data Options = Options
   { gitWorkingDir     :: FilePath
@@ -66,6 +67,7 @@ data Options = Options
   , databaseName      :: String
   , databaseUser      :: String
   , databasePassword  :: String
+  , githubSecretToken :: ByteString
   }
 
 lodjur :: Parser Options
@@ -128,5 +130,12 @@ lodjur =
           <> metavar "PASSWORD"
           <> short 'W'
           <> help "PostgreSQL user password"
+          <> value ""
+          )
+    <*> strOption
+          (  long "github-secret"
+          <> metavar "TOKEN"
+          <> short 'S'
+          <> help "Shared secret for Github webhooks to validate signatures"
           <> value ""
           )

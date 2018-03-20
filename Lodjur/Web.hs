@@ -8,12 +8,21 @@ module Lodjur.Web (Port, runServer) where
 import           Control.Monad
 import           Control.Monad.IO.Class     (liftIO)
 import           Control.Monad.Reader
+import           Crypto.Hash
+import           Crypto.MAC.HMAC
+import           Data.Aeson
+import           Data.Aeson.Types
+import           Data.ByteString            (ByteString)
+import qualified Data.ByteString.Base16     as Base16
+import qualified Data.ByteString.Lazy       as LByteString
+import qualified Data.ByteString.Lazy.Char8 as C8
 import qualified Data.HashMap.Strict        as HashMap
 import qualified Data.List                  as List
 import           Data.Semigroup
 import           Data.Text                  (Text)
 import qualified Data.Text                  as Text
-import qualified Data.Text.Lazy             as Lazy
+import qualified Data.Text.Encoding         as Text
+import qualified Data.Text.Lazy             as LText
 import           Data.Time.Clock            (UTCTime, getCurrentTime)
 import           Data.Time.Clock.POSIX
 import           Data.Time.Format           (defaultTimeLocale, formatTime)
@@ -32,14 +41,15 @@ import           Lodjur.Output.OutputLogger
 import           Lodjur.Process
 
 data Env = Env
-  { envDeployer     :: Ref Deployer
-  , envEventLogger  :: Ref EventLogger
-  , envOutputLogger :: Ref OutputLogger
-  , envGitAgent     :: Ref GitAgent 
-  , envGitReader    :: Ref GitReader
+  { envDeployer             :: Ref Deployer
+  , envEventLogger          :: Ref EventLogger
+  , envOutputLogger         :: Ref OutputLogger
+  , envGitAgent             :: Ref GitAgent
+  , envGitReader            :: Ref GitReader
+  , envGithubSecretToken    :: ByteString
   }
 
-type Action = ActionT Lazy.Text (ReaderT Env IO)
+type Action = ActionT LText.Text (ReaderT Env IO)
 
 readState :: Action DeployState
 readState = lift (asks envDeployer) >>= liftIO . (? GetCurrentState)
@@ -255,7 +265,7 @@ newDeployAction = readState >>= \case
     liftIO (deployer ? Deploy dName tag now) >>= \case
       Just job -> do
         status status302
-        setHeader "Location" (Lazy.fromStrict (jobHref job))
+        setHeader "Location" (LText.fromStrict (jobHref job))
       Nothing -> badRequestAction "Could not deploy!"
   Deploying job ->
     badRequestAction $ "Already deploying " <> jobLink job <> "."
@@ -296,12 +306,50 @@ showJobAction = do
   toSeconds :: UTCTime -> Integer
   toSeconds = round . utcTimeToPOSIXSeconds
 
+data GithubRepository = GithubRepository
+  { repositoryId    :: Integer
+  , repositoryName  :: Text
+  } deriving (Eq, Show)
+
+instance FromJSON GithubRepository where
+  parseJSON (Object o) =
+    GithubRepository
+      <$> o .: "id"
+      <*> o .: "name"
+  parseJSON invalid = typeMismatch "GithubRepository" invalid
+
+data GithubPushEvent = GithubPushEvent
+  { pushRef         :: Text
+  , pushRepository  :: GithubRepository
+  } deriving (Eq, Show)
+
+instance FromJSON GithubPushEvent where
+  parseJSON (Object o) =
+    GithubPushEvent
+      <$> o .: "ref"
+      <*> o .: "repository"
+  parseJSON invalid = typeMismatch "GithubPushEvent" invalid
+
+secureJsonData :: FromJSON a => Action a
+secureJsonData = do
+  key <- lift (asks envGithubSecretToken)
+  message <- body
+  xhubsig <- header "X-HUB-SIGNATURE" >>= maybe (raise "Github didn't send a valid X-HUB-SIGNATURE") return
+  signature <- maybe (raise "Github X-HUB-SIGNATURE didn't start with 'sha1='") return
+                 (LText.stripPrefix "sha1=" xhubsig)
+  digest <- maybe (raise "Invalid SHA1 digest sent in X-HUB-SIGNATURE") return
+              (digestFromByteString $ fst $ Base16.decode $ Text.encodeUtf8 $ LText.toStrict signature)
+  unless (hmac key (LByteString.toStrict message) == HMAC (digest :: Digest SHA1)) $
+    raise "Signatures don't match"
+  either (\e -> raise $ stringError $ "jsonData - no parse: " ++ e ++ ". Data was:" ++ C8.unpack message) return
+    (eitherDecode message)
+
 refreshTagsAction :: Action ()
 refreshTagsAction = do
+  event <- secureJsonData
+  liftIO $ print (event :: GithubPushEvent)
   gitAgent <- lift (asks envGitAgent)
   liftIO (gitAgent ! FetchTags)
-  status status302
-  setHeader "Location" "/"
 
 type Port = Int
 
@@ -312,8 +360,9 @@ runServer
   -> Ref OutputLogger
   -> Ref GitAgent
   -> Ref GitReader
+  -> ByteString
   -> IO ()
-runServer port envDeployer envEventLogger envOutputLogger envGitAgent envGitReader =
+runServer port envDeployer envEventLogger envOutputLogger envGitAgent envGitReader envGithubSecretToken =
   scottyT port (`runReaderT` Env {..}) $ do
     get  "/"             homeAction
     post "/jobs"         newDeployAction
