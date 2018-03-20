@@ -307,15 +307,17 @@ showJobAction = do
   toSeconds = round . utcTimeToPOSIXSeconds
 
 data GithubRepository = GithubRepository
-  { repositoryId    :: Integer
-  , repositoryName  :: Text
+  { repositoryId        :: Integer
+  , repositoryName      :: Text
+  , repositoryFullName  :: Text
   } deriving (Eq, Show)
 
 instance FromJSON GithubRepository where
-  parseJSON (Object o) =
-    GithubRepository
-      <$> o .: "id"
-      <*> o .: "name"
+  parseJSON (Object o) = do
+    repositoryId        <- o .: "id"
+    repositoryName      <- o .: "name"
+    repositoryFullName  <- o .: "full_name"
+    return GithubRepository {..}
   parseJSON invalid = typeMismatch "GithubRepository" invalid
 
 data GithubPushEvent = GithubPushEvent
@@ -324,10 +326,10 @@ data GithubPushEvent = GithubPushEvent
   } deriving (Eq, Show)
 
 instance FromJSON GithubPushEvent where
-  parseJSON (Object o) =
-    GithubPushEvent
-      <$> o .: "ref"
-      <*> o .: "repository"
+  parseJSON (Object o) = do
+    pushRef         <- o .: "ref"
+    pushRepository  <- o .: "repository"
+    return GithubPushEvent {..}
   parseJSON invalid = typeMismatch "GithubPushEvent" invalid
 
 secureJsonData :: FromJSON a => Action a
