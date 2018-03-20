@@ -7,34 +7,35 @@
 module Lodjur.Web (Port, runServer) where
 
 import           Control.Monad
-import           Control.Monad.IO.Class     (liftIO)
+import           Control.Monad.IO.Class          (liftIO)
 import           Control.Monad.Reader
 import           Crypto.Hash
 import           Crypto.MAC.HMAC
 import           Data.Aeson
 import           Data.Aeson.Types
-import           Data.ByteString            (ByteString)
-import qualified Data.ByteString.Base16     as Base16
-import qualified Data.ByteString.Lazy       as LByteString
-import qualified Data.ByteString.Lazy.Char8 as C8
-import qualified Data.HashMap.Strict        as HashMap
-import qualified Data.List                  as List
+import           Data.ByteString                 (ByteString)
+import qualified Data.ByteString.Base16          as Base16
+import qualified Data.ByteString.Lazy            as LByteString
+import qualified Data.ByteString.Lazy.Char8      as C8
+import qualified Data.HashMap.Strict             as HashMap
+import qualified Data.List                       as List
 import           Data.Semigroup
-import           Data.Text                  (Text)
-import qualified Data.Text                  as Text
-import qualified Data.Text.Encoding         as Text
-import qualified Data.Text.Lazy             as LText
-import           Data.Time.Clock            (UTCTime, getCurrentTime)
+import           Data.Text                       (Text)
+import qualified Data.Text                       as Text
+import qualified Data.Text.Encoding              as Text
+import qualified Data.Text.Lazy                  as LText
+import           Data.Time.Clock                 (UTCTime, getCurrentTime)
 import           Data.Time.Clock.POSIX
-import           Data.Time.Format           (defaultTimeLocale, formatTime)
-import           Lucid.Base                 (Html, toHtml)
-import qualified Lucid.Base                 as Html
+import           Data.Time.Format                (defaultTimeLocale, formatTime)
+import           Lucid.Base                      (Html, toHtml)
+import qualified Lucid.Base                      as Html
 import           Lucid.Bootstrap
 import           Lucid.Html5
 import           Network.HTTP.Types.Status
+import           Network.Wai                     (rawPathInfo)
+import           Network.Wai.Middleware.HttpAuth (AuthSettings (..), CheckCreds,
+                                                  basicAuth)
 import           Web.Scotty.Trans
-import Network.Wai (rawPathInfo)
-import Network.Wai.Middleware.HttpAuth (basicAuth, AuthSettings (..), CheckCreds)
 
 import           Lodjur.Deployment.Deployer
 import           Lodjur.Events.EventLogger
@@ -45,13 +46,13 @@ import           Lodjur.Output.OutputLoggers
 import           Lodjur.Process
 
 data Env = Env
-  { envDeployer             :: Ref Deployer
-  , envEventLogger          :: Ref EventLogger
-  , envOutputLoggers        :: Ref OutputLoggers
-  , envGitAgent             :: Ref GitAgent
-  , envGitReader            :: Ref GitReader
-  , envGithubRepos          :: [Text]
-  , envGithubSecretToken    :: ByteString
+  { envDeployer          :: Ref Deployer
+  , envEventLogger       :: Ref EventLogger
+  , envOutputLoggers     :: Ref OutputLoggers
+  , envGitAgent          :: Ref GitAgent
+  , envGitReader         :: Ref GitReader
+  , envGithubRepos       :: [Text]
+  , envGithubSecretToken :: ByteString
   }
 
 type Action = ActionT LText.Text (ReaderT Env IO)
@@ -167,23 +168,31 @@ renderCurrentState state = div_ [class_ "card"] $ do
         " to "
         toHtml (unDeploymentName (deploymentName job))
 
--- TODO: Convert this to a database query.
-renderLatestSuccessful :: [DeploymentName] -> DeploymentJobs -> Html ()
-renderLatestSuccessful deploymentNames jobs = div_ [class_ "card"] $ do
-  div_ [class_ "card-header text-success"] "Latest Successful"
-  table_ [class_ "table table-bordered mb-0"] $
-    forM_ successfulJobsByDeploymentName $ \(name, job) -> tr_ $ do
-      td_ (toHtml (unDeploymentName name))
-      td_ (toHtml (unTag (deploymentTag job)))
-      td_ (jobLink job)
+successfulJobsByDeploymentName
+  :: [DeploymentName]
+  -> DeploymentJobs
+  -> [(DeploymentName, DeploymentJob)]
+successfulJobsByDeploymentName deploymentNames jobs = foldMap
+  (\name -> (name,) . fst <$> take 1 (List.filter (successfulJobIn name) jobs))
+  deploymentNames
  where
-  successfulJobsByDeploymentName :: [(DeploymentName, DeploymentJob)]
-  successfulJobsByDeploymentName = foldMap
-    (\name -> (name,) . fst <$> take 1 (List.filter (successfulJobIn name) jobs))
-    deploymentNames
   successfulJobIn n = \case
     (job, Just JobSuccessful) -> deploymentName job == n
     _                         -> False
+
+-- TODO: Convert this to a database query.
+renderLatestSuccessful :: [DeploymentName] -> DeploymentJobs -> Html ()
+renderLatestSuccessful deploymentNames jobs =
+  div_ [class_ "card"] $ do
+    div_ [class_ "card-header text-success"] "Latest Successful"
+    case successfulJobsByDeploymentName deploymentNames jobs of
+      [] -> div_ [class_ "card-body text-muted"] "No successful jobs yet."
+      successfulJobs ->
+        table_ [class_ "table table-bordered mb-0"] $
+          forM_ successfulJobs $ \(name, job) -> tr_ $ do
+            td_ (toHtml (unDeploymentName name))
+            td_ (toHtml (unTag (deploymentTag job)))
+            td_ (jobLink job)
 
 renderDeployCard :: [DeploymentName] -> [Tag] -> DeployState -> Html ()
 renderDeployCard deploymentNames tags state = case state of
@@ -321,9 +330,9 @@ showJobAction = do
   toSeconds = round . utcTimeToPOSIXSeconds
 
 data GithubRepository = GithubRepository
-  { repositoryId        :: Integer
-  , repositoryName      :: Text
-  , repositoryFullName  :: Text
+  { repositoryId       :: Integer
+  , repositoryName     :: Text
+  , repositoryFullName :: Text
   } deriving (Eq, Show)
 
 instance FromJSON GithubRepository where
@@ -335,8 +344,8 @@ instance FromJSON GithubRepository where
   parseJSON invalid = typeMismatch "GithubRepository" invalid
 
 data GithubPushEvent = GithubPushEvent
-  { pushRef         :: Text
-  , pushRepository  :: GithubRepository
+  { pushRef        :: Text
+  , pushRepository :: GithubRepository
   } deriving (Eq, Show)
 
 instance FromJSON GithubPushEvent where
