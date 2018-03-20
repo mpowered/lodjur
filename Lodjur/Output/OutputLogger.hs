@@ -34,6 +34,7 @@ data OutputLogMessage r where
   -- Public messages:
   AppendOutput :: [String] -> OutputLogMessage Async
   Fence :: OutputLogMessage Async
+  GetOutputLog :: OutputLogMessage (Sync [Output])
   GetOutputLogs :: OutputLogMessage (Sync OutputLogs)
 
 instance Process OutputLogger where
@@ -47,6 +48,10 @@ instance Process OutputLogger where
   receive _self (logger, Fence) = do
     Database.fence (dbPool logger) (jobId logger)
     return logger
+
+  receive _self (logger, GetOutputLog) = do
+    out <- Database.getOutputLog (dbPool logger) (jobId logger)
+    return (logger, out)
 
   receive _self (logger, GetOutputLogs) = do
     logs <- Database.getAllOutputLogs (dbPool logger)
