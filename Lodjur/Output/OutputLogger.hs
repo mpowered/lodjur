@@ -36,7 +36,7 @@ data OutputLogMessage r where
   AppendOutput :: [String] -> OutputLogMessage Async
   Fence :: OutputLogMessage Async
   GetOutputLog :: OutputLogMessage (Sync [Output])
-  StreamOutputLog :: Maybe UTCTime -> BoundedChan Output -> OutputLogMessage Async
+  StreamOutputLog :: Maybe UTCTime -> BoundedChan (Maybe Output) -> OutputLogMessage Async
   GetOutputLogs :: OutputLogMessage (Sync OutputLogs)
 
 instance Process OutputLogger where

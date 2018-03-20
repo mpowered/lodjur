@@ -8,6 +8,7 @@
 {-# LANGUAGE ViewPatterns      #-}
 module Lodjur.Web (Port, runServer) where
 
+import           Control.Concurrent.BoundedChan
 import           Control.Monad
 import           Control.Monad.IO.Class          (liftIO)
 import           Control.Monad.Reader
@@ -333,26 +334,26 @@ streamOutputAction = do
   jobId         <- param "job-id"
   outputLoggers <- lift (asks envOutputLoggers)
   logger <- liftIO (outputLoggers ? SpawnOutputLogger jobId)
-  mlog <- liftIO (logger ? GetOutputLogs)
-  case HashMap.lookup jobId mlog of
-    Just outputLog -> do
-      setHeader "Content-Type" "text/event-stream"
-      stream (streamLog logger outputLog)
-    Nothing -> do
-      liftIO (kill logger)
-      notFoundAction
+  chan <- liftIO (newBoundedChan 100)
+  liftIO (logger ! StreamOutputLog Nothing chan)
+  setHeader "Content-Type" "text/event-stream"
+  stream (streamLog logger chan)
 
  where
-   streamLog logger log send flush = do
-     forM_ log $ \output -> do
-       void . send $ Binary.fromByteString "event: output\n"
-       let event = OutputLineEvent { outputEventTime = outputTime output
-                                   , outputEventLines = outputLines output
-                                   }
-       void . send $ Binary.fromLazyByteString ("data: " <> encode event <> "\n")
-       void . send $ Binary.fromByteString "\n"
-     void flush
-     kill logger
+    streamLog logger chan send flush = do
+      moutput <- liftIO $ readChan chan
+      case moutput of
+        Just output -> do
+          void . send $ Binary.fromByteString "event: output\n"
+          let event = OutputLineEvent { outputEventTime = outputTime output
+                                      , outputEventLines = outputLines output
+                                      }
+          void . send $ Binary.fromLazyByteString ("data: " <> encode event <> "\n")
+          void . send $ Binary.fromByteString "\n"
+          streamLog logger chan send flush
+        Nothing -> do
+          void flush
+          kill logger
 
 data GithubRepository = GithubRepository
   { repositoryId       :: Integer

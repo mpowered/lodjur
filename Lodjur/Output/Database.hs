@@ -72,16 +72,17 @@ getOutputLog pool since before jobid = withConn pool $ \conn -> mkOutput <$>
  where
   mkOutput = map (\(time, output) -> Output time (lines output))
 
-streamOutputLog :: DbPool -> JobId -> Maybe UTCTime -> BoundedChan Output -> IO ()
+streamOutputLog :: DbPool -> JobId -> Maybe UTCTime -> BoundedChan (Maybe Output) -> IO ()
 streamOutputLog pool jobid s chan = withConnNoTran pool $ \conn -> do
   listen conn
   go conn s Nothing
   unlisten conn
+  writeChan chan Nothing
  where
   go conn since til = do
     til' <- maybe (nextFence conn) (return . Just) til
     output <- getOutputLog pool since til' jobid
-    writeList2Chan chan output
+    writeList2Chan chan (map Just output)
     when (isNothing til') $ do
         waitJobNotification conn jobid
         go conn (lastSeen since output) Nothing
