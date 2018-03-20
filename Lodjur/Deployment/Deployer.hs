@@ -114,13 +114,15 @@ deploy eventLogger outputLogger gitAgent job = do
 notifyDeployFinished
   :: Ref Deployer
   -> Ref EventLogger
+  -> Ref OutputLogger
   -> DeploymentJob
   -> Either SomeException JobResult
   -> IO ()
-notifyDeployFinished self eventLogger job r = do
+notifyDeployFinished self eventLogger logger job r = do
   finished <- getCurrentTime
   let result = either (JobFailed . Text.pack . show) id r
   eventLogger ! AppendEvent (jobId job) (JobFinished result finished)
+  kill logger
   self ! FinishJob job result
 
 instance Process Deployer where
@@ -134,7 +136,7 @@ instance Process Deployer where
           jobId <- UUID.toText <$> UUID.nextRandom
           let job = DeploymentJob {..}
           logger <- outputLoggers ? OutputLoggers.SpawnOutputLogger jobId
-          void (forkFinally (deploy eventLogger logger gitAgent job) (notifyDeployFinished self eventLogger job))
+          void (forkFinally (deploy eventLogger logger gitAgent job) (notifyDeployFinished self eventLogger logger job))
           Database.insertJob pool job Nothing
           return ( a { state = Deploying job } , Just job)
         -- We can't deploy to an unknown deployment.

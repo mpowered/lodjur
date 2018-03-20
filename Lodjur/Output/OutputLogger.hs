@@ -56,18 +56,23 @@ logCreateProcessWithExitCode outputLogger cp = do
         cp { std_in = NoStream, std_out = CreatePipe, std_err = CreatePipe }
 
   (_, Just hout, Just herr, ph) <- createProcess cp_opts
-  void $ logStream outputLogger hout
-  void $ logStream outputLogger herr
-  waitForProcess ph
+  outStreamDone <- newEmptyMVar
+  errStreamDone <- newEmptyMVar
+  void $ logStream outputLogger hout outStreamDone
+  void $ logStream outputLogger herr errStreamDone
+  code <- waitForProcess ph
+  _ <- readMVar outStreamDone
+  _ <- readMVar errStreamDone
+  return code
 
-logStream :: Ref OutputLogger -> Handle -> IO ThreadId
-logStream logger h = forkIO go
+logStream :: Ref OutputLogger -> Handle -> MVar () -> IO ThreadId
+logStream logger h done = forkIO go
  where
   go = do
     next <- tryJust (\e -> if isEOFError e then Just () else Nothing)
                     (hGetLine h)
     case next of
-      Left  _    -> return ()
+      Left  _    -> putMVar done ()
       Right line -> do
         logger ! AppendOutput [line]
         go
