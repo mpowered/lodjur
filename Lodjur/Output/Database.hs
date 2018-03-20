@@ -32,8 +32,8 @@ appendOutput pool jobid output = withConn pool $ \conn -> do
 fence :: DbPool -> JobId -> IO ()
 fence pool jobid = withConn pool $ \conn -> do
   void $ execute conn
-    "INSERT INTO output_log_fence (time, job_id) SELECT MAX(time), ? FROM output_log WHERE job_id=?"
-    (jobid, jobid)
+    "INSERT INTO output_log_fence (time, job_id) SELECT MAX(time), job_id FROM output_log WHERE job_id=? GROUP BY job_id"
+    (Only jobid)
   notify conn jobid
 
 notify :: Connection -> JobId -> IO ()
@@ -93,7 +93,7 @@ streamOutputLog pool jobid s chan = withConnNoTran pool $ \conn -> do
   nextFence conn = do
     rs <- query
             conn
-            "SELECT min(time) FROM output_log_fence WHERE job_id = ? ORDER BY time ASC"
+            "SELECT MIN(time) FROM output_log_fence WHERE job_id = ?"
             (Only jobid)
     case rs of
       [Only mt] -> return mt
