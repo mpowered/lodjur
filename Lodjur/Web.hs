@@ -48,6 +48,7 @@ data Env = Env
   , envOutputLogger         :: Ref OutputLogger
   , envGitAgent             :: Ref GitAgent
   , envGitReader            :: Ref GitReader
+  , envGithubRepos          :: [Text]
   , envGithubSecretToken    :: ByteString
   }
 
@@ -348,12 +349,21 @@ secureJsonData = do
   either (\e -> raise $ stringError $ "jsonData - no parse: " ++ e ++ ". Data was:" ++ C8.unpack message) return
     (eitherDecode message)
 
+matchRepo :: [Text] -> Text -> Bool
+matchRepo [] _ = True
+matchRepo rs r = r `elem` rs
+
 refreshTagsAction :: Action ()
 refreshTagsAction = do
   event <- secureJsonData
-  liftIO $ print (event :: GithubPushEvent)
-  gitAgent <- lift (asks envGitAgent)
-  liftIO (gitAgent ! FetchTags)
+  repos <- lift (asks envGithubRepos)
+  if matchRepo repos (repositoryFullName $ pushRepository event)
+    then do
+      gitAgent <- lift (asks envGitAgent)
+      liftIO (gitAgent ! FetchTags)
+      text "Queued FetchTags"
+    else
+      text "Ignored refresh request for uninteresting repository"
 
 type Port = Int
 
@@ -376,8 +386,9 @@ runServer
   -> Ref GitAgent
   -> Ref GitReader
   -> ByteString
+  -> [Text]
   -> IO ()
-runServer port authCreds envDeployer envEventLogger envOutputLogger envGitAgent envGitReader envGithubSecretToken =
+runServer port authCreds envDeployer envEventLogger envOutputLogger envGitAgent envGitReader envGithubSecretToken envGithubRepos =
   scottyT port (`runReaderT` Env {..}) $ do
     middleware (basicAuth (checkCredentials authCreds) authSettings)
     get  "/"             homeAction

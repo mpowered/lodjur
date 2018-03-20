@@ -6,6 +6,7 @@ module Main where
 import           Data.ByteString            (ByteString)
 import qualified Data.HashSet               as HashSet
 import           Data.Semigroup             ((<>))
+import           Data.Text                  (Text)
 import           Data.Word
 import           Database.PostgreSQL.Simple
 import           Options.Applicative
@@ -56,7 +57,7 @@ main = startServices =<< execParser opts
                                 gitAgent
                                 deploymentNames
                                 pool
-    runServer port (authUser, authPassword) deployer eventLogger outputLogger gitAgent gitReader githubSecretToken
+    runServer port (authUser, authPassword) deployer eventLogger outputLogger gitAgent gitReader githubSecretToken githubRepos
 
 data Options = Options
   { gitWorkingDir     :: FilePath
@@ -70,6 +71,7 @@ data Options = Options
   , databaseUser      :: String
   , databasePassword  :: String
   , githubSecretToken :: ByteString
+  , githubRepos       :: [Text]
   }
 
 lodjur :: Parser Options
@@ -79,12 +81,11 @@ lodjur =
           ( long "git-working-dir" <> metavar "PATH" <> short 'g' <> help
             "Path to Git directory containing deployment expressions"
           )
-    <*> many
-          ( strOption
-            ( long "deployment" <> metavar "NAME" <> short 'd' <> help
-              "Names of nixops deployments to support"
-            )
+    <*> many (strOption
+          ( long "deployment" <> metavar "NAME" <> short 'd' <> help
+            "Names of nixops deployments to support"
           )
+        )
     <*> option
           auto
           (  long "port"
@@ -151,7 +152,14 @@ lodjur =
     <*> strOption
           (  long "github-secret"
           <> metavar "TOKEN"
-          <> short 'S'
+          <> short 's'
           <> help "Shared secret for Github webhooks to validate signatures"
           <> value ""
           )
+    <*> many (strOption
+          (  long "github-repo"
+          <> metavar "FULL-REPO-NAME"
+          <> short 'r'
+          <> help "Github repository name to allow webhooks for"
+          )
+        )
