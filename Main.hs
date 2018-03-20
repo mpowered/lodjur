@@ -82,6 +82,7 @@ data Options = Options
   , databasePassword  :: String
   , githubSecretToken :: ByteString
   , githubRepos       :: [Text]
+  , staticDirectory   :: FilePath
   }
 
 lodjur :: Parser Options
@@ -174,4 +175,10 @@ lodjur =
             <> short 'r'
             <> help "Github repository name to allow webhooks for"
             )
+          )
+    <*> strOption
+          (  long "static-directory"
+          <> metavar "DIRECTORY"
+          <> help "Path to directory of Lodjur static assets"
+          <> value "static"
           )
