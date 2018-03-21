@@ -7,7 +7,7 @@
 .command-output {
   position: relative;
 }
-.command-output {
+.command-output pre {
   overflow: auto;
 }
 .command-output .timestamp {
@@ -26,4 +26,14 @@
 }
 .command-output .line:hover .timestamp {
   background: #eee;
+}
+.command-output.streaming:after {
+  content: 'Streaming output...';
+  color: #aaa;
+  font-style: italic;
+}
+
+@keyframes spin {
+  from {transform:rotate(0deg);}
+  to {transform:rotate(360deg);}
 }

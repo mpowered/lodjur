@@ -43,6 +43,7 @@ executable          lodjur
                   , scotty
                   , text
                   , time
+                  , iso8601-time
                   , unordered-containers
                   , uuid
                   , wai

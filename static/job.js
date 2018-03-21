@@ -1,34 +1,37 @@
 function subscribeToOutput(outputContainer) {
-  try {
-    var preElement = outputContainer.firstElementChild;
-    var jobId = outputContainer.dataset.jobId;
+  var preElement = outputContainer.firstElementChild;
+  var jobId = outputContainer.dataset.jobId;
+  var lastLineAt = outputContainer.dataset.lastLineAt ? new Date(outputContainer.dataset.lastLineAt) : new Date();
 
-    console.info('Starting streaming of deploy output for job:', jobId);
+  if (jobId) {
+    console.info('Starting streaming of deploy output for job', jobId, 'as of', lastLineAt.toLocaleString());
+    outputContainer.classList.add('streaming');
 
-    if (jobId) {
-      var stream = new EventSource('/jobs/' + jobId + '/output');
-      stream.addEventListener('output', function (e) {
-        try {
-          var event = JSON.parse(e.data);
-          console.log('Got stuff sent at', event.outputEventTime);
+    var stream = new EventSource('/jobs/' + jobId + '/output?from=' + lastLineAt.toISOString());
 
-          event.outputEventLines.forEach(function (outputLine) {
-            var line = document.createElement('div');
-            line.classList.add('line');
-            line.append(outputLine);
-            preElement.appendChild(line);
-          });
-        } catch (e) {
-          console.error(e);
-        }
+    stream.addEventListener('output', function (e) {
+      var event = JSON.parse(e.data);
+      console.log('Got stuff sent at', event.outputEventTime);
+
+      event.outputEventLines.forEach(function (outputLine) {
+        var line = document.createElement('div');
+        line.classList.add('line');
+        line.append(outputLine);
+        preElement.appendChild(line);
       });
-      stream.onerror = function (e) {
-        console.error(e);
-        stream.close();
-      };
-    }
-  } catch (e) {
-    console.error(e);
+    });
+
+    stream.addEventListener('end', function (e) {
+      console.log('Output stream ended.');
+      outputContainer.classList.remove('streaming');
+      stream.close();
+    });
+
+    stream.onerror = function (e) {
+      outputContainer.classList.remove('streaming');
+      console.error(e);
+      stream.close();
+    };
   }
 };
 

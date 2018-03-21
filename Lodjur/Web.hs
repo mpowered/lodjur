@@ -23,6 +23,7 @@ import qualified Data.ByteString.Lazy            as LByteString
 import qualified Data.ByteString.Lazy.Char8      as C8
 import qualified Data.HashMap.Strict             as HashMap
 import qualified Data.List                       as List
+import           Data.Maybe                      (maybeToList)
 import           Data.Semigroup
 import           Data.Text                       (Text)
 import qualified Data.Text                       as Text
@@ -31,6 +32,7 @@ import qualified Data.Text.Lazy                  as LText
 import           Data.Time.Clock                 (UTCTime, getCurrentTime)
 import           Data.Time.Clock.POSIX
 import           Data.Time.Format                (defaultTimeLocale, formatTime)
+import           Data.Time.ISO8601
 import           GHC.Generics                    (Generic)
 import           Lucid.Base                      (Html, toHtml)
 import qualified Lucid.Base                      as Html
@@ -302,12 +304,13 @@ showJobAction = do
           renderEventLog eventLog
         div_ [class_ "row mt-2"] $ div_ [class_ "col"] $ do
           h2_ [class_ "mb-3"] "Command Output"
-          div_ [class_ "command-output", data_ "job-id" jobId] $ pre_ $
+          let lineAttr = data_ "last-line-at" . lastLineAt <$> outputLog
+              allAttrs = maybeToList lineAttr <> [class_ "command-output", data_ "job-id" jobId]
+          div_ allAttrs $ pre_ $
             case outputLog of
-              Just outputs
-                | not (null outputs) -> foldM_ displayOutput Nothing outputs
-              _ -> span_ [class_ "text-muted"] "No output available."
-    Nothing -> notFoundAction
+              Just outputs -> foldM_ displayOutput Nothing outputs
+              Nothing -> mempty
+    _ -> notFoundAction
  where
   displayOutput :: Maybe UTCTime -> Output -> Html (Maybe UTCTime)
   displayOutput previousTime output = div_ [class_ "line"] $ do
@@ -323,19 +326,25 @@ showJobAction = do
   sameSecond t1 t2 = toSeconds t1 == toSeconds t2
   toSeconds :: UTCTime -> Integer
   toSeconds = round . utcTimeToPOSIXSeconds
+  lastLineAt =
+    \case
+      [] -> ""
+      outputLog -> Text.pack (formatISO8601 (outputTime (last outputLog)))
 
 data OutputEvent = OutputLineEvent
-  { outputEventTime :: UTCTime
+  { outputEventTime  :: UTCTime
   , outputEventLines :: [String]
   } deriving (Generic, ToJSON)
 
 streamOutputAction :: Action ()
 streamOutputAction = do
-  jobId         <- param "job-id"
+  jobId   <- param "job-id"
+  fromStr <- lookup "from" <$> params
+  let from = fromStr >>= (parseISO8601 . LText.unpack)
   outputLoggers <- lift (asks envOutputLoggers)
   logger <- liftIO (outputLoggers ? SpawnOutputLogger jobId)
   chan <- liftIO (newBoundedChan 100)
-  liftIO (logger ! StreamOutputLog Nothing chan)
+  liftIO (logger ! StreamOutputLog from chan)
   setHeader "Content-Type" "text/event-stream"
   stream (streamLog logger chan)
 
@@ -352,6 +361,7 @@ streamOutputAction = do
           void . send $ Binary.fromByteString "\n"
           streamLog logger chan send flush
         Nothing -> do
+          void . send $ Binary.fromByteString "event: end\n"
           void flush
           kill logger
 
