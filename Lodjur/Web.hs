@@ -319,10 +319,7 @@ showJobAction = do
     case previousTime of
       Just t
         | t `sameSecond` outputTime output -> return ()
-      _ -> span_ [class_ "timestamp"]
-           $ code_
-           $ small_
-           $ toHtml (hourMinSec (outputTime output))
+      _ -> time_ $ toHtml (hourMinSec (outputTime output))
     toHtml (unlines (outputLines output))
     return (Just (outputTime output))
   sameSecond t1 t2 = toSeconds t1 == toSeconds t2
