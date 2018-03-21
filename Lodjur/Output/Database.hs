@@ -59,13 +59,13 @@ getOutputLogConn :: Connection -> Maybe Integer -> Maybe Integer -> JobId -> IO 
 getOutputLogConn conn since before jobid = mkOutput <$>
   case (since, before) of
     (Just s, Just b) -> query conn
-                "SELECT i, time, output FROM output_log WHERE job_id = ? AND time > ? AND time <= ? ORDER BY i ASC"
+                "SELECT i, time, output FROM output_log WHERE job_id = ? AND i > ? AND i <= ? ORDER BY i ASC"
                 (jobid, s, b)
     (Just s, Nothing) -> query conn
-                "SELECT i, time, output FROM output_log WHERE job_id = ? AND time > ? ORDER BY i ASC"
+                "SELECT i, time, output FROM output_log WHERE job_id = ? AND i > ? ORDER BY i ASC"
                 (jobid, s)
     (Nothing, Just b) -> query conn
-                "SELECT i, time, output FROM output_log WHERE job_id = ? AND time <= ? ORDER BY i ASC"
+                "SELECT i, time, output FROM output_log WHERE job_id = ? AND i <= ? ORDER BY i ASC"
                 (jobid, b)
     (Nothing, Nothing) -> query conn
                 "SELECT i, time, output FROM output_log WHERE job_id = ? ORDER BY i ASC"
