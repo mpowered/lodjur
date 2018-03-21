@@ -34,7 +34,7 @@ initialize dbPool jobId = return OutputLogger {..}
 data OutputLogMessage r where
   -- Public messages:
   AppendOutput :: [String] -> OutputLogMessage Async
-  Fence :: OutputLogMessage Async
+  OutputFence :: OutputLogMessage Async
   GetOutputLog :: OutputLogMessage (Sync [Output])
   StreamOutputLog :: Maybe UTCTime -> BoundedChan (Maybe Output) -> OutputLogMessage Async
   GetOutputLogs :: OutputLogMessage (Sync OutputLogs)
@@ -47,7 +47,7 @@ instance Process OutputLogger where
     Database.appendOutput (dbPool logger) (jobId logger) (Output now lines')
     return logger
 
-  receive _self (logger, Fence) = do
+  receive _self (logger, OutputFence) = do
     Database.fence (dbPool logger) (jobId logger)
     return logger
 

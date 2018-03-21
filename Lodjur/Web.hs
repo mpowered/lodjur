@@ -5,10 +5,11 @@
 {-# LANGUAGE OverloadedStrings #-}
 {-# LANGUAGE RecordWildCards   #-}
 {-# LANGUAGE TupleSections     #-}
+{-# LANGUAGE TypeFamilies      #-}
 {-# LANGUAGE ViewPatterns      #-}
 module Lodjur.Web (Port, runServer) where
 
-import           Control.Concurrent.BoundedChan
+import           Control.Concurrent
 import           Control.Monad
 import           Control.Monad.IO.Class          (liftIO)
 import           Control.Monad.Reader
@@ -51,12 +52,14 @@ import           Lodjur.Git.GitAgent
 import           Lodjur.Git.GitReader
 import           Lodjur.Output.OutputLogger
 import           Lodjur.Output.OutputLoggers
+import           Lodjur.Output.OutputStreamer
 import           Lodjur.Process
 
 data Env = Env
   { envDeployer          :: Ref Deployer
   , envEventLogger       :: Ref EventLogger
   , envOutputLoggers     :: Ref OutputLoggers
+  , envOutputStreamer    :: Ref OutputStreamer
   , envGitAgent          :: Ref GitAgent
   , envGitReader         :: Ref GitReader
   , envGithubRepos       :: [Text]
@@ -341,29 +344,29 @@ streamOutputAction = do
   jobId   <- param "job-id"
   fromStr <- lookup "from" <$> params
   let from = fromStr >>= (parseISO8601 . LText.unpack)
-  outputLoggers <- lift (asks envOutputLoggers)
-  logger <- liftIO (outputLoggers ? SpawnOutputLogger jobId)
-  chan <- liftIO (newBoundedChan 100)
-  liftIO (logger ! StreamOutputLog from chan)
+  outputStreamer <- lift (asks envOutputStreamer)
+  chan <- liftIO newChan
+  liftIO $ outputStreamer ! SubscribeOutputLog jobId from chan
   setHeader "Content-Type" "text/event-stream"
-  stream (streamLog logger chan)
+  stream (streamLog outputStreamer chan jobId)
 
  where
-    streamLog logger chan send flush = do
+    streamLog outputStreamer chan jobId send flush = do
       moutput <- liftIO $ readChan chan
       case moutput of
-        Just output -> do
+        NextOutput output -> do
           void . send $ Binary.fromByteString "event: output\n"
           let event = OutputLineEvent { outputEventTime = outputTime output
                                       , outputEventLines = outputLines output
                                       }
           void . send $ Binary.fromLazyByteString ("data: " <> encode event <> "\n")
           void . send $ Binary.fromByteString "\n"
-          streamLog logger chan send flush
-        Nothing -> do
+          void flush
+          streamLog outputStreamer chan jobId send flush
+        Fence -> do
           void . send $ Binary.fromByteString "event: end\n"
           void flush
-          kill logger
+          void . liftIO $ outputStreamer ? UnsubscribeOutputLog jobId chan
 
 data GithubRepository = GithubRepository
   { repositoryId       :: Integer
@@ -477,12 +480,13 @@ runServer
   -> Ref Deployer
   -> Ref EventLogger
   -> Ref OutputLoggers
+  -> Ref OutputStreamer
   -> Ref GitAgent
   -> Ref GitReader
   -> ByteString
   -> [Text]
   -> IO ()
-runServer port authCreds envDeployer envEventLogger envOutputLoggers envGitAgent envGitReader envGithubSecretToken envGithubRepos =
+runServer port authCreds envDeployer envEventLogger envOutputLoggers envOutputStreamer envGitAgent envGitReader envGithubSecretToken envGithubRepos =
   scottyT port (`runReaderT` Env {..}) $ do
     -- Middleware
     middleware (basicAuth (checkCredentials authCreds) authSettings)

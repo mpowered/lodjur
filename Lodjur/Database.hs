@@ -1,5 +1,13 @@
 {-# LANGUAGE FlexibleContexts  #-}
-module Lodjur.Database where
+module Lodjur.Database
+  ( DbPool
+  , Connection
+  , newPool
+  , destroyPool
+  , withConn
+  , withConnNoTran
+  )
+where
 
 import           Data.Pool
 import           Data.Time.Clock            (NominalDiffTime)

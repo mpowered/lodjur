@@ -6,18 +6,19 @@ module Main where
 import           Data.ByteString             (ByteString)
 import qualified Data.HashSet                as HashSet
 import           Data.Semigroup              ((<>))
-import           Data.Text                  (Text)
+import           Data.Text                   (Text)
 import           Data.Word
 import           Database.PostgreSQL.Simple
 import           Options.Applicative
 
-import qualified Lodjur.Database             as Database
+import qualified Lodjur.Database              as Database
 import           Lodjur.Deployment
-import qualified Lodjur.Deployment.Deployer  as Deployer
-import qualified Lodjur.Events.EventLogger   as EventLogger
-import qualified Lodjur.Git.GitAgent         as GitAgent
-import qualified Lodjur.Git.GitReader        as GitReader
-import qualified Lodjur.Output.OutputLoggers as OutputLoggers
+import qualified Lodjur.Deployment.Deployer   as Deployer
+import qualified Lodjur.Events.EventLogger    as EventLogger
+import qualified Lodjur.Git.GitAgent          as GitAgent
+import qualified Lodjur.Git.GitReader         as GitReader
+import qualified Lodjur.Output.OutputLoggers  as OutputLoggers
+import qualified Lodjur.Output.OutputStreamer as OutputStreamer
 import           Lodjur.Process
 import           Lodjur.Web
 
@@ -48,11 +49,12 @@ main = startServices =<< execParser opts
       ttl
       connsPerStripe
 
-    eventLogger   <- spawn =<< EventLogger.initialize pool
-    outputLoggers <- spawn =<< OutputLoggers.initialize pool
-    gitAgent      <- spawn =<< GitAgent.initialize gitWorkingDir
-    gitReader     <- spawn =<< GitReader.initialize gitWorkingDir
-    deployer      <-
+    eventLogger    <- spawn =<< EventLogger.initialize pool
+    outputLoggers  <- spawn =<< OutputLoggers.initialize pool
+    outputStreamer <- spawn =<< OutputStreamer.initialize pool
+    gitAgent       <- spawn =<< GitAgent.initialize gitWorkingDir
+    gitReader      <- spawn =<< GitReader.initialize gitWorkingDir
+    deployer       <-
       spawn
         =<< Deployer.initialize eventLogger
                                 outputLoggers
@@ -64,6 +66,7 @@ main = startServices =<< execParser opts
               deployer
               eventLogger
               outputLoggers
+              outputStreamer
               gitAgent
               gitReader
               githubSecretToken

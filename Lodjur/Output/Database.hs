@@ -48,6 +48,11 @@ unlisten :: Connection -> IO ()
 unlisten conn =
   void $ execute_ conn "UNLISTEN output_log"
 
+outputNotification :: Connection -> IO (Maybe JobId)
+outputNotification conn = do
+  n <- getNotificationNonBlocking conn
+  return $ Text.decodeUtf8 . notificationData <$> n
+
 waitJobNotification :: Connection -> JobId -> IO ()
 waitJobNotification conn jobid = do
   n <- getNotification conn
@@ -55,7 +60,11 @@ waitJobNotification conn jobid = do
     waitJobNotification conn jobid
 
 getOutputLog :: DbPool -> Maybe UTCTime -> Maybe UTCTime -> JobId -> IO [Output]
-getOutputLog pool since before jobid = withConn pool $ \conn -> mkOutput <$>
+getOutputLog pool since before jobid = withConn pool $ \conn ->
+  getOutputLogConn conn since before jobid
+
+getOutputLogConn :: Connection -> Maybe UTCTime -> Maybe UTCTime -> JobId -> IO [Output]
+getOutputLogConn conn since before jobid = mkOutput <$>
   case (since, before) of
     (Just s, Just b) -> query conn
                 "SELECT time, output FROM output_log WHERE job_id = ? AND time > ? AND time <= ? ORDER BY time ASC"
@@ -80,7 +89,7 @@ streamOutputLog pool jobid s chan = withConnNoTran pool $ \conn -> do
   writeChan chan Nothing
  where
   go conn since til = do
-    til' <- maybe (nextFence conn) (return . Just) til
+    til' <- maybe (nextFence conn jobid since) (return . Just) til
     output <- getOutputLog pool since til' jobid
     writeList2Chan chan (map Just output)
     when (isNothing til') $ do
@@ -90,14 +99,20 @@ streamOutputLog pool jobid s chan = withConnNoTran pool $ \conn -> do
   lastSeen since [] = since
   lastSeen _     os = Just $ outputTime $ last os
 
-  nextFence conn = do
-    rs <- query
-            conn
-            "SELECT MIN(time) FROM output_log_fence WHERE job_id = ?"
-            (Only jobid)
-    case rs of
-      [Only mt] -> return mt
-      _         -> return Nothing
+nextFence :: Connection -> JobId -> Maybe UTCTime -> IO (Maybe UTCTime)
+nextFence conn jobid since = do
+  rs <- case since of
+    Just s ->
+      query conn
+        "SELECT MIN(time) FROM output_log_fence WHERE job_id = ? AND time > ?"
+        (jobid, s)
+    Nothing ->
+      query conn
+        "SELECT MIN(time) FROM output_log_fence WHERE job_id = ?"
+        (Only jobid)
+  case rs of
+    [Only mt] -> return mt
+    _         -> return Nothing
 
 getAllOutputLogs :: DbPool -> IO OutputLogs
 getAllOutputLogs pool = withConn pool $ \conn -> mkOutput <$> query_

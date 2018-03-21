@@ -123,7 +123,7 @@ notifyDeployFinished self eventLogger logger job r = do
   finished <- getCurrentTime
   let result = either (JobFailed . Text.pack . show) id r
   eventLogger ! AppendEvent (jobId job) (JobFinished result finished)
-  logger ! Fence
+  logger ! OutputFence
   kill logger
   self ! FinishJob job result
 
