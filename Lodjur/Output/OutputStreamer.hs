@@ -110,7 +110,7 @@ distributer conn var = do
 
 notify :: Connection -> JobId -> Sub -> IO Sub
 notify conn job Sub{..} = do
-  fence <- maybe (Database.nextFence conn job subSince) (return . Just) subFence
+  fence <- maybe (Database.nextFence conn job Nothing) (return . Just) subFence
   out <- Database.getOutputLogConn conn subSince fence job
   writeList2Chan subChan (map NextOutput out)
   when (isJust fence) $
