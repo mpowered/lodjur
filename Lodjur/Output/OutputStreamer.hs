@@ -10,7 +10,7 @@ module Lodjur.Output.OutputStreamer
   ) where
 
 import           Control.Concurrent
-import           Control.Monad          (unless, when)
+import           Control.Monad          (when)
 import           Data.HashMap.Strict    (HashMap)
 import qualified Data.HashMap.Strict    as HashMap
 import           Data.Maybe             (isJust)
@@ -79,28 +79,32 @@ idler :: DbPool -> MVar Subscriptions -> IO ()
 idler pool var = do
   subs <- readMVar var
   if HashMap.null subs
-    then do
+    then
       threadDelay 1000000
-      idler pool var
     else
       withConnNoTran pool $ \conn -> do
         Database.listen conn
         distributer conn var
         Database.unlisten conn
+  idler pool var
 
 distributer :: Connection -> MVar Subscriptions -> IO ()
 distributer conn var = do
   subs <- takeMVar var
-  unless (HashMap.null subs) $ do
-    n <- Database.outputNotification conn
-    case n of
-      Just job -> do
-        let ss = HashMap.lookupDefault [] job subs
-        ss' <- mapM (notify conn job) ss
-        putMVar var $ HashMap.insert job ss' subs
-      Nothing ->
-        threadDelay 1000000
-    distributer conn var
+  if HashMap.null subs
+    then
+      putMVar var subs
+    else do
+      n <- Database.outputNotification conn
+      case n of
+        Just job -> do
+          let ss = HashMap.lookupDefault [] job subs
+          ss' <- mapM (notify conn job) ss
+          putMVar var $ HashMap.insert job ss' subs
+        Nothing -> do
+          putMVar var subs
+          threadDelay 1000000
+      distributer conn var
 
 notify :: Connection -> JobId -> Sub -> IO Sub
 notify conn job Sub{..} = do
