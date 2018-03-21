@@ -42,11 +42,17 @@ gitFetchTags :: FilePath -> IO ()
 gitFetchTags = void . gitCmd ["fetch", "--tags", "--prune", "origin", "tag", "*"]
 
 gitCheckout :: Ref OutputLogger -> FilePath -> Tag -> IO ()
-gitCheckout outputLogger workingDir tag =
+gitCheckout outputLogger workingDir tag = do
   void $ gitCmdLogged
     outputLogger
     [ "checkout"
     , Text.unpack (unTag tag)
-    , "--recurse-submodules"
+    ]
+    workingDir
+  void $ gitCmdLogged
+    outputLogger
+    [ "submodule"
+    , "update"
+    , "--recursive"
     ]
     workingDir
