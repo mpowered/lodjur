@@ -94,5 +94,5 @@ getAllOutputLogs pool = withConn pool $ \conn -> mkOutput <$> query_
   "SELECT job_id, i, time, output FROM output_log ORDER BY time ASC"
  where
   mkOutput = foldr mergeOutput mempty
-  mergeOutput (i, jobid, time, output) =
+  mergeOutput (jobid, i, time, output) =
     HashMap.insertWith (++) jobid [Output i time (lines output)]
