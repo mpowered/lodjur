@@ -348,6 +348,8 @@ streamOutputAction = do
   chan <- liftIO newChan
   liftIO $ outputStreamer ! SubscribeOutputLog jobId from chan
   setHeader "Content-Type" "text/event-stream"
+  setHeader "Cache-Control" "no-cache"
+  setHeader "X-Accel-Buffering" "no"
   stream (streamLog outputStreamer chan jobId)
 
  where
