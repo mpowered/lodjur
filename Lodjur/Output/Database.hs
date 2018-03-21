@@ -16,21 +16,21 @@ import           Lodjur.Deployment
 initialize :: DbPool -> IO ()
 initialize pool = withConn pool $ \conn -> do
   void $ execute_ conn
-    "CREATE TABLE IF NOT EXISTS output_log (time TIMESTAMPTZ NOT NULL, job_id TEXT NOT NULL, output TEXT NOT NULL)"
+    "CREATE TABLE IF NOT EXISTS output_log (i BIGSERIAL, time TIMESTAMPTZ NOT NULL, job_id TEXT NOT NULL, output TEXT NOT NULL)"
   void $ execute_ conn
-    "CREATE TABLE IF NOT EXISTS output_log_fence (time TIMESTAMPTZ NOT NULL, job_id TEXT NOT NULL)"
+    "CREATE TABLE IF NOT EXISTS output_log_fence (i BIGINT NOT NULL, job_id TEXT NOT NULL)"
 
-appendOutput :: DbPool -> JobId -> Output -> IO ()
-appendOutput pool jobid output = withConn pool $ \conn -> do
+appendOutput :: DbPool -> JobId -> UTCTime -> [String] -> IO ()
+appendOutput pool jobid time output = withConn pool $ \conn -> do
   void $ execute conn
     "INSERT INTO output_log (time, job_id, output) VALUES (?, ?, ?)"
-    (outputTime output, jobid, unlines (outputLines output))
+    (time, jobid, unlines output)
   notify conn jobid
 
 fence :: DbPool -> JobId -> IO ()
 fence pool jobid = withConn pool $ \conn -> do
   void $ execute conn
-    "INSERT INTO output_log_fence (time, job_id) SELECT MAX(time), job_id FROM output_log WHERE job_id=? GROUP BY job_id"
+    "INSERT INTO output_log_fence (i, job_id) SELECT MAX(i), job_id FROM output_log WHERE job_id=? GROUP BY job_id"
     (Only jobid)
   notify conn jobid
 
@@ -51,48 +51,48 @@ outputNotification conn = do
   n <- getNotificationNonBlocking conn
   return $ Text.decodeUtf8 . notificationData <$> n
 
-getOutputLog :: DbPool -> Maybe UTCTime -> Maybe UTCTime -> JobId -> IO [Output]
+getOutputLog :: DbPool -> Maybe Integer -> Maybe Integer -> JobId -> IO [Output]
 getOutputLog pool since before jobid = withConn pool $ \conn ->
   getOutputLogConn conn since before jobid
 
-getOutputLogConn :: Connection -> Maybe UTCTime -> Maybe UTCTime -> JobId -> IO [Output]
+getOutputLogConn :: Connection -> Maybe Integer -> Maybe Integer -> JobId -> IO [Output]
 getOutputLogConn conn since before jobid = mkOutput <$>
   case (since, before) of
     (Just s, Just b) -> query conn
-                "SELECT time, output FROM output_log WHERE job_id = ? AND time > ? AND time <= ? ORDER BY time ASC"
+                "SELECT i, time, output FROM output_log WHERE job_id = ? AND time > ? AND time <= ? ORDER BY i ASC"
                 (jobid, s, b)
     (Just s, Nothing) -> query conn
-                "SELECT time, output FROM output_log WHERE job_id = ? AND time > ? ORDER BY time ASC"
+                "SELECT i, time, output FROM output_log WHERE job_id = ? AND time > ? ORDER BY i ASC"
                 (jobid, s)
     (Nothing, Just b) -> query conn
-                "SELECT time, output FROM output_log WHERE job_id = ? AND time <= ? ORDER BY time ASC"
+                "SELECT i, time, output FROM output_log WHERE job_id = ? AND time <= ? ORDER BY i ASC"
                 (jobid, b)
     (Nothing, Nothing) -> query conn
-                "SELECT time, output FROM output_log WHERE job_id = ? ORDER BY time ASC"
+                "SELECT i, time, output FROM output_log WHERE job_id = ? ORDER BY i ASC"
                 (Only jobid)
  where
-  mkOutput = map (\(time, output) -> Output time (lines output))
+  mkOutput = map (\(i, time, output) -> Output i time (lines output))
 
-nextFence :: Connection -> JobId -> Maybe UTCTime -> IO (Maybe UTCTime)
+nextFence :: Connection -> JobId -> Maybe Integer -> IO (Maybe Integer)
 nextFence conn jobid since = do
   rs <- case since of
     Just s ->
       query conn
-        "SELECT MIN(time) FROM output_log_fence WHERE job_id = ? AND time > ?"
+        "SELECT MIN(i) FROM output_log_fence WHERE job_id = ? AND i > ?"
         (jobid, s)
     Nothing ->
       query conn
-        "SELECT MIN(time) FROM output_log_fence WHERE job_id = ?"
+        "SELECT MIN(i) FROM output_log_fence WHERE job_id = ?"
         (Only jobid)
   case rs of
-    [Only mt] -> return mt
-    _         -> return Nothing
+    [Only i] -> return i
+    _        -> return Nothing
 
 getAllOutputLogs :: DbPool -> IO OutputLogs
 getAllOutputLogs pool = withConn pool $ \conn -> mkOutput <$> query_
   conn
-  "SELECT job_id, time, output FROM output_log ORDER BY time ASC"
+  "SELECT job_id, i, time, output FROM output_log ORDER BY time ASC"
  where
   mkOutput = foldr mergeOutput mempty
-  mergeOutput (jobid, time, output) =
-    HashMap.insertWith (++) jobid [Output time (lines output)]
+  mergeOutput (i, jobid, time, output) =
+    HashMap.insertWith (++) jobid [Output i time (lines output)]

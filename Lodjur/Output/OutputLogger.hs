@@ -42,7 +42,7 @@ instance Process OutputLogger where
 
   receive _self (logger, AppendOutput lines') = do
     now <- getCurrentTime
-    Database.appendOutput (dbPool logger) (jobId logger) (Output now lines')
+    Database.appendOutput (dbPool logger) (jobId logger) now lines'
     return logger
 
   receive _self (logger, OutputFence) = do

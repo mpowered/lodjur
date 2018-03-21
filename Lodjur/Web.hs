@@ -33,7 +33,6 @@ import qualified Data.Text.Lazy                  as LText
 import           Data.Time.Clock                 (UTCTime, getCurrentTime)
 import           Data.Time.Clock.POSIX
 import           Data.Time.Format                (defaultTimeLocale, formatTime)
-import           Data.Time.ISO8601
 import           GHC.Generics                    (Generic)
 import           Lucid.Base                      (Html, toHtml)
 import qualified Lucid.Base                      as Html
@@ -332,18 +331,21 @@ showJobAction = do
   lastLineAt =
     \case
       [] -> ""
-      outputLog -> Text.pack (formatISO8601 (outputTime (last outputLog)))
+      outputLog -> Text.pack (show $ outputIndex (last outputLog))
 
 data OutputEvent = OutputLineEvent
-  { outputEventTime  :: UTCTime
+  { outputEventIndex :: Integer
+  , outputEventTime  :: UTCTime
   , outputEventLines :: [String]
   } deriving (Generic, ToJSON)
 
+maybeParam :: Parsable a => LText.Text -> Action (Maybe a)
+maybeParam name = rescue (Just <$> param name) (const $ return Nothing)
+
 streamOutputAction :: Action ()
 streamOutputAction = do
-  jobId   <- param "job-id"
-  fromStr <- lookup "from" <$> params
-  let from = fromStr >>= (parseISO8601 . LText.unpack)
+  jobId <- param "job-id"
+  from  <- maybeParam "from"
   outputStreamer <- lift (asks envOutputStreamer)
   chan <- liftIO newChan
   liftIO $ outputStreamer ! SubscribeOutputLog jobId from chan
@@ -358,7 +360,8 @@ streamOutputAction = do
       case moutput of
         NextOutput output -> do
           void . send $ Binary.fromByteString "event: output\n"
-          let event = OutputLineEvent { outputEventTime = outputTime output
+          let event = OutputLineEvent { outputEventIndex = outputIndex output
+                                      , outputEventTime = outputTime output
                                       , outputEventLines = outputLines output
                                       }
           void . send $ Binary.fromLazyByteString ("data: " <> encode event <> "\n")

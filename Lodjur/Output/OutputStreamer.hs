@@ -14,7 +14,6 @@ import           Control.Monad          (foldM, when)
 import           Data.HashMap.Strict    (HashMap)
 import qualified Data.HashMap.Strict    as HashMap
 import           Data.Maybe             (isJust)
-import           Data.Time.Clock
 
 import           Lodjur.Database        (Connection, DbPool, withConnNoTran)
 import           Lodjur.Deployment
@@ -30,8 +29,8 @@ type OutputChan = Chan OutputStream
 
 data Sub = Sub
   { subChan :: OutputChan
-  , subSince :: Maybe UTCTime
-  , subFence :: Maybe UTCTime
+  , subSince :: Maybe Integer
+  , subFence :: Maybe Integer
   }
 
 type Subscriptions = HashMap JobId [Sub]
@@ -50,7 +49,7 @@ initialize dbPool = do
 
 data OutputStreamMessage r where
   -- Public messages:
-  SubscribeOutputLog :: JobId -> Maybe UTCTime -> OutputChan -> OutputStreamMessage Async
+  SubscribeOutputLog :: JobId -> Maybe Integer -> OutputChan -> OutputStreamMessage Async
   UnsubscribeOutputLog :: JobId -> OutputChan -> OutputStreamMessage (Sync ())
 
 instance Process OutputStreamer where
@@ -116,7 +115,7 @@ notify conn job Sub{..} = do
   writeList2Chan subChan (map NextOutput out)
   when (isJust fence) $
     writeChan subChan Fence
-  return Sub { subSince = lastSeen (map outputTime out)
+  return Sub { subSince = lastSeen (map outputIndex out)
              , subFence = fence
              , ..
              }

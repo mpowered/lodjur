@@ -1,13 +1,13 @@
 function subscribeToOutput(outputContainer) {
   var preElement = outputContainer.firstElementChild;
   var jobId = outputContainer.dataset.jobId;
-  var lastLineAt = outputContainer.dataset.lastLineAt ? new Date(outputContainer.dataset.lastLineAt) : new Date();
+  var lastLineAt = outputContainer.dataset.lastLineAt ? new Date(outputContainer.dataset.lastLineAt) : 0;
 
   if (jobId) {
-    console.info('Starting streaming of deploy output for job', jobId, 'as of', lastLineAt.toLocaleString());
+    console.info('Starting streaming of deploy output for job', jobId, 'as of', lastLineAt.toString());
     outputContainer.classList.add('streaming');
 
-    var stream = new EventSource('/jobs/' + jobId + '/output?from=' + lastLineAt.toISOString());
+    var stream = new EventSource('/jobs/' + jobId + '/output?from=' + lastLineAt.toString());
 
     stream.addEventListener('output', function (e) {
       var event = JSON.parse(e.data);
