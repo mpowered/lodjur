@@ -2,10 +2,8 @@
 {-# LANGUAGE OverloadedStrings #-}
 module Lodjur.Output.Database where
 
-import           Control.Concurrent.BoundedChan
-import           Control.Monad              (void, unless, when)
+import           Control.Monad              (void)
 import qualified Data.HashMap.Strict        as HashMap
-import           Data.Maybe                 (isNothing)
 import qualified Data.Text.Encoding         as Text
 import           Data.Time.Clock
 import           Database.PostgreSQL.Simple
@@ -53,12 +51,6 @@ outputNotification conn = do
   n <- getNotificationNonBlocking conn
   return $ Text.decodeUtf8 . notificationData <$> n
 
-waitJobNotification :: Connection -> JobId -> IO ()
-waitJobNotification conn jobid = do
-  n <- getNotification conn
-  unless (Text.encodeUtf8 jobid == notificationData n) $
-    waitJobNotification conn jobid
-
 getOutputLog :: DbPool -> Maybe UTCTime -> Maybe UTCTime -> JobId -> IO [Output]
 getOutputLog pool since before jobid = withConn pool $ \conn ->
   getOutputLogConn conn since before jobid
@@ -80,24 +72,6 @@ getOutputLogConn conn since before jobid = mkOutput <$>
                 (Only jobid)
  where
   mkOutput = map (\(time, output) -> Output time (lines output))
-
-streamOutputLog :: DbPool -> JobId -> Maybe UTCTime -> BoundedChan (Maybe Output) -> IO ()
-streamOutputLog pool jobid s chan = withConnNoTran pool $ \conn -> do
-  listen conn
-  go conn s Nothing
-  unlisten conn
-  writeChan chan Nothing
- where
-  go conn since til = do
-    til' <- maybe (nextFence conn jobid since) (return . Just) til
-    output <- getOutputLog pool since til' jobid
-    writeList2Chan chan (map Just output)
-    when (isNothing til') $ do
-        waitJobNotification conn jobid
-        go conn (lastSeen since output) Nothing
-
-  lastSeen since [] = since
-  lastSeen _     os = Just $ outputTime $ last os
 
 nextFence :: Connection -> JobId -> Maybe UTCTime -> IO (Maybe UTCTime)
 nextFence conn jobid since = do

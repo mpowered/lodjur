@@ -11,7 +11,6 @@ module Lodjur.Output.OutputLogger
   ) where
 
 import           Control.Concurrent
-import           Control.Concurrent.BoundedChan
 import           Control.Exception      (tryJust)
 import           Control.Monad          (void)
 import           Data.Time.Clock
@@ -36,7 +35,6 @@ data OutputLogMessage r where
   AppendOutput :: [String] -> OutputLogMessage Async
   OutputFence :: OutputLogMessage Async
   GetOutputLog :: OutputLogMessage (Sync [Output])
-  StreamOutputLog :: Maybe UTCTime -> BoundedChan (Maybe Output) -> OutputLogMessage Async
   GetOutputLogs :: OutputLogMessage (Sync OutputLogs)
 
 instance Process OutputLogger where
@@ -54,11 +52,6 @@ instance Process OutputLogger where
   receive _self (logger, GetOutputLog) = do
     out <- Database.getOutputLog (dbPool logger) Nothing Nothing (jobId logger)
     return (logger, out)
-
-  receive _self (logger, StreamOutputLog since chan) = do
-    _ <- forkIO $
-      Database.streamOutputLog (dbPool logger) (jobId logger) since chan
-    return logger
 
   receive _self (logger, GetOutputLogs) = do
     logs <- Database.getAllOutputLogs (dbPool logger)
