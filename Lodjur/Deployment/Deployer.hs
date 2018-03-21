@@ -65,6 +65,7 @@ data DeployMessage r where
   -- Public messages:
   Deploy :: DeploymentName -> Tag -> UTCTime -> DeployMessage (Sync (Maybe DeploymentJob))
   GetCurrentState :: DeployMessage (Sync DeployState)
+  GetJob :: JobId -> DeployMessage (Sync (Maybe (DeploymentJob, Maybe JobResult)))
   GetJobs :: DeployMessage (Sync DeploymentJobs)
   GetDeploymentNames :: DeployMessage (Sync [DeploymentName])
   -- Private messages:
@@ -151,6 +152,9 @@ instance Process Deployer where
       -- Queries:
       (_, GetDeploymentNames) ->
         return (a, HashSet.toList deploymentNames)
+      (_, GetJob jobId) -> do
+        job <- Database.getJobById pool jobId
+        return (a, job)
       (_, GetJobs) -> do
         jobs <- Database.getAllJobs pool
         return (a, jobs)

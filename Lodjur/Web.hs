@@ -108,7 +108,6 @@ renderEventLog []       = p_ [class_ "text-secondary"] "No events available."
 renderEventLog eventLog = table_ [class_ "table"] $ do
   tr_ $ do
     th_ "Event"
-    th_ "Tag"
     th_ "Time"
     th_ "Description"
   mapM_ renderEvent eventLog
@@ -117,17 +116,14 @@ renderEventLog eventLog = table_ [class_ "table"] $ do
   renderEvent event = tr_ $ case event of
     JobRunning startedAt -> do
       td_ $ span_ [class_ "text-primary"] "Started"
-      td_ "tag"
       td_ (toHtml (formatUTCTime startedAt))
       td_ ""
     JobFinished JobSuccessful finishedAt -> do
       td_ $ span_ [class_ "text-success"] "Finished"
-      td_ "tag"
       td_ (toHtml (formatUTCTime finishedAt))
       td_ ""
     JobFinished (JobFailed e) finishedAt -> do
       td_ $ span_ [class_ "text-danger"] "Failed"
-      td_ "tag"
       td_ (toHtml (formatUTCTime finishedAt))
       td_ [style_ "color: red;"] (toHtml e)
 
@@ -296,15 +292,23 @@ showJobAction :: Action ()
 showJobAction = do
   jobId         <- param "job-id"
   eventLogger   <- lift (asks envEventLogger)
+  deployer      <- lift (asks envDeployer)
+  job           <- liftIO $ deployer ? GetJob jobId
   eventLogs     <- liftIO $ eventLogger ? GetEventLogs
   outputLog     <- getJobLogs jobId
-  case HashMap.lookup jobId eventLogs of
-    Just eventLog ->
+  case (job, HashMap.lookup jobId eventLogs) of
+    (Just (job, _), Just eventLog) ->
       renderLayout "Job Details" ["Jobs", jobIdLink jobId] $ do
-        div_ [class_ "row mt-5"] $ div_ [class_ "col"] $ do
+        div_ [class_ "row mt-5 mb-5"] $ div_ [class_ "col"] $ do
+          "Deploy of tag "
+          em_ $ toHtml (unTag (deploymentTag job))
+          " to "
+          em_ $ toHtml (unDeploymentName (deploymentName job))
+          "."
+        div_ [class_ "row mt-3"] $ div_ [class_ "col"] $ do
           h2_ [class_ "mb-3"] "Event Log"
           renderEventLog eventLog
-        div_ [class_ "row mt-2 mb-5"] $ div_ [class_ "col"] $ do
+        div_ [class_ "row mt-3 mb-5"] $ div_ [class_ "col"] $ do
           h2_ [class_ "mb-3"] "Command Output"
           let lineAttr = data_ "last-line-at" . lastLineAt <$> outputLog
               allAttrs = maybeToList lineAttr <> [class_ "command-output", data_ "job-id" jobId]
