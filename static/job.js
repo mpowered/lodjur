@@ -21,14 +21,14 @@ function renderTimeStamp(t) {
 function subscribeToOutput(outputContainer) {
   var preElement = outputContainer.firstElementChild;
   var jobId = outputContainer.dataset.jobId;
-  var lastLineAt = outputContainer.dataset.lastLineAt ? new Date(outputContainer.dataset.lastLineAt) : 0;
+  var lastLineAt = outputContainer.dataset.lastLineAt ? parseInt(outputContainer.dataset.lastLineAt) : 0;
 
   if (jobId) {
-    console.info('Starting streaming of deploy output for job', jobId, 'as of', lastLineAt.toString());
+    console.info('Starting streaming of deploy output for job', jobId, 'as of line', lastLineAt.toString());
     outputContainer.classList.add('streaming');
 
     var stream = new EventSource('/jobs/' + jobId + '/output?from=' + lastLineAt.toString());
-    var lastIndex = lastLineAt; ## FIXME - no longer a timestamp
+    var lastTimestamp;
 
     stream.addEventListener('output', function (e) {
       var event = JSON.parse(e.data);
@@ -39,7 +39,7 @@ function subscribeToOutput(outputContainer) {
         line.classList.add('line');
 
         // Add timestamp if not same second as before.
-        if (true || earlierThanInSeconds(lastTimestamp, eventTimestamp)) {
+        if (!lastTimestamp || earlierThanInSeconds(lastTimestamp, eventTimestamp)) {
           line.append(renderTimeStamp(eventTimestamp));
         }
         lastTimestamp = eventTimestamp;
