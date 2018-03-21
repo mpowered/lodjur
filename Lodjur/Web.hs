@@ -304,7 +304,7 @@ showJobAction = do
         div_ [class_ "row mt-5"] $ div_ [class_ "col"] $ do
           h2_ [class_ "mb-3"] "Event Log"
           renderEventLog eventLog
-        div_ [class_ "row mt-2"] $ div_ [class_ "col"] $ do
+        div_ [class_ "row mt-2 mb-5"] $ div_ [class_ "col"] $ do
           h2_ [class_ "mb-3"] "Command Output"
           let lineAttr = data_ "last-line-at" . lastLineAt <$> outputLog
               allAttrs = maybeToList lineAttr <> [class_ "command-output", data_ "job-id" jobId]
