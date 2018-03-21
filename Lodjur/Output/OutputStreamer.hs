@@ -10,7 +10,7 @@ module Lodjur.Output.OutputStreamer
   ) where
 
 import           Control.Concurrent
-import           Control.Monad          (when)
+import           Control.Monad          (foldM, when)
 import           Data.HashMap.Strict    (HashMap)
 import qualified Data.HashMap.Strict    as HashMap
 import           Data.Maybe             (isJust)
@@ -97,14 +97,17 @@ distributer conn var = do
     else do
       n <- Database.outputNotification conn
       case n of
-        Just job -> do
-          let ss = HashMap.lookupDefault [] job subs
-          ss' <- mapM (notify conn job) ss
-          putMVar var $ HashMap.insert job ss' subs
+        Just job ->
+          notifyJob subs job >>= putMVar var
         Nothing -> do
-          putMVar var subs
+          foldM notifyJob subs (HashMap.keys subs) >>= putMVar var
           threadDelay 1000000
       distributer conn var
+ where
+  notifyJob subs job = do
+    let ss = HashMap.lookupDefault [] job subs
+    ss' <- mapM (notify conn job) ss
+    return $ HashMap.insert job ss' subs
 
 notify :: Connection -> JobId -> Sub -> IO Sub
 notify conn job Sub{..} = do
