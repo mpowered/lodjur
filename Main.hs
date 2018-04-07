@@ -3,13 +3,17 @@
 
 module Main where
 
-import           Data.ByteString             (ByteString)
-import qualified Data.HashSet                as HashSet
-import           Data.Semigroup              ((<>))
-import           Data.Text                   (Text)
-import           Data.Word
+import           Data.Aeson                   as JSON
+import           Data.ByteString              (ByteString)
+import           Data.ByteString              as ByteString
+import           Data.ByteString.Char8        as Char8
+import qualified Data.HashSet                 as HashSet
+import           Data.Semigroup               ((<>))
+import           Data.Text                    (Text)
+import           Data.Text.IO                 as Text
 import           Database.PostgreSQL.Simple
 import           Options.Applicative
+import           Text.Toml
 
 import qualified Lodjur.Database              as Database
 import           Lodjur.Deployment
@@ -21,6 +25,71 @@ import qualified Lodjur.Output.OutputLoggers  as OutputLoggers
 import qualified Lodjur.Output.OutputStreamer as OutputStreamer
 import           Lodjur.Process
 import           Lodjur.Web
+
+data LodjurConfiguration = LodjurConfiguration
+  { gitWorkingDir       :: FilePath
+  , nixopsDeployments   :: [DeploymentName]
+  , port                :: Port
+  , authUser            :: ByteString
+  , authPassword        :: ByteString
+  , databaseConnectInfo ::  ConnectInfo
+  , githubSecretToken   :: ByteString
+  , githubRepos         :: [Text]
+  , staticDirectory     :: FilePath
+  }
+
+
+instance FromJSON LodjurConfiguration where
+  parseJSON = withObject "Configuration" $ \o -> do
+    gitWorkingDir <- o .: "git-working-dir"
+    nixopsDeployments <- fmap DeploymentName <$> (o .: "nixops-deployments")
+    port <- o .: "http-port"
+    authUser <- Char8.pack <$> (o .: "auth-user")
+    authPassword <- Char8.pack <$> (o .: "auth-password")
+    db <- o .: "database"
+    databaseConnectInfo <- parseDatabaseConnectInfo db
+    githubSecretToken <- Char8.pack <$> (o .: "github-secret-token")
+    githubRepos <- o .: "github-repos"
+    staticDirectory <- o .: "static-directory"
+    return LodjurConfiguration{..}
+    where
+      parseDatabaseConnectInfo o = do
+        databaseHost <- o .: "host"
+        databasePort <- o .: "port"
+        databaseName <- o .: "name"
+        databaseUser <- o .: "user"
+        databasePassword <- o .: "password"
+        return ConnectInfo
+          { connectHost     = databaseHost
+          , connectPort     = databasePort
+          , connectDatabase = databaseName
+          , connectUser     = databaseUser
+          , connectPassword = databasePassword
+          }
+
+
+newtype LodjurOptions = LodjurOptions
+  { configFile :: FilePath
+  }
+
+lodjur :: Parser LodjurOptions
+lodjur = LodjurOptions <$> strOption
+  ( long "config-file"
+    <> metavar "PATH"
+    <> short 'c'
+    <> value "lodjur.toml"
+    <> help "Path to Lodjur configuration file"
+  )
+
+readConfiguration :: FilePath -> IO LodjurConfiguration
+readConfiguration path = do
+  f <- Text.readFile path
+  case parseTomlDoc path f of
+    Right toml -> case fromJSON (toJSON toml) of
+      JSON.Success config -> pure config
+      JSON.Error   e      -> fail e
+    Left e -> fail (show e)
+
 
 main :: IO ()
 main = startServices =<< execParser opts
@@ -35,19 +104,10 @@ main = startServices =<< execParser opts
   ttl            = 5
   connsPerStripe = 4
 
-  startServices Options {..} = do
+  startServices LodjurOptions {..} = do
+    LodjurConfiguration {..} <- readConfiguration configFile
     let deploymentNames = HashSet.fromList nixopsDeployments
-    pool <- Database.newPool
-      ConnectInfo
-        { connectHost     = databaseHost
-        , connectPort     = databasePort
-        , connectDatabase = databaseName
-        , connectUser     = databaseUser
-        , connectPassword = databasePassword
-        }
-      stripes
-      ttl
-      connsPerStripe
+    pool <- Database.newPool databaseConnectInfo stripes ttl connsPerStripe
 
     eventLogger    <- spawn =<< EventLogger.initialize pool
     outputLoggers  <- spawn =<< OutputLoggers.initialize pool
@@ -71,117 +131,3 @@ main = startServices =<< execParser opts
               gitReader
               githubSecretToken
               githubRepos
-
-data Options = Options
-  { gitWorkingDir     :: FilePath
-  , nixopsDeployments :: [DeploymentName]
-  , port              :: Port
-  , authUser          :: ByteString
-  , authPassword      :: ByteString
-  , databaseHost      :: String
-  , databasePort      :: Word16
-  , databaseName      :: String
-  , databaseUser      :: String
-  , databasePassword  :: String
-  , githubSecretToken :: ByteString
-  , githubRepos       :: [Text]
-  , staticDirectory   :: FilePath
-  }
-
-lodjur :: Parser Options
-lodjur =
-  Options
-    <$> strOption
-          ( long "git-working-dir" <> metavar "PATH" <> short 'g' <> help
-            "Path to Git directory containing deployment expressions"
-          )
-    <*> many
-          ( strOption
-            ( long "deployment" <> metavar "NAME" <> short 'd' <> help
-              "Names of nixops deployments to support"
-            )
-          )
-    <*> option
-          auto
-          (  long "port"
-          <> metavar "PORT"
-          <> short 'p'
-          <> help "Port to run the web server on"
-          <> showDefault
-          <> value 4000
-          )
-    <*> strOption
-          (  long "auth-user"
-          <> metavar "USERNAME"
-          <> help "Basic authentication user name"
-          <> showDefault
-          <> value ""
-          )
-    <*> strOption
-          (  long "auth-password"
-          <> metavar "PASSWORD"
-          <> help "Basic authentication password"
-          <> showDefault
-          <> value ""
-          )
-    <*> strOption
-          (  long "database-host"
-          <> metavar "HOST"
-          <> short 'H'
-          <> help "PostgreSQL host"
-          <> showDefault
-          <> value "localhost"
-          )
-    <*> option
-          auto
-          (  long "database-port"
-          <> metavar "PORT"
-          <> short 'P'
-          <> help "PostgreSQL port"
-          <> showDefault
-          <> value 5432
-          )
-    <*> strOption
-          (  long "database-name"
-          <> metavar "DATABASE"
-          <> short 'D'
-          <> help "Name of PostgreSQL database"
-          <> showDefault
-          <> value "lodjur"
-          )
-    <*> strOption
-          (  long "database-user"
-          <> metavar "USER"
-          <> short 'U'
-          <> help "PostgreSQL user name"
-          <> showDefault
-          <> value "root"
-          )
-    <*> strOption
-          (  long "database-password"
-          <> metavar "PASSWORD"
-          <> short 'W'
-          <> help "PostgreSQL user password"
-          <> value ""
-          )
-    <*> strOption
-          (  long "github-secret"
-          <> metavar "TOKEN"
-          <> short 's'
-          <> help "Shared secret for Github webhooks to validate signatures"
-          <> value ""
-          )
-    <*> many
-          ( strOption
-            (  long "github-repo"
-            <> metavar "FULL-REPO-NAME"
-            <> short 'r'
-            <> help "Github repository name to allow webhooks for"
-            )
-          )
-    <*> strOption
-          (  long "static-directory"
-          <> metavar "DIRECTORY"
-          <> help "Path to directory of Lodjur static assets"
-          <> value "static"
-          )

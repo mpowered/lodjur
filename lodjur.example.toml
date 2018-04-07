@@ -1,0 +1,17 @@
+# Example configuration
+
+git-working-dir = "/home/me/my-repo"
+nixops-deployments = ["my-deployment"]
+http-port = 4000
+auth-user = "me"
+auth-password = "pass"
+github-secret-token = "secret"
+github-repos = ["mpowered/example"]
+static-directory = "static"
+
+[database]
+host = "localhost"
+port = 5432
+name = "lodjur"
+user = "lodjur"
+password = "lodjur"

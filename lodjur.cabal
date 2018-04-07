@@ -32,6 +32,7 @@ executable          lodjur
                   , bytestring
                   , cryptonite
                   , hashable
+                  , htoml
                   , http-types
                   , lucid
                   , monad-control
