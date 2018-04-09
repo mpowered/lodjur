@@ -5,7 +5,6 @@ module Main where
 
 import           Data.Aeson                   as JSON
 import           Data.ByteString              (ByteString)
-import           Data.ByteString              as ByteString
 import           Data.ByteString.Char8        as Char8
 import qualified Data.HashSet                 as HashSet
 import           Data.Semigroup               ((<>))
@@ -123,6 +122,7 @@ main = startServices =<< execParser opts
                                 pool
     runServer port
               (authUser, authPassword)
+              staticDirectory
               deployer
               eventLogger
               outputLoggers

@@ -26,6 +26,7 @@ import qualified Data.HashMap.Strict             as HashMap
 import qualified Data.List                       as List
 import           Data.Maybe                      (maybeToList)
 import           Data.Semigroup
+import           Data.String
 import           Data.Text                       (Text)
 import qualified Data.Text                       as Text
 import qualified Data.Text.Encoding              as Text
@@ -42,7 +43,8 @@ import           Network.HTTP.Types.Status
 import           Network.Wai                     (rawPathInfo)
 import           Network.Wai.Middleware.HttpAuth (AuthSettings (..), CheckCreds,
                                                   basicAuth)
-import           Network.Wai.Middleware.Static   (addBase, staticPolicy)
+import           Network.Wai.Middleware.Static   (Policy, addBase, staticPolicy,
+                                                  policy, (>->))
 import           Web.Scotty.Trans
 
 import           Lodjur.Deployment.Deployer
@@ -84,9 +86,9 @@ renderLayout title breadcrumbs contents =
   renderHtml $ doctypehtml_ $ html_ $ do
     head_ $ do
       title_ title
-      link_ [rel_ "stylesheet", href_ "/bootstrap/css/bootstrap.min.css"]
-      link_ [rel_ "stylesheet", href_ "/lodjur.css"]
-      Html.termRawWith "script" [src_ "/job.js", Html.makeAttribute "defer" "defer"] mempty
+      link_ [rel_ "stylesheet", href_ (static "bootstrap/css/bootstrap.min.css")]
+      link_ [rel_ "stylesheet", href_ (static "lodjur.css")]
+      Html.termRawWith "script" [src_ (static "job.js"), Html.makeAttribute "defer" "defer"] mempty
     body_ $ do
       nav_ [class_ "navbar navbar-dark bg-dark"] $
         div_ [class_ "container"] $
@@ -297,13 +299,13 @@ showJobAction = do
   eventLogs     <- liftIO $ eventLogger ? GetEventLogs
   outputLog     <- getJobLogs jobId
   case (job, HashMap.lookup jobId eventLogs) of
-    (Just (job, _), Just eventLog) ->
+    (Just (job', _), Just eventLog) ->
       renderLayout "Job Details" ["Jobs", jobIdLink jobId] $ do
         div_ [class_ "row mt-5 mb-5"] $ div_ [class_ "col"] $ do
           "Deploy of tag "
-          em_ $ toHtml (unTag (deploymentTag job))
+          em_ $ toHtml (unTag (deploymentTag job'))
           " to "
-          em_ $ toHtml (unDeploymentName (deploymentName job))
+          em_ $ toHtml (unDeploymentName (deploymentName job'))
           "."
         div_ [class_ "row mt-3"] $ div_ [class_ "col"] $ do
           h2_ [class_ "mb-3"] "Event Log"
@@ -480,9 +482,20 @@ checkCredentials :: (ByteString, ByteString) -> CheckCreds
 checkCredentials (cUser, cPass) user pass =
   return (user == cUser && pass == cPass)
 
+staticPrefix :: String
+staticPrefix = "static/"
+
+static :: (Data.String.IsString a, Semigroup a) => a -> a
+static x = "static/" <> x
+
+redirectStatic :: String -> Policy
+redirectStatic staticBase =
+  policy (List.stripPrefix staticPrefix) >-> addBase staticBase
+
 runServer
   :: Port
   -> (ByteString, ByteString)
+  -> String
   -> Ref Deployer
   -> Ref EventLogger
   -> Ref OutputLoggers
@@ -492,11 +505,11 @@ runServer
   -> ByteString
   -> [Text]
   -> IO ()
-runServer port authCreds envDeployer envEventLogger envOutputLoggers envOutputStreamer envGitAgent envGitReader envGithubSecretToken envGithubRepos =
+runServer port authCreds staticBase envDeployer envEventLogger envOutputLoggers envOutputStreamer envGitAgent envGitReader envGithubSecretToken envGithubRepos =
   scottyT port (`runReaderT` Env {..}) $ do
     -- Middleware
     middleware (basicAuth (checkCredentials authCreds) authSettings)
-    middleware (staticPolicy (addBase "static"))
+    middleware (staticPolicy (redirectStatic staticBase))
     -- Routes
     get  "/"                    homeAction
     post "/jobs"                newDeployAction
