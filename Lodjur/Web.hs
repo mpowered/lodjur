@@ -486,7 +486,7 @@ staticPrefix :: String
 staticPrefix = "static/"
 
 static :: (Data.String.IsString a, Semigroup a) => a -> a
-static x = "static/" <> x
+static x = "/static/" <> x
 
 redirectStatic :: String -> Policy
 redirectStatic staticBase =
