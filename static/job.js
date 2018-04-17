@@ -1,7 +1,6 @@
 /* Whether `t1` is before `t2`, with a resolution of whole seconds.
  */
 function earlierThanInSeconds(t1, t2) {
-  console.log(t1, t2);
   return Math.floor(t1.valueOf() / 1000) <  Math.floor(t2.valueOf() / 1000);
 }
 
@@ -65,9 +64,30 @@ function subscribeToOutput(outputContainer) {
   }
 };
 
+function setupAutoScroll(checkbox) {
+  var timer;
+
+  function updateScroll() {
+    if (checkbox.checked) {
+      timer = setInterval(function () {
+        window.scrollTo(0,document.body.scrollHeight);
+      }, 500);
+    } else {
+      clearInterval(timer);
+    }
+  }
+
+  checkbox.addEventListener('change', updateScroll);
+  updateScroll();
+}
+
 (function () {
   var commandOutput = document.querySelector('.command-output');
   if (commandOutput) {
     subscribeToOutput(commandOutput);
+  }
+  var autoScrollCheck = document.querySelector('.autoscroll input');
+  if (autoScrollCheck) {
+    setupAutoScroll(autoScrollCheck);
   }
 })();

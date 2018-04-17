@@ -318,6 +318,10 @@ showJobAction = do
             case outputLog of
               Just outputs -> foldM_ displayOutput Nothing outputs
               Nothing -> mempty
+        div_ [class_ "autoscroll"] $
+          div_ [class_ "form-check form-check-inline form-control-small"] $ do
+            input_ [class_ "form-check-input", type_ "checkbox", id_ "autoscroll-check"]
+            label_ [class_ "form-check-label", for_ "autoscroll-check"] "Auto-Scroll"
     _ -> notFoundAction
  where
   displayOutput :: Maybe UTCTime -> Output -> Html (Maybe UTCTime)
