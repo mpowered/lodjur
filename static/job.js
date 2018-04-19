@@ -48,6 +48,8 @@ function subscribeToOutput(outputContainer) {
 
         preElement.appendChild(line);
       });
+
+      outputContainer.dispatchEvent(new Event('output', { serverEvent: event }))
     });
 
     stream.addEventListener('end', function (e) {
@@ -64,30 +66,23 @@ function subscribeToOutput(outputContainer) {
   }
 };
 
-function setupAutoScroll(checkbox) {
-  var timer;
-
-  function updateScroll() {
+function setupAutoScroll(outputContainer, checkbox) {
+  function scrollToBottom(e) {
     if (checkbox.checked) {
-      timer = setInterval(function () {
-        window.scrollTo(0,document.body.scrollHeight);
-      }, 500);
-    } else {
-      clearInterval(timer);
+      window.scrollTo(0,document.body.scrollHeight);
     }
   }
 
-  checkbox.addEventListener('change', updateScroll);
-  updateScroll();
+  outputContainer.addEventListener('output', scrollToBottom);
 }
 
 (function () {
   var commandOutput = document.querySelector('.command-output');
+  var autoScrollCheck = document.querySelector('.autoscroll input');
+  if (commandOutput && autoScrollCheck) {
+    setupAutoScroll(commandOutput, autoScrollCheck);
+  }
   if (commandOutput) {
     subscribeToOutput(commandOutput);
-  }
-  var autoScrollCheck = document.querySelector('.autoscroll input');
-  if (autoScrollCheck) {
-    setupAutoScroll(autoScrollCheck);
   }
 })();
