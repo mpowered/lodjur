@@ -34,6 +34,7 @@ import qualified Data.Text.Lazy                  as LText
 import           Data.Time.Clock                 (UTCTime, getCurrentTime)
 import           Data.Time.Clock.POSIX
 import           Data.Time.Format                (defaultTimeLocale, formatTime)
+import           Data.Version
 import           GHC.Generics                    (Generic)
 import           Lucid.Base                      (Html, toHtml)
 import qualified Lucid.Base                      as Html
@@ -55,6 +56,8 @@ import           Lodjur.Output.OutputLogger
 import           Lodjur.Output.OutputLoggers
 import           Lodjur.Output.OutputStreamer
 import           Lodjur.Process
+
+import           Paths_lodjur
 
 data Env = Env
   { envDeployer          :: Ref Deployer
@@ -91,8 +94,9 @@ renderLayout title breadcrumbs contents =
       Html.termRawWith "script" [src_ (static "job.js"), Html.makeAttribute "defer" "defer"] mempty
     body_ $ do
       nav_ [class_ "navbar navbar-dark bg-dark"] $
-        div_ [class_ "container"] $
+        div_ [class_ "container"] $ do
           a_ [class_ "navbar-brand", href_ "/"] "Lodjur"
+          span_ [class_ "navbar-text"] (toHtml $ showVersion version)
       nav_ [class_ "breadcrumb-nav"] $
         div_ [class_ "container"] $
           ol_ [class_ "breadcrumb"] (toBreadcrumbItems (homeLink : breadcrumbs))
