@@ -49,7 +49,7 @@ function subscribeToOutput(outputContainer) {
         preElement.appendChild(line);
       });
 
-      outputContainer.dispatchEvent(new Event('output', { serverEvent: event }))
+      outputContainer.dispatchEvent(new CustomEvent('output', { serverEvent: event }))
     });
 
     stream.addEventListener('end', function (e) {
