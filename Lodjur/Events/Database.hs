@@ -13,9 +13,11 @@ import           Lodjur.Deployment
 import           Lodjur.Events
 
 initialize :: DbPool -> IO ()
-initialize pool = withConn pool $ \conn ->
-  void $ execute_ conn
-    "CREATE TABLE IF NOT EXISTS event_log (time TIMESTAMPTZ NOT NULL, job_id TEXT NOT NULL, event JSONB NOT NULL)"
+initialize pool = withConn pool $ \conn -> mapM_ (execute_ conn)
+  [ "CREATE TABLE IF NOT EXISTS event_log (time TIMESTAMPTZ NOT NULL, job_id TEXT NOT NULL, event JSONB NOT NULL)"
+  , "CREATE INDEX IF NOT EXISTS event_log_job_id ON event_log (job_id)"
+  , "CREATE INDEX IF NOT EXISTS event_log_time ON event_log (\"time\")"
+  ]
 
 insertEvent :: DbPool -> UTCTime -> JobId -> JobEvent -> IO ()
 insertEvent pool t jobid event = withConn pool $ \conn -> void $ execute

@@ -14,9 +14,10 @@ import           Lodjur.Deployment
 import           Lodjur.Git
 
 initialize :: DbPool -> IO ()
-initialize pool = withConn pool $ \conn -> void $ execute_
-  conn
-  "CREATE TABLE IF NOT EXISTS deployment_job (id TEXT PRIMARY KEY, time TIMESTAMPTZ NOT NULL, deployment_name TEXT NOT NULL, tag TEXT NOT NULL, result TEXT NULL, error_message TEXT NULL)"
+initialize pool = withConn pool $ \conn -> mapM_ (execute_ conn)
+  [ "CREATE TABLE IF NOT EXISTS deployment_job (id TEXT PRIMARY KEY, time TIMESTAMPTZ NOT NULL, deployment_name TEXT NOT NULL, tag TEXT NOT NULL, result TEXT NULL, error_message TEXT NULL)"
+  , "CREATE INDEX IF NOT EXISTS deployment_job_time ON deployment_job (\"time\")"
+  ]
 
 insertJob :: DbPool -> DeploymentJob -> Maybe JobResult -> IO ()
 insertJob pool DeploymentJob {..} = \case
