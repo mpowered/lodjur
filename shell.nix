@@ -1,9 +1,6 @@
-{nixpkgs ? import <nixpkgs> { }, ghc ? nixpkgs.ghc}:
+args@{ nixpkgs ? import <nixpkgs> {}, compiler ? "default", doBenchmark ? false }:
 
-with nixpkgs;
-
-haskell.lib.buildStackProject {
-  name = "lodjurEnv";
-  buildInputs = [ postgresql100 zlib ];
-  inherit ghc;
-}
+let
+  lodjur = (import ./release.nix args).lodjur;
+in
+  lodjur.env
