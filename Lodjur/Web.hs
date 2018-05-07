@@ -50,6 +50,7 @@ import           Web.Scotty.Trans
 
 import           Lodjur.Deployment.Deployer
 import           Lodjur.Events.EventLogger
+import qualified Lodjur.Git                      as Git
 import           Lodjur.Git.GitAgent
 import           Lodjur.Git.GitReader
 import           Lodjur.Output.OutputLogger
@@ -83,6 +84,9 @@ formatUTCTime = formatTime defaultTimeLocale "%c"
 
 hourMinSec :: UTCTime -> String
 hourMinSec = formatTime defaultTimeLocale "%H:%M:%S"
+
+renderDeploymentRevision :: DeploymentJob -> Html ()
+renderDeploymentRevision = toHtml . Git.unRevision . deploymentRevision
 
 renderLayout :: Html () -> [Html ()] -> Html () -> Action ()
 renderLayout title breadcrumbs contents =
@@ -150,7 +154,7 @@ renderDeployJobs jobs = div_ [class_ "card"] $ do
   renderJob (job, r) = tr_ $ do
     td_ (jobLink job)
     td_ (toHtml (unDeploymentName (deploymentName job)))
-    td_ (toHtml (unTag (deploymentTag job)))
+    td_ (renderDeploymentRevision job)
     td_ (toHtml (formatUTCTime (deploymentTime job)))
     case r of
       Just JobSuccessful      -> td_ [class_ "text-success"] "Successful"
@@ -165,7 +169,7 @@ renderCurrentState state = div_ [class_ "card"] $ do
     Deploying job -> do
       div_ [class_ "text-warning h3"] "Deploying"
       a_ [href_ (jobHref job), class_ "text-warning"] $ do
-        toHtml (unTag (deploymentTag job))
+        renderDeploymentRevision job
         " to "
         toHtml (unDeploymentName (deploymentName job))
 
@@ -192,11 +196,23 @@ renderLatestSuccessful deploymentNames jobs =
         table_ [class_ "table table-bordered mb-0"] $
           forM_ successfulJobs $ \(name, job) -> tr_ $ do
             td_ (toHtml (unDeploymentName name))
-            td_ (toHtml (unTag (deploymentTag job)))
+            td_ (renderDeploymentRevision job)
             td_ (jobLink job)
 
-renderDeployCard :: [DeploymentName] -> [Tag] -> DeployState -> Html ()
-renderDeployCard deploymentNames tags state = case state of
+renderDeployDatalist :: [Git.Revision] -> [Git.Ref] -> Text -> Html ()
+renderDeployDatalist revs refs listId =
+  datalist_ [id_ listId] $ do
+    forM_ refs $ \case
+      Git.Branch name rev ->
+        option_ [value_ (Git.unRevision rev)] (toHtml name <> " (branch)")
+      Git.Tag name rev ->
+        option_ [value_ (Git.unRevision rev)] (toHtml name <> " (tag)")
+    forM_ (revs <> map Git.refRevision refs) $ \rev ->
+      option_ [value_ (Git.unRevision rev)] mempty
+
+
+renderDeployCard :: [DeploymentName] -> [Git.Revision] -> [Git.Ref] -> DeployState -> Html ()
+renderDeployCard deploymentNames revisions refs state = case state of
   Idle -> div_ [class_ "card"] $ do
     div_ [class_ "card-header"] "New Deploy"
     div_ [class_ "card-body"]
@@ -211,10 +227,9 @@ renderDeployCard deploymentNames tags state = case state of
             small_ [class_ "text-muted"]
                    "Name of the Nixops deployment to target."
           div_ [class_ "col"] $ do
-            select_ [name_ "tag", class_ "form-control"]
-              $ forM_ tags
-              $ \(unTag -> tag) -> option_ [value_ tag] (toHtml tag)
-            small_ [class_ "text-muted"] "Which git tag to deploy."
+            input_ [name_ "revision", list_ "revisions", class_ "form-control"]
+            renderDeployDatalist revisions refs "revisions"
+            small_ [class_ "text-muted"] "Which git revision to deploy."
           div_ [class_ "col"]
             $ input_
                 [ class_ "btn btn-primary form-control"
@@ -257,17 +272,19 @@ homeAction = do
   deployer        <- lift (asks envDeployer)
   gitReader       <- lift (asks envGitReader)
   deploymentNames <- liftIO $ deployer ? GetDeploymentNames
-  tags            <- liftIO $ gitReader ? GetTags
+  revisions            <- liftIO $ gitReader ? GetRevisions
+  refs            <- liftIO $ gitReader ? GetRefs
   deployState     <- liftIO $ deployer ? GetCurrentState
   jobs            <- liftIO $ deployer ? GetJobs (Just 10)
   renderLayout "Lodjur Deployment Manager" [] $ do
     div_ [class_ "row mt-5"] $ do
       div_ [class_ "col col-4"] $ renderCurrentState deployState
-      div_ [class_ "col"] $ renderLatestSuccessful deploymentNames jobs
+      div_ [class_ "col col-8"] $ renderLatestSuccessful deploymentNames jobs
     div_ [class_ "row mt-5"] $ div_ [class_ "col"] $ renderDeployJobs jobs
     div_ [class_ "row mt-5 mb-5"] $ div_ [class_ "col"] $ renderDeployCard
       deploymentNames
-      tags
+      revisions
+      refs
       deployState
 
 newDeployAction :: Action ()
@@ -275,9 +292,9 @@ newDeployAction = readState >>= \case
   Idle -> do
     deployer <- lift (asks envDeployer)
     dName    <- DeploymentName <$> param "deployment-name"
-    tag      <- Tag <$> param "tag"
+    revision <- Git.Revision <$> param "revision"
     now      <- liftIO getCurrentTime
-    liftIO (deployer ? Deploy dName tag now) >>= \case
+    liftIO (deployer ? Deploy dName revision now) >>= \case
       Just job -> do
         status status302
         setHeader "Location" (LText.fromStrict (jobHref job))
@@ -306,8 +323,8 @@ showJobAction = do
     (Just (job', _), Just eventLog) ->
       renderLayout "Job Details" ["Jobs", jobIdLink jobId] $ do
         div_ [class_ "row mt-5 mb-5"] $ div_ [class_ "col"] $ do
-          "Deploy of tag "
-          em_ $ toHtml (unTag (deploymentTag job'))
+          "Deploy of revision "
+          em_ $ toHtml (Git.unRevision (deploymentRevision job'))
           " to "
           em_ $ toHtml (unDeploymentName (deploymentName job'))
           "."
@@ -452,8 +469,8 @@ matchRepo :: [Text] -> Text -> Bool
 matchRepo [] _ = True
 matchRepo rs r = r `elem` rs
 
-refreshTagsAction :: Action ()
-refreshTagsAction = do
+refreshRemoteAction :: Action ()
+refreshRemoteAction = do
   event <- header "X-GitHub-Event"
   case event of
     Just "push" -> do
@@ -523,6 +540,6 @@ runServer port authCreds staticBase envDeployer envEventLogger envOutputLoggers 
     post "/jobs"                newDeployAction
     get  "/jobs/:job-id"        showJobAction
     get  "/jobs/:job-id/output" streamOutputAction
-    post "/tags/refresh"        refreshTagsAction
+    post "/webhook/git/refresh" refreshRemoteAction
     -- Fallback
     notFound notFoundAction

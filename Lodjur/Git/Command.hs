@@ -33,4 +33,3 @@ gitCmdLogged outputLogger args gitWorkingDir = do
   case exitcode of
     ExitSuccess      -> return ""
     ExitFailure code -> throwIO (GitFailed "" "" code)
-

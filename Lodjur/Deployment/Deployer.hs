@@ -5,8 +5,7 @@
 {-# LANGUAGE RecordWildCards   #-}
 {-# LANGUAGE TypeFamilies      #-}
 module Lodjur.Deployment.Deployer
-  ( Tag (..)
-  , DeploymentName (..)
+  ( DeploymentName (..)
   , JobId
   , DeploymentJob (..)
   , DeploymentJobs
@@ -36,10 +35,10 @@ import           Lodjur.Deployment
 import qualified Lodjur.Deployment.Database  as Database
 import           Lodjur.Events.EventLogger   (EventLogMessage (..), EventLogger,
                                               JobEvent (..))
-import           Lodjur.Git
+import qualified Lodjur.Git                  as Git
 import           Lodjur.Git.GitAgent         (GitAgent, GitAgentMessage (..))
-import           Lodjur.Output.OutputLogger  (OutputLogger,
-                                              OutputLogMessage (..),
+import           Lodjur.Output.OutputLogger  (OutputLogMessage (..),
+                                              OutputLogger,
                                               logCreateProcessWithExitCode)
 import           Lodjur.Output.OutputLoggers (OutputLoggers)
 import qualified Lodjur.Output.OutputLoggers as OutputLoggers
@@ -63,7 +62,7 @@ data Deployer = Deployer
 
 data DeployMessage r where
   -- Public messages:
-  Deploy :: DeploymentName -> Tag -> UTCTime -> DeployMessage (Sync (Maybe DeploymentJob))
+  Deploy :: DeploymentName -> Git.Revision -> UTCTime -> DeployMessage (Sync (Maybe DeploymentJob))
   GetCurrentState :: DeployMessage (Sync DeployState)
   GetJob :: JobId -> DeployMessage (Sync (Maybe (DeploymentJob, Maybe JobResult)))
   GetJobs :: Maybe Word -> DeployMessage (Sync DeploymentJobs)
@@ -108,7 +107,7 @@ deploy
 deploy eventLogger outputLogger gitAgent job = do
   started <- getCurrentTime
   eventLogger ! AppendEvent (jobId job) (JobRunning started)
-  _ <- gitAgent ? Checkout (deploymentTag job) outputLogger
+  _ <- gitAgent ? Checkout (deploymentRevision job) outputLogger
   _ <- nixopsCmdLogged outputLogger
                        ["deploy", "-d", unDeploymentName (deploymentName job)]
   return JobSuccessful
@@ -133,7 +132,7 @@ instance Process Deployer where
 
   receive self (a@Deployer{..}, msg)=
     case (state, msg) of
-      (Idle     , Deploy deploymentName deploymentTag deploymentTime)
+      (Idle     , Deploy deploymentName deploymentRevision deploymentTime)
         -- We require the deployment name to be known.
         | HashSet.member deploymentName deploymentNames -> do
           jobId <- UUID.toText <$> UUID.nextRandom
