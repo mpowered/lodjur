@@ -145,7 +145,7 @@ renderDeployJobs jobs = div_ [class_ "card"] $ do
     tr_ $ do
       th_ "Job"
       th_ "Deployment"
-      th_ "Tag"
+      th_ "Revision"
       th_ "Created At"
       th_ "Result"
     mapM_ renderJob jobs
@@ -157,9 +157,9 @@ renderDeployJobs jobs = div_ [class_ "card"] $ do
     td_ (renderDeploymentRevision job)
     td_ (toHtml (formatUTCTime (deploymentTime job)))
     case r of
-      Just JobSuccessful      -> td_ [class_ "text-success"] "Successful"
-      Just (JobFailed reason) -> td_ [class_ "text-danger"] (toHtml reason)
-      Nothing                 -> td_ [class_ "text-primary"] "Running"
+      Just JobSuccessful -> td_ [class_ "text-success"] "Successful"
+      Just (JobFailed _) -> td_ [class_ "text-danger"] "Failed"
+      Nothing            -> td_ [class_ "text-primary"] "Running"
 
 renderCurrentState :: DeployState -> Html ()
 renderCurrentState state = div_ [class_ "card"] $ do
