@@ -3,11 +3,11 @@
 module Lodjur.Deployment where
 
 import           Data.Aeson
-import           Data.Hashable       (Hashable)
+import           Data.Hashable   (Hashable)
 import           Data.String
-import           Data.Text           (Text)
-import           Data.Time.Clock     (UTCTime)
-import           GHC.Generics        (Generic)
+import           Data.Text       (Text)
+import           Data.Time.Clock (UTCTime)
+import           GHC.Generics    (Generic)
 
 import           Lodjur.Git
 
@@ -18,10 +18,10 @@ newtype DeploymentName =
 type JobId = Text
 
 data DeploymentJob = DeploymentJob
-  { jobId          :: JobId
-  , deploymentName :: DeploymentName
-  , deploymentTag  :: Tag
-  , deploymentTime :: UTCTime
+  { jobId              :: JobId
+  , deploymentName     :: DeploymentName
+  , deploymentRevision :: Revision
+  , deploymentTime     :: UTCTime
   } deriving (Show, Eq)
 
 data JobResult

@@ -9,7 +9,7 @@ module Lodjur.Git.GitAgent
 import           Control.Monad
 import qualified Data.Text                  as Text
 
-import           Lodjur.Git
+import qualified Lodjur.Git                 as Git
 import           Lodjur.Git.Command
 import           Lodjur.Output.OutputLogger (OutputLogger)
 import           Lodjur.Process
@@ -23,7 +23,7 @@ initialize repoPath =
 data GitAgentMessage r where
   -- Public messages:
   FetchTags :: GitAgentMessage Async
-  Checkout :: Tag -> Ref OutputLogger -> GitAgentMessage (Sync ())
+  Checkout :: Git.Revision -> Ref OutputLogger -> GitAgentMessage (Sync ())
 
 instance Process GitAgent where
   type Message GitAgent = GitAgentMessage
@@ -41,12 +41,12 @@ instance Process GitAgent where
 gitFetchTags :: FilePath -> IO ()
 gitFetchTags = void . gitCmd ["fetch", "--tags", "--prune", "origin", "tag", "*"]
 
-gitCheckout :: Ref OutputLogger -> FilePath -> Tag -> IO ()
-gitCheckout outputLogger workingDir tag = do
+gitCheckout :: Ref OutputLogger -> FilePath -> Git.Revision -> IO ()
+gitCheckout outputLogger workingDir revision = do
   void $ gitCmdLogged
     outputLogger
     [ "checkout"
-    , Text.unpack (unTag tag)
+    , Text.unpack (Git.unRevision revision)
     ]
     workingDir
   void $ gitCmdLogged

@@ -1,14 +1,17 @@
-{-# LANGUAGE GADTs        #-}
-{-# LANGUAGE TypeFamilies #-}
+{-# LANGUAGE GADTs             #-}
+{-# LANGUAGE LambdaCase        #-}
+{-# LANGUAGE OverloadedStrings #-}
+{-# LANGUAGE TypeFamilies      #-}
 module Lodjur.Git.GitReader
   ( GitReader
   , initialize
   , GitReaderMessage (..)
   ) where
 
+import           Data.Maybe         (mapMaybe)
 import qualified Data.Text          as Text
 
-import           Lodjur.Git
+import qualified Lodjur.Git         as Git
 import           Lodjur.Git.Command
 import           Lodjur.Process
 
@@ -20,17 +23,40 @@ initialize repoPath =
 
 data GitReaderMessage r where
   -- Public messages:
-  GetTags :: GitReaderMessage (Sync [Tag])
+  GetRevisions :: GitReaderMessage (Sync [Git.Revision])
+  GetRefs :: GitReaderMessage (Sync [Git.Ref])
 
 instance Process GitReader where
   type Message GitReader = GitReaderMessage
-
-  receive _self (a@(GitReader repoPath), GetTags) = do
-    tags <- gitListTags repoPath
-    return (a, tags)
-
+  receive _self =
+    \case
+      (a@(GitReader repoPath), GetRevisions) -> do
+        versions <- gitListRevisions repoPath
+        return (a, versions)
+      (a@(GitReader repoPath), GetRefs) -> do
+        refs <- gitListRefs repoPath
+        return (a, refs)
   terminate _ = return ()
 
-gitListTags :: FilePath -> IO [Tag]
-gitListTags workingDir = parseTags <$> gitCmd ["tag", "-l"] workingDir
-  where parseTags = map Tag . filter (not . Text.null) . Text.lines . Text.pack
+gitListRevisions :: FilePath -> IO [Git.Revision]
+gitListRevisions workingDir =
+  parseRevs <$> gitCmd ["rev-list", "--all", "--remotes=*"] workingDir
+  where
+    parseRevs =
+      map Git.Revision . filter (not . Text.null) . Text.lines . Text.pack
+
+gitListRefs :: FilePath -> IO [Git.Ref]
+gitListRefs workingDir =
+  parseShowRefPairs <$> gitCmd ["show-ref"] workingDir
+  where
+    parseShowRefPairs =
+      mapMaybe toPair . map Text.words . Text.lines . Text.pack
+      where
+        toPair [hash, ref] =
+          case Text.splitOn "/" ref of
+            ("refs" : "remotes" : "origin" : branch) ->
+              Just (Git.Branch (Text.intercalate "/" ("origin" : branch)) (Git.Revision hash))
+            ("refs" : "tags" : tag) ->
+              Just (Git.Tag (Text.intercalate "/" tag) (Git.Revision hash))
+            _ -> Nothing
+        toPair _ = Nothing
