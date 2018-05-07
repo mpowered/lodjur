@@ -3,6 +3,4 @@ packages:
 - .
 
 nix:
-  packages:
-  - zlib
-  - postgresql100
+  shell-file: shell.nix
