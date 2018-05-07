@@ -88,6 +88,9 @@ hourMinSec = formatTime defaultTimeLocale "%H:%M:%S"
 renderDeploymentRevision :: DeploymentJob -> Html ()
 renderDeploymentRevision = toHtml . Git.unRevision . deploymentRevision
 
+jobsLink ::  Html ()
+jobsLink = a_ [href_ "/jobs"] "Jobs"
+
 renderLayout :: Html () -> [Html ()] -> Html () -> Action ()
 renderLayout title breadcrumbs contents =
   renderHtml $ doctypehtml_ $ html_ $ do
@@ -100,6 +103,7 @@ renderLayout title breadcrumbs contents =
       nav_ [class_ "navbar navbar-dark bg-dark"] $
         div_ [class_ "container"] $ do
           a_ [class_ "navbar-brand", href_ "/"] "Lodjur"
+          toNavBarLinks [("/jobs", "Jobs")]
           span_ [class_ "navbar-text"] (toHtml $ showVersion version)
       nav_ [class_ "breadcrumb-nav"] $
         div_ [class_ "container"] $
@@ -112,6 +116,13 @@ renderLayout title breadcrumbs contents =
     foldMap (li_ [class_ "breadcrumb-item"])  (init elements)
     li_     [class_ "breadcrumb-item active"] (last elements)
   homeLink = a_ [href_ "/"] "Home"
+
+  toNavBarLinks :: [(Text, Html ())] -> Html ()
+  toNavBarLinks links = do
+    ul_ [class_ "navbar-nav"] $
+      forM_ links $ \(href, name) ->
+        li_ [class_ "nav-item"] $
+          a_ [href_ href, class_ "nav-link"] name
 
 renderEventLog :: EventLog -> Html ()
 renderEventLog []       = p_ [class_ "text-secondary"] "No events available."
@@ -301,6 +312,13 @@ newDeployAction = readState >>= \case
       Nothing -> badRequestAction "Could not deploy!"
   Deploying job ->
     badRequestAction $ "Already deploying " <> jobLink job <> "."
+
+getDeploymentJobsAction :: Action ()
+getDeploymentJobsAction = do
+  deployer        <- lift (asks envDeployer)
+  jobs            <- liftIO $ deployer ? GetJobs Nothing
+  renderLayout "Lodjur Deployment Manager" [jobsLink] $
+    div_ [class_ "row mt-5"] $ div_ [class_ "col"] $ renderDeployJobs jobs
 
 getJobLogs :: JobId -> Action (Maybe [Output])
 getJobLogs jobId = do
@@ -537,6 +555,7 @@ runServer port authCreds staticBase envDeployer envEventLogger envOutputLoggers 
     middleware (staticPolicy (redirectStatic staticBase))
     -- Routes
     get  "/"                    homeAction
+    get  "/jobs"                getDeploymentJobsAction
     post "/jobs"                newDeployAction
     get  "/jobs/:job-id"        showJobAction
     get  "/jobs/:job-id/output" streamOutputAction

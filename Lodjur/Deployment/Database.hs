@@ -4,11 +4,10 @@
 {-# LANGUAGE RecordWildCards   #-}
 module Lodjur.Deployment.Database where
 
-import           Control.Monad                      (void)
-import           Data.Text                          (Text)
-import           Data.Time.Clock                    (UTCTime)
+import           Control.Monad              (void)
+import           Data.Text                  (Text)
+import           Data.Time.Clock            (UTCTime)
 import           Database.PostgreSQL.Simple
-import           Database.PostgreSQL.Simple.ToField (toField)
 
 import           Lodjur.Database
 import           Lodjur.Deployment
@@ -78,10 +77,15 @@ parseJob (jobId, t, name, revision, mResult, mMsg) =
         fail ("Unexpected message in database: " ++ show msg)
 
 getAllJobs :: DbPool -> Maybe Word -> IO [(DeploymentJob, Maybe JobResult)]
-getAllJobs pool maxCount = withConn pool $ \conn -> mapM parseJob =<< query
-  conn
-  "SELECT id, time, deployment_name, revision, result, error_message FROM deployment_job ORDER BY time DESC LIMIT ?"
-  [maybe (toField ("ALL" :: Text)) toField maxCount]
+getAllJobs pool maxCount =
+  withConn pool $ \conn ->
+    mapM parseJob =<<
+    case maxCount of
+      Just n  -> query conn (baseQuery `mappend` " LIMIT ?") (Only n)
+      Nothing -> query_ conn baseQuery
+  where
+    baseQuery =
+      "SELECT id, time, deployment_name, revision, result, error_message FROM deployment_job ORDER BY time DESC"
 
 getJobById :: DbPool -> JobId -> IO (Maybe (DeploymentJob, Maybe JobResult))
 getJobById pool jobId = withConn pool $ \conn -> do
