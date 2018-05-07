@@ -1,15 +1,25 @@
-{ nixpkgs ? import <nixpkgs> {}, compiler ? "default", doBenchmark ? false }:
+{ nixpkgs ? import <nixpkgs> {}, compiler ? "ghc822" }:
 
 let
-  pkgs = import <nixpkgs> {};
+  config = {
+    allowUnfree = true;
 
-  haskellPackages =
-    if compiler == "default"
-    then pkgs.haskellPackages
-    else pkgs.haskell.packages.${compiler};
+    packageOverrides = super: {
+      haskell = super.haskell // {
+        packages = super.haskell.packages // {
+          "${compiler}" = super.haskell.packages."${compiler}".override {
+            overrides = self: super: {
+              lodjur = self.callPackage ./default.nix {};
+            };
+          };
+        };
+      };
+    };
+  };
 
-  variant = if doBenchmark then pkgs.haskell.lib.doBenchmark else pkgs.lib.id;
+  pkgs = import <nixpkgs> { inherit config; };
+
 in
 {
-  lodjur = variant (haskellPackages.callPackage ./. {});
+  lodjur = pkgs.haskell.packages."${compiler}".lodjur;
 }
