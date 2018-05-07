@@ -14,11 +14,15 @@ import           Lodjur.Output
 import           Lodjur.Deployment
 
 initialize :: DbPool -> IO ()
-initialize pool = withConn pool $ \conn -> do
-  void $ execute_ conn
-    "CREATE TABLE IF NOT EXISTS output_log (i BIGSERIAL, time TIMESTAMPTZ NOT NULL, job_id TEXT NOT NULL, output TEXT NOT NULL)"
-  void $ execute_ conn
-    "CREATE TABLE IF NOT EXISTS output_log_fence (i BIGINT NOT NULL, job_id TEXT NOT NULL)"
+initialize pool = withConn pool $ \conn -> mapM_ (execute_ conn)
+  [ "CREATE TABLE IF NOT EXISTS output_log (i BIGSERIAL, time TIMESTAMPTZ NOT NULL, job_id TEXT NOT NULL, output TEXT NOT NULL)"
+  , "CREATE TABLE IF NOT EXISTS output_log_fence (i BIGINT NOT NULL, job_id TEXT NOT NULL)"
+  , "CREATE INDEX IF NOT EXISTS output_log_fence_i ON output_log_fence (i)"
+  , "CREATE INDEX IF NOT EXISTS output_log_fence_job_id ON output_log_fence (job_id)"
+  , "CREATE INDEX IF NOT EXISTS output_log_i ON output_log (i)"
+  , "CREATE INDEX IF NOT EXISTS output_log_job_id ON output_log (job_id)"
+  , "CREATE INDEX IF NOT EXISTS output_log_time ON output_log (\"time\")"
+  ]
 
 appendOutput :: DbPool -> JobId -> UTCTime -> [String] -> IO ()
 appendOutput pool jobid time output = withConn pool $ \conn -> do

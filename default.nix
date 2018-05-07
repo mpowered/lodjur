@@ -6,7 +6,7 @@
 }:
 mkDerivation {
   pname = "lodjur";
-  version = "0.1.0";
+  version = "0.1.1";
   src = ./.;
   isLibrary = false;
   isExecutable = true;

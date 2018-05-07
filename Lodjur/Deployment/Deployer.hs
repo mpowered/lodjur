@@ -66,7 +66,7 @@ data DeployMessage r where
   Deploy :: DeploymentName -> Tag -> UTCTime -> DeployMessage (Sync (Maybe DeploymentJob))
   GetCurrentState :: DeployMessage (Sync DeployState)
   GetJob :: JobId -> DeployMessage (Sync (Maybe (DeploymentJob, Maybe JobResult)))
-  GetJobs :: DeployMessage (Sync DeploymentJobs)
+  GetJobs :: Maybe Word -> DeployMessage (Sync DeploymentJobs)
   GetDeploymentNames :: DeployMessage (Sync [DeploymentName])
   -- Private messages:
   FinishJob :: DeploymentJob -> JobResult -> DeployMessage Async
@@ -155,8 +155,8 @@ instance Process Deployer where
       (_, GetJob jobId) -> do
         job <- Database.getJobById pool jobId
         return (a, job)
-      (_, GetJobs) -> do
-        jobs <- Database.getAllJobs pool
+      (_, GetJobs maxCount) -> do
+        jobs <- Database.getAllJobs pool maxCount
         return (a, jobs)
       (_, GetCurrentState) ->
         return (a, state)

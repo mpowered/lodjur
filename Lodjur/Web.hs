@@ -44,8 +44,8 @@ import           Network.HTTP.Types.Status
 import           Network.Wai                     (rawPathInfo)
 import           Network.Wai.Middleware.HttpAuth (AuthSettings (..), CheckCreds,
                                                   basicAuth)
-import           Network.Wai.Middleware.Static   (Policy, addBase, staticPolicy,
-                                                  policy, (>->))
+import           Network.Wai.Middleware.Static   (Policy, addBase, policy,
+                                                  staticPolicy, (>->))
 import           Web.Scotty.Trans
 
 import           Lodjur.Deployment.Deployer
@@ -259,7 +259,7 @@ homeAction = do
   deploymentNames <- liftIO $ deployer ? GetDeploymentNames
   tags            <- liftIO $ gitReader ? GetTags
   deployState     <- liftIO $ deployer ? GetCurrentState
-  jobs            <- liftIO $ deployer ? GetJobs
+  jobs            <- liftIO $ deployer ? GetJobs (Just 10)
   renderLayout "Lodjur Deployment Manager" [] $ do
     div_ [class_ "row mt-5"] $ do
       div_ [class_ "col col-4"] $ renderCurrentState deployState
@@ -321,7 +321,7 @@ showJobAction = do
           div_ allAttrs $ pre_ $
             case outputLog of
               Just outputs -> foldM_ displayOutput Nothing outputs
-              Nothing -> mempty
+              Nothing      -> mempty
         div_ [class_ "autoscroll"] $
           div_ [class_ "form-check form-check-inline form-control-small"] $ do
             input_ [class_ "form-check-input", type_ "checkbox", id_ "autoscroll-check"]

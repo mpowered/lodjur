@@ -4,19 +4,21 @@
 {-# LANGUAGE RecordWildCards   #-}
 module Lodjur.Deployment.Database where
 
-import           Control.Monad              (void)
-import           Data.Text                  (Text)
-import           Data.Time.Clock            (UTCTime)
+import           Control.Monad                      (void)
+import           Data.Text                          (Text)
+import           Data.Time.Clock                    (UTCTime)
 import           Database.PostgreSQL.Simple
+import           Database.PostgreSQL.Simple.ToField (toField)
 
 import           Lodjur.Database
 import           Lodjur.Deployment
 import           Lodjur.Git
 
 initialize :: DbPool -> IO ()
-initialize pool = withConn pool $ \conn -> void $ execute_
-  conn
-  "CREATE TABLE IF NOT EXISTS deployment_job (id TEXT PRIMARY KEY, time TIMESTAMPTZ NOT NULL, deployment_name TEXT NOT NULL, tag TEXT NOT NULL, result TEXT NULL, error_message TEXT NULL)"
+initialize pool = withConn pool $ \conn -> mapM_ (execute_ conn)
+  [ "CREATE TABLE IF NOT EXISTS deployment_job (id TEXT PRIMARY KEY, time TIMESTAMPTZ NOT NULL, deployment_name TEXT NOT NULL, tag TEXT NOT NULL, result TEXT NULL, error_message TEXT NULL)"
+  , "CREATE INDEX IF NOT EXISTS deployment_job_time ON deployment_job (\"time\")"
+  ]
 
 insertJob :: DbPool -> DeploymentJob -> Maybe JobResult -> IO ()
 insertJob pool DeploymentJob {..} = \case
@@ -75,10 +77,11 @@ parseJob (jobId, t, name, tag, mResult, mMsg) =
       (Nothing, Just msg) ->
         fail ("Unexpected message in database: " ++ show msg)
 
-getAllJobs :: DbPool -> IO [(DeploymentJob, Maybe JobResult)]
-getAllJobs pool = withConn pool $ \conn -> mapM parseJob =<< query_
+getAllJobs :: DbPool -> Maybe Word -> IO [(DeploymentJob, Maybe JobResult)]
+getAllJobs pool maxCount = withConn pool $ \conn -> mapM parseJob =<< query
   conn
-  "SELECT id, time, deployment_name, tag, result, error_message FROM deployment_job ORDER BY time DESC"
+  "SELECT id, time, deployment_name, tag, result, error_message FROM deployment_job ORDER BY time DESC LIMIT ?"
+  [maybe (toField ("ALL" :: Text)) toField maxCount]
 
 getJobById :: DbPool -> JobId -> IO (Maybe (DeploymentJob, Maybe JobResult))
 getJobById pool jobId = withConn pool $ \conn -> do
@@ -87,6 +90,5 @@ getJobById pool jobId = withConn pool $ \conn -> do
           "SELECT id, time, deployment_name, tag, result, error_message FROM deployment_job WHERE id = ?"
           [jobId]
   case rows of
-    [] -> return Nothing
+    []      -> return Nothing
     (row:_) -> Just <$> parseJob row
-
