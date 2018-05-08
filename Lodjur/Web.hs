@@ -519,7 +519,7 @@ authSettings :: AuthSettings
 authSettings = "Lodjur" { authIsProtected = isProtected }
   where
     isProtected req = return (rawPathInfo req `notElem` unauthorizedRoutes)
-    unauthorizedRoutes = ["/tags/refresh"]
+    unauthorizedRoutes = ["/webhook/git/refresh"]
 
 checkCredentials :: (ByteString, ByteString) -> CheckCreds
 checkCredentials (cUser, cPass) user pass =
