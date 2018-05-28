@@ -10,6 +10,7 @@
 module Lodjur.Web (Port, runServer) where
 
 import           Control.Concurrent
+import           Control.Exception               (bracket_)
 import           Control.Monad
 import           Control.Monad.IO.Class          (liftIO)
 import           Control.Monad.Reader
@@ -41,7 +42,7 @@ import qualified Lucid.Base                      as Html
 import           Lucid.Bootstrap
 import           Lucid.Html5
 import           Network.HTTP.Types.Status
-import           Network.Wai                     (rawPathInfo)
+import           Network.Wai                     (StreamingBody, rawPathInfo)
 import           Network.Wai.Middleware.HttpAuth (AuthSettings (..), CheckCreds,
                                                   basicAuth)
 import           Network.Wai.Middleware.Static   (Policy, addBase, policy,
@@ -118,7 +119,7 @@ renderLayout title breadcrumbs contents =
   homeLink = a_ [href_ "/"] "Home"
 
   toNavBarLinks :: [(Text, Html ())] -> Html ()
-  toNavBarLinks links = do
+  toNavBarLinks links =
     ul_ [class_ "navbar-nav"] $
       forM_ links $ \(href, name) ->
         li_ [class_ "nav-item"] $
@@ -393,19 +394,24 @@ streamOutputAction = do
   jobId <- param "job-id"
   from  <- maybeParam "from"
   outputStreamer <- lift (asks envOutputStreamer)
-  chan <- liftIO newChan
   setHeader "Content-Type" "text/event-stream"
   setHeader "Cache-Control" "no-cache"
   setHeader "X-Accel-Buffering" "no"
-  liftIO $ outputStreamer ! SubscribeOutputLog jobId from chan
-  e <- tryStream (streamLog outputStreamer chan jobId)
-  liftIO $ outputStreamer ? UnsubscribeOutputLog jobId chan
-  case e of
-    Just msg -> raise msg
-    Nothing -> return ()
- where
-    tryStream x = rescue (stream x >> return Nothing) (return . Just)
-    streamLog outputStreamer chan jobId send flush = do
+  chan <- liftIO newChan
+  stream (streamLog outputStreamer chan jobId from)
+
+streamLog
+  :: Ref OutputStreamer
+  -> Chan OutputStream
+  -> JobId
+  -> Maybe Integer
+  -> StreamingBody
+streamLog outputStreamer chan jobId from send flush =
+  bracket_ (outputStreamer ! SubscribeOutputLog jobId from chan)
+           (outputStreamer ? UnsubscribeOutputLog jobId chan)
+           go
+  where
+    go = do
       moutput <- readChan chan
       case moutput of
         NextOutput output -> do
@@ -417,7 +423,7 @@ streamOutputAction = do
           void . send $ Binary.fromLazyByteString ("data: " <> encode event <> "\n")
           void . send $ Binary.fromByteString "\n"
           void flush
-          streamLog outputStreamer chan jobId send flush
+          go
         Fence -> do
           void . send $ Binary.fromByteString "event: end\n"
           void flush
