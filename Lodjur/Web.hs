@@ -283,7 +283,7 @@ homeAction = do
   deployer        <- lift (asks envDeployer)
   gitReader       <- lift (asks envGitReader)
   deploymentNames <- liftIO $ deployer ? GetDeploymentNames
-  revisions            <- liftIO $ gitReader ? GetRevisions
+  revisions       <- liftIO $ gitReader ? GetRevisions
   refs            <- liftIO $ gitReader ? GetRefs
   deployState     <- liftIO $ deployer ? GetCurrentState
   jobs            <- liftIO $ deployer ? GetJobs (Just 10)
@@ -394,15 +394,19 @@ streamOutputAction = do
   from  <- maybeParam "from"
   outputStreamer <- lift (asks envOutputStreamer)
   chan <- liftIO newChan
-  liftIO $ outputStreamer ! SubscribeOutputLog jobId from chan
   setHeader "Content-Type" "text/event-stream"
   setHeader "Cache-Control" "no-cache"
   setHeader "X-Accel-Buffering" "no"
-  stream (streamLog outputStreamer chan jobId)
-
+  liftIO $ outputStreamer ! SubscribeOutputLog jobId from chan
+  e <- tryStream (streamLog outputStreamer chan jobId)
+  liftIO $ outputStreamer ? UnsubscribeOutputLog jobId chan
+  case e of
+    Just msg -> raise msg
+    Nothing -> return ()
  where
+    tryStream x = rescue (stream x >> return Nothing) (return . Just)
     streamLog outputStreamer chan jobId send flush = do
-      moutput <- liftIO $ readChan chan
+      moutput <- readChan chan
       case moutput of
         NextOutput output -> do
           void . send $ Binary.fromByteString "event: output\n"
@@ -417,7 +421,6 @@ streamOutputAction = do
         Fence -> do
           void . send $ Binary.fromByteString "event: end\n"
           void flush
-          void . liftIO $ outputStreamer ? UnsubscribeOutputLog jobId chan
 
 data GithubRepository = GithubRepository
   { repositoryId       :: Integer
