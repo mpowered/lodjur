@@ -517,8 +517,8 @@ refreshRemoteAction = do
     if matchRepo repos repo
       then do
         gitAgent <- lift (asks envGitAgent)
-        liftIO (gitAgent ! FetchTags)
-        text "Queued FetchTags"
+        liftIO (gitAgent ! FetchRemote)
+        text "Queued FetchRemote"
       else
         text "Ignored refresh request for uninteresting repository"
 

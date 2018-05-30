@@ -22,14 +22,14 @@ initialize repoPath =
 
 data GitAgentMessage r where
   -- Public messages:
-  FetchTags :: GitAgentMessage Async
+  FetchRemote :: GitAgentMessage Async
   Checkout :: Git.Revision -> Ref OutputLogger -> GitAgentMessage (Sync ())
 
 instance Process GitAgent where
   type Message GitAgent = GitAgentMessage
 
-  receive _self (a@(GitAgent repoPath), FetchTags) = do
-    gitFetchTags repoPath
+  receive _self (a@(GitAgent repoPath), FetchRemote) = do
+    gitFetchRemote repoPath
     return a
 
   receive _self (a@(GitAgent repoPath), Checkout tag outputLogger) = do
@@ -38,8 +38,8 @@ instance Process GitAgent where
 
   terminate _ = return ()
 
-gitFetchTags :: FilePath -> IO ()
-gitFetchTags = void . gitCmd ["fetch", "--tags", "--prune", "origin", "tag", "*"]
+gitFetchRemote :: FilePath -> IO ()
+gitFetchRemote = void . gitCmd ["fetch", "--tags", "--prune", "origin"]
 
 gitCheckout :: Ref OutputLogger -> FilePath -> Git.Revision -> IO ()
 gitCheckout outputLogger workingDir revision = do
