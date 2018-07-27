@@ -42,17 +42,10 @@ gitFetchRemote :: FilePath -> IO ()
 gitFetchRemote = void . gitCmd ["fetch", "--tags", "--prune", "origin"]
 
 gitCheckout :: Ref OutputLogger -> FilePath -> Git.Revision -> IO ()
-gitCheckout outputLogger workingDir revision = do
+gitCheckout outputLogger workingDir revision =
   void $ gitCmdLogged
     outputLogger
     [ "checkout"
     , Text.unpack (Git.unRevision revision)
-    ]
-    workingDir
-  void $ gitCmdLogged
-    outputLogger
-    [ "submodule"
-    , "update"
-    , "--recursive"
     ]
     workingDir
