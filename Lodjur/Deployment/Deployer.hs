@@ -62,7 +62,7 @@ data Deployer = Deployer
 
 data DeployMessage r where
   -- Public messages:
-  Deploy :: DeploymentName -> Git.Revision -> UTCTime -> DeployMessage (Sync (Maybe DeploymentJob))
+  Deploy :: DeploymentName -> Git.Revision -> UTCTime -> Bool -> DeployMessage (Sync (Maybe DeploymentJob))
   GetCurrentState :: DeployMessage (Sync DeployState)
   GetJob :: JobId -> DeployMessage (Sync (Maybe (DeploymentJob, Maybe JobResult)))
   GetJobs :: Maybe Word -> DeployMessage (Sync DeploymentJobs)
@@ -103,13 +103,15 @@ deploy
   -> Ref OutputLogger
   -> Ref GitAgent
   -> DeploymentJob
+  -> [String]
   -> IO JobResult
-deploy eventLogger outputLogger gitAgent job = do
+deploy eventLogger outputLogger gitAgent job args = do
   started <- getCurrentTime
   eventLogger ! AppendEvent (jobId job) (JobRunning started)
   _ <- gitAgent ? Checkout (deploymentRevision job) outputLogger
-  _ <- nixopsCmdLogged outputLogger
+  _ <- nixopsCmdLogged outputLogger $
                        ["deploy", "-d", unDeploymentName (deploymentName job)]
+                       ++ args
   return JobSuccessful
 
 notifyDeployFinished
@@ -132,13 +134,14 @@ instance Process Deployer where
 
   receive self (a@Deployer{..}, msg)=
     case (state, msg) of
-      (Idle     , Deploy deploymentName deploymentRevision deploymentTime)
+      (Idle     , Deploy deploymentName deploymentRevision deploymentTime buildOnly)
         -- We require the deployment name to be known.
         | HashSet.member deploymentName deploymentNames -> do
           jobId <- UUID.toText <$> UUID.nextRandom
           let job = DeploymentJob {..}
           logger <- outputLoggers ? OutputLoggers.SpawnOutputLogger jobId
-          void (forkFinally (deploy eventLogger logger gitAgent job) (notifyDeployFinished self eventLogger logger job))
+          let args = if buildOnly then ["--build-only"] else []
+          void (forkFinally (deploy eventLogger logger gitAgent job args) (notifyDeployFinished self eventLogger logger job))
           Database.insertJob pool job Nothing
           return ( a { state = Deploying job } , Just job)
         -- We can't deploy to an unknown deployment.

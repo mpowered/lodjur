@@ -241,6 +241,11 @@ renderDeployCard deploymentNames revisions refs state = case state of
             input_ [name_ "revision", list_ "revisions", class_ "form-control"]
             renderDeployDatalist revisions refs "revisions"
             small_ [class_ "text-muted"] "Which git revision to deploy."
+          div_ [class_ "col"] $ do
+            input_ [class_ "form-check-input", id_ "build-only-check", name_ "build-only", type_ "checkbox", value_ "true"]
+            label_ [class_ "form-check-label", for_ "build-only-check"] "Build Only"
+            br_ []
+            small_ [class_ "text-muted"] "Build but don't deploy."
           div_ [class_ "col"]
             $ input_
                 [ class_ "btn btn-primary form-control"
@@ -301,11 +306,12 @@ homeAction = do
 newDeployAction :: Action ()
 newDeployAction = readState >>= \case
   Idle -> do
-    deployer <- lift (asks envDeployer)
-    dName    <- DeploymentName <$> param "deployment-name"
-    revision <- Git.Revision <$> param "revision"
-    now      <- liftIO getCurrentTime
-    liftIO (deployer ? Deploy dName revision now) >>= \case
+    deployer  <- lift (asks envDeployer)
+    dName     <- DeploymentName <$> param "deployment-name"
+    revision  <- Git.Revision <$> param "revision"
+    buildOnly <- param "build-only"
+    now       <- liftIO getCurrentTime
+    liftIO (deployer ? Deploy dName revision now buildOnly) >>= \case
       Just job -> do
         status status302
         setHeader "Location" (LText.fromStrict (jobHref job))
