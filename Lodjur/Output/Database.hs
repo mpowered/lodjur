@@ -3,7 +3,6 @@
 module Lodjur.Output.Database where
 
 import           Control.Monad              (void)
-import qualified Data.HashMap.Strict        as HashMap
 import qualified Data.Text.Encoding         as Text
 import           Data.Time.Clock
 import           Database.PostgreSQL.Simple
@@ -91,12 +90,3 @@ nextFence conn jobid since = do
   case rs of
     [Only i] -> return i
     _        -> return Nothing
-
-getAllOutputLogs :: DbPool -> IO OutputLogs
-getAllOutputLogs pool = withConn pool $ \conn -> mkOutput <$> query_
-  conn
-  "SELECT job_id, i, time, output FROM output_log ORDER BY time ASC"
- where
-  mkOutput = foldr mergeOutput mempty
-  mergeOutput (jobid, i, time, output) =
-    HashMap.insertWith (++) jobid [Output i time (lines output)]

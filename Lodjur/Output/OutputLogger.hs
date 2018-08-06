@@ -3,7 +3,6 @@
 {-# LANGUAGE TypeFamilies    #-}
 module Lodjur.Output.OutputLogger
   ( Output (..)
-  , OutputLogs
   , OutputLogger
   , OutputLogMessage (..)
   , initialize
@@ -35,7 +34,6 @@ data OutputLogMessage r where
   AppendOutput :: [String] -> OutputLogMessage Async
   OutputFence :: OutputLogMessage Async
   GetOutputLog :: OutputLogMessage (Sync [Output])
-  GetOutputLogs :: OutputLogMessage (Sync OutputLogs)
 
 instance Process OutputLogger where
   type Message OutputLogger = OutputLogMessage
@@ -52,10 +50,6 @@ instance Process OutputLogger where
   receive _self (logger, GetOutputLog) = do
     out <- Database.getOutputLog (dbPool logger) Nothing Nothing (jobId logger)
     return (logger, out)
-
-  receive _self (logger, GetOutputLogs) = do
-    logs <- Database.getAllOutputLogs (dbPool logger)
-    return (logger, logs)
 
   terminate _ = return ()
 

@@ -25,7 +25,6 @@ import qualified Data.ByteString.Lazy            as LByteString
 import qualified Data.ByteString.Lazy.Char8      as C8
 import qualified Data.HashMap.Strict             as HashMap
 import qualified Data.List                       as List
-import           Data.Maybe                      (maybeToList)
 import           Data.Semigroup
 import           Data.String
 import           Data.Text                       (Text)
@@ -321,14 +320,14 @@ getDeploymentJobsAction = do
   renderLayout "Lodjur Deployment Manager" [jobsLink] $
     div_ [class_ "row mt-5"] $ div_ [class_ "col"] $ renderDeployJobs jobs
 
-getJobLogs :: JobId -> Action (Maybe [Output])
+getJobLogs :: JobId -> Action [Output]
 getJobLogs jobId = do
   outputLoggers <- lift (asks envOutputLoggers)
   liftIO $ do
     logger <- outputLoggers ? SpawnOutputLogger jobId
-    logs <- logger ? GetOutputLogs
+    output <- logger ? GetOutputLog
     kill logger
-    return (HashMap.lookup jobId logs)
+    return output
 
 showJobAction :: Action ()
 showJobAction = do
@@ -352,12 +351,10 @@ showJobAction = do
           renderEventLog eventLog
         div_ [class_ "row mt-3 mb-5"] $ div_ [class_ "col"] $ do
           h2_ [class_ "mb-3"] "Command Output"
-          let lineAttr = data_ "last-line-at" . lastLineAt <$> outputLog
-              allAttrs = maybeToList lineAttr <> [class_ "command-output", data_ "job-id" jobId]
+          let lineAttr = data_ "last-line-at" . lastLineAt $ outputLog
+              allAttrs = lineAttr : [class_ "command-output", data_ "job-id" jobId]
           div_ allAttrs $ pre_ $
-            case outputLog of
-              Just outputs -> foldM_ displayOutput Nothing outputs
-              Nothing      -> mempty
+            foldM_ displayOutput Nothing outputLog
         div_ [class_ "autoscroll"] $
           div_ [class_ "form-check form-check-inline form-control-small"] $ do
             input_ [class_ "form-check-input", type_ "checkbox", id_ "autoscroll-check"]
