@@ -134,13 +134,13 @@ instance Process Deployer where
 
   receive self (a@Deployer{..}, msg)=
     case (state, msg) of
-      (Idle     , Deploy deploymentName deploymentRevision deploymentTime buildOnly)
+      (Idle     , Deploy deploymentName deploymentRevision deploymentTime deploymentBuildOnly)
         -- We require the deployment name to be known.
         | HashSet.member deploymentName deploymentNames -> do
           jobId <- UUID.toText <$> UUID.nextRandom
           let job = DeploymentJob {..}
           logger <- outputLoggers ? OutputLoggers.SpawnOutputLogger jobId
-          let args = if buildOnly then ["--build-only"] else []
+          let args = if deploymentBuildOnly then ["--build-only"] else []
           void (forkFinally (deploy eventLogger logger gitAgent job args) (notifyDeployFinished self eventLogger logger job))
           Database.insertJob pool job Nothing
           return ( a { state = Deploying job } , Just job)

@@ -164,7 +164,9 @@ renderDeployJobs jobs = div_ [class_ "card"] $ do
   renderJob :: (DeploymentJob, Maybe JobResult) -> Html ()
   renderJob (job, r) = tr_ $ do
     td_ (jobLink job)
-    td_ (toHtml (unDeploymentName (deploymentName job)))
+    if deploymentBuildOnly job
+      then td_ [class_ "text-secondary"] "(Build-only)"
+      else td_ (toHtml (unDeploymentName (deploymentName job)))
     td_ (renderDeploymentRevision job)
     td_ (toHtml (formatUTCTime (deploymentTime job)))
     case r of
@@ -241,15 +243,18 @@ renderDeployCard deploymentNames revisions refs state = case state of
             input_ [name_ "revision", list_ "revisions", class_ "form-control"]
             renderDeployDatalist revisions refs "revisions"
             small_ [class_ "text-muted"] "Which git revision to deploy."
-          div_ [class_ "col"] $ do
-            input_ [class_ "form-check-input", id_ "build-only-check", name_ "build-only", type_ "checkbox", value_ "true"]
-            label_ [class_ "form-check-label", for_ "build-only-check"] "Build Only"
-            br_ []
-            small_ [class_ "text-muted"] "Build but don't deploy."
+          div_ [class_ "col"]
+            $ input_
+                [ class_ "btn btn-secondary form-control"
+                , type_ "submit"
+                , name_ "action"
+                , value_ "Build"
+                ]
           div_ [class_ "col"]
             $ input_
                 [ class_ "btn btn-primary form-control"
                 , type_ "submit"
+                , name_ "action"
                 , value_ "Deploy"
                 ]
   Deploying _ -> return ()
@@ -309,8 +314,9 @@ newDeployAction = readState >>= \case
     deployer  <- lift (asks envDeployer)
     dName     <- DeploymentName <$> param "deployment-name"
     revision  <- Git.Revision <$> param "revision"
-    buildOnly <- param "build-only"
+    action    <- param "action"
     now       <- liftIO getCurrentTime
+    let buildOnly = action == ("Build" :: String)
     liftIO (deployer ? Deploy dName revision now buildOnly) >>= \case
       Just job -> do
         status status302

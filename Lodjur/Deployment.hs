@@ -18,10 +18,11 @@ newtype DeploymentName =
 type JobId = Text
 
 data DeploymentJob = DeploymentJob
-  { jobId              :: JobId
-  , deploymentName     :: DeploymentName
-  , deploymentRevision :: Revision
-  , deploymentTime     :: UTCTime
+  { jobId               :: JobId
+  , deploymentName      :: DeploymentName
+  , deploymentRevision  :: Revision
+  , deploymentTime      :: UTCTime
+  , deploymentBuildOnly :: Bool
   } deriving (Show, Eq)
 
 data JobResult
