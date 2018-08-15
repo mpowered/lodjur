@@ -120,6 +120,10 @@ main = startServices =<< execParser opts
                                 gitAgent
                                 deploymentNames
                                 pool
+
+    -- Fetch on startup in case we miss webhooks while service is not running
+    gitAgent ! FetchRemote
+
     runServer port
               (authUser, authPassword)
               staticDirectory
