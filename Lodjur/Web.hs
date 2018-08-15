@@ -25,7 +25,6 @@ import qualified Data.ByteString.Lazy            as LByteString
 import qualified Data.ByteString.Lazy.Char8      as C8
 import qualified Data.HashMap.Strict             as HashMap
 import qualified Data.List                       as List
-import           Data.Semigroup
 import           Data.String
 import           Data.Text                       (Text)
 import qualified Data.Text                       as Text

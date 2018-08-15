@@ -1,4 +1,4 @@
-{ nixpkgs ? import <nixpkgs> {}, compiler ? "ghc822" }:
+{ nixpkgs ? import <nixpkgs> {}, compiler ? "ghc843" }:
 
 let
   config = {

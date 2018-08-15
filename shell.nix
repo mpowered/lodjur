@@ -1,4 +1,4 @@
-args@{ nixpkgs ? import <nixpkgs> {}, compiler ? "default", doBenchmark ? false }:
+args@{ nixpkgs ? import <nixpkgs> {}, compiler ? "ghc843", doBenchmark ? false }:
 
 let
   lodjur = (import ./release.nix args).lodjur;
