@@ -122,7 +122,7 @@ main = startServices =<< execParser opts
                                 pool
 
     -- Fetch on startup in case we miss webhooks while service is not running
-    gitAgent ! FetchRemote
+    gitAgent ! GitAgent.FetchRemote
 
     runServer port
               (authUser, authPassword)
