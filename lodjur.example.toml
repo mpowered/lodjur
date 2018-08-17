@@ -2,6 +2,7 @@
 
 git-working-dir = "/home/me/my-repo"
 nixops-deployments = ["my-deployment"]
+warn-deployments = ["my-deployment"]
 http-port = 4000
 auth-user = "me"
 auth-password = "pass"
