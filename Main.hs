@@ -27,6 +27,7 @@ import           Lodjur.Web
 data LodjurConfiguration = LodjurConfiguration
   { gitWorkingDir       :: FilePath
   , nixopsDeployments   :: [DeploymentName]
+  , warnDeployments     :: [DeploymentName]
   , port                :: Port
   , authUser            :: ByteString
   , authPassword        :: ByteString
@@ -41,6 +42,7 @@ instance FromJSON LodjurConfiguration where
   parseJSON = withObject "Configuration" $ \o -> do
     gitWorkingDir <- o .: "git-working-dir"
     nixopsDeployments <- fmap DeploymentName <$> (o .: "nixops-deployments")
+    warnDeployments <- fmap DeploymentName <$> (o .: "warn-deployments")
     port <- o .: "http-port"
     authUser <- Char8.pack <$> (o .: "auth-user")
     authPassword <- Char8.pack <$> (o .: "auth-password")
@@ -117,6 +119,7 @@ main = startServices =<< execParser opts
                                 outputLoggers
                                 gitAgent
                                 nixopsDeployments
+                                warnDeployments
                                 pool
 
     -- Fetch on startup in case we miss webhooks while service is not running

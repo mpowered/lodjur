@@ -91,14 +91,17 @@ jobsLink ::  Html ()
 jobsLink = a_ [href_ "/jobs"] "Jobs"
 
 renderLayout :: Html () -> [Html ()] -> Html () -> Action ()
-renderLayout title breadcrumbs contents =
+renderLayout title breadcrumbs contents = renderLayoutBodyAttrs title breadcrumbs [] contents
+
+renderLayoutBodyAttrs :: Html () -> [Html ()] -> [Html.Attribute] -> Html () -> Action ()
+renderLayoutBodyAttrs title breadcrumbs bodyattrs contents =
   renderHtml $ doctypehtml_ $ html_ $ do
     head_ $ do
       title_ title
       link_ [rel_ "stylesheet", href_ (static "bootstrap/css/bootstrap.min.css")]
       link_ [rel_ "stylesheet", href_ (static "lodjur.css")]
       Html.termRawWith "script" [src_ (static "job.js"), Html.makeAttribute "defer" "defer"] mempty
-    body_ $ do
+    body_ bodyattrs $ do
       nav_ [class_ "navbar navbar-dark bg-dark"] $
         div_ [class_ "container"] $ do
           a_ [class_ "navbar-brand", href_ "/"] "Lodjur"
@@ -223,39 +226,41 @@ renderDeployDatalist revs refs listId =
       option_ [value_ (Git.unRevision rev)] mempty
 
 
-renderDeployCard :: [DeploymentName] -> [Git.Revision] -> [Git.Ref] -> DeployState -> Html ()
-renderDeployCard deploymentNames revisions refs state = case state of
-  Idle -> div_ [class_ "card"] $ do
-    div_ [class_ "card-header"] "New Deploy"
-    div_ [class_ "card-body"]
-      $ form_ [method_ "post", action_ "/jobs"]
-      $ div_ [class_ "row"]
-      $ do
-          div_ [class_ "col"] $ do
-            select_ [name_ "deployment-name", class_ "form-control"]
-              $ forM_ deploymentNames
-              $ \(unDeploymentName -> n) ->
-                  option_ [value_ (Text.pack n)] (toHtml n)
-            small_ [class_ "text-muted"]
-                   "Name of the Nixops deployment to target."
-          div_ [class_ "col"] $ do
-            input_ [name_ "revision", list_ "revisions", class_ "form-control"]
-            renderDeployDatalist revisions refs "revisions"
-            small_ [class_ "text-muted"] "Which git revision to deploy."
-          div_ [class_ "col"]
-            $ input_
-                [ class_ "btn btn-secondary form-control"
-                , type_ "submit"
-                , name_ "action"
-                , value_ "Build"
-                ]
-          div_ [class_ "col"]
-            $ input_
-                [ class_ "btn btn-primary form-control"
-                , type_ "submit"
-                , name_ "action"
-                , value_ "Deploy"
-                ]
+renderDeployCard :: [DeploymentName] -> [DeploymentName] -> [Git.Revision] -> [Git.Ref] -> DeployState -> Html ()
+renderDeployCard deploymentNames deploymentWarn revisions refs state = case state of
+  Idle -> do
+    let warn = Text.pack $ unwords $ map unDeploymentName deploymentWarn
+    div_ [class_ "card", id_ "deploy", data_ "warn-deployments" warn] $ do
+      div_ [class_ "card-header"] "New Deploy"
+      div_ [class_ "card-body"]
+        $ form_ [method_ "post", action_ "/jobs"]
+        $ div_ [class_ "row"]
+        $ do
+            div_ [class_ "col"] $ do
+              select_ [name_ "deployment-name", class_ "form-control", id_ "selectbox", onchange_ "deploymentChanged()"]
+                $ forM_ deploymentNames
+                $ \(unDeploymentName -> n) ->
+                    option_ [value_ (Text.pack n)] (toHtml n)
+              small_ [class_ "text-muted"]
+                     "Name of the Nixops deployment to target."
+            div_ [class_ "col"] $ do
+              input_ [name_ "revision", list_ "revisions", class_ "form-control"]
+              renderDeployDatalist revisions refs "revisions"
+              small_ [class_ "text-muted"] "Which git revision to deploy."
+            div_ [class_ "col"]
+              $ input_
+                  [ class_ "btn btn-secondary form-control"
+                  , type_ "submit"
+                  , name_ "action"
+                  , value_ "Build"
+                  ]
+            div_ [class_ "col"]
+              $ input_
+                  [ class_ "btn btn-primary form-control"
+                  , type_ "submit"
+                  , name_ "action"
+                  , value_ "Deploy"
+                  ]
   Deploying _ -> return ()
 
 notFoundAction :: Action ()
@@ -292,17 +297,19 @@ homeAction = do
   deployer        <- lift (asks envDeployer)
   gitReader       <- lift (asks envGitReader)
   deploymentNames <- liftIO $ deployer ? GetDeploymentNames
+  deploymentWarn  <- liftIO $ deployer ? GetDeploymentWarn
   revisions       <- liftIO $ gitReader ? GetRevisions
   refs            <- liftIO $ gitReader ? GetRefs
   deployState     <- liftIO $ deployer ? GetCurrentState
   jobs            <- liftIO $ deployer ? GetJobs (Just 10)
-  renderLayout "Lodjur Deployment Manager" [] $ do
+  renderLayoutBodyAttrs "Lodjur Deployment Manager" [] [onload_ "deploymentChanged()"] $ do
     div_ [class_ "row mt-5"] $ do
       div_ [class_ "col col-4"] $ renderCurrentState deployState
       div_ [class_ "col col-8"] $ renderLatestSuccessful deploymentNames jobs
     div_ [class_ "row mt-5"] $ div_ [class_ "col"] $ renderDeployJobs jobs
     div_ [class_ "row mt-5 mb-5"] $ div_ [class_ "col"] $ renderDeployCard
       deploymentNames
+      deploymentWarn
       revisions
       refs
       deployState

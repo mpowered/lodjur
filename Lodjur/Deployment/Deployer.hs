@@ -54,6 +54,7 @@ data Deployer = Deployer
   , outputLoggers   :: Ref OutputLoggers
   , gitAgent        :: Ref GitAgent
   , deploymentNames :: [DeploymentName]
+  , deploymentWarn  :: [DeploymentName]
   , pool            :: DbPool
   }
 
@@ -64,6 +65,7 @@ data DeployMessage r where
   GetJob :: JobId -> DeployMessage (Sync (Maybe (DeploymentJob, Maybe JobResult)))
   GetJobs :: Maybe Word -> DeployMessage (Sync DeploymentJobs)
   GetDeploymentNames :: DeployMessage (Sync [DeploymentName])
+  GetDeploymentWarn :: DeployMessage (Sync [DeploymentName])
   -- Private messages:
   FinishJob :: DeploymentJob -> JobResult -> DeployMessage Async
 
@@ -72,9 +74,10 @@ initialize
   -> Ref OutputLoggers
   -> Ref GitAgent
   -> [DeploymentName]
+  -> [DeploymentName]
   -> DbPool
   -> IO Deployer
-initialize eventLogger outputLoggers gitAgent deploymentNames pool = do
+initialize eventLogger outputLoggers gitAgent deploymentNames deploymentWarn pool = do
   Database.initialize pool
   return Deployer {state = Idle, ..}
 
@@ -151,6 +154,8 @@ instance Process Deployer where
       -- Queries:
       (_, GetDeploymentNames) ->
         return (a, deploymentNames)
+      (_, GetDeploymentWarn) ->
+        return (a, deploymentWarn)
       (_, GetJob jobId) -> do
         job <- Database.getJobById pool jobId
         return (a, job)
