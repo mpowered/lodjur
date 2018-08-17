@@ -91,17 +91,15 @@ jobsLink ::  Html ()
 jobsLink = a_ [href_ "/jobs"] "Jobs"
 
 renderLayout :: Html () -> [Html ()] -> Html () -> Action ()
-renderLayout title breadcrumbs contents = renderLayoutBodyAttrs title breadcrumbs [] contents
-
-renderLayoutBodyAttrs :: Html () -> [Html ()] -> [Html.Attribute] -> Html () -> Action ()
-renderLayoutBodyAttrs title breadcrumbs bodyattrs contents =
+renderLayout title breadcrumbs contents =
   renderHtml $ doctypehtml_ $ html_ $ do
     head_ $ do
       title_ title
       link_ [rel_ "stylesheet", href_ (static "bootstrap/css/bootstrap.min.css")]
       link_ [rel_ "stylesheet", href_ (static "lodjur.css")]
       Html.termRawWith "script" [src_ (static "job.js"), Html.makeAttribute "defer" "defer"] mempty
-    body_ bodyattrs $ do
+      Html.termRawWith "script" [src_ (static "dashboard.js"), Html.makeAttribute "defer" "defer"] mempty
+    body_ $ do
       nav_ [class_ "navbar navbar-dark bg-dark"] $
         div_ [class_ "container"] $ do
           a_ [class_ "navbar-brand", href_ "/"] "Lodjur"
@@ -237,7 +235,7 @@ renderDeployCard deploymentNames deploymentWarn revisions refs state = case stat
         $ div_ [class_ "row"]
         $ do
             div_ [class_ "col"] $ do
-              select_ [name_ "deployment-name", class_ "form-control", id_ "selectbox", onchange_ "deploymentChanged()"]
+              select_ [name_ "deployment-name", class_ "form-control", id_ "deployment-selector"]
                 $ forM_ deploymentNames
                 $ \(unDeploymentName -> n) ->
                     option_ [value_ (Text.pack n)] (toHtml n)
@@ -302,7 +300,7 @@ homeAction = do
   refs            <- liftIO $ gitReader ? GetRefs
   deployState     <- liftIO $ deployer ? GetCurrentState
   jobs            <- liftIO $ deployer ? GetJobs (Just 10)
-  renderLayoutBodyAttrs "Lodjur Deployment Manager" [] [onload_ "deploymentChanged()"] $ do
+  renderLayout "Lodjur Deployment Manager" [] $ do
     div_ [class_ "row mt-5"] $ do
       div_ [class_ "col col-4"] $ renderCurrentState deployState
       div_ [class_ "col col-8"] $ renderLatestSuccessful deploymentNames jobs
