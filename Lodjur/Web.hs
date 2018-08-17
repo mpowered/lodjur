@@ -98,6 +98,7 @@ renderLayout title breadcrumbs contents =
       link_ [rel_ "stylesheet", href_ (static "bootstrap/css/bootstrap.min.css")]
       link_ [rel_ "stylesheet", href_ (static "lodjur.css")]
       Html.termRawWith "script" [src_ (static "job.js"), Html.makeAttribute "defer" "defer"] mempty
+      Html.termRawWith "script" [src_ (static "dashboard.js"), Html.makeAttribute "defer" "defer"] mempty
     body_ $ do
       nav_ [class_ "navbar navbar-dark bg-dark"] $
         div_ [class_ "container"] $ do
@@ -223,39 +224,41 @@ renderDeployDatalist revs refs listId =
       option_ [value_ (Git.unRevision rev)] mempty
 
 
-renderDeployCard :: [DeploymentName] -> [Git.Revision] -> [Git.Ref] -> DeployState -> Html ()
-renderDeployCard deploymentNames revisions refs state = case state of
-  Idle -> div_ [class_ "card"] $ do
-    div_ [class_ "card-header"] "New Deploy"
-    div_ [class_ "card-body"]
-      $ form_ [method_ "post", action_ "/jobs"]
-      $ div_ [class_ "row"]
-      $ do
-          div_ [class_ "col"] $ do
-            select_ [name_ "deployment-name", class_ "form-control"]
-              $ forM_ deploymentNames
-              $ \(unDeploymentName -> n) ->
-                  option_ [value_ (Text.pack n)] (toHtml n)
-            small_ [class_ "text-muted"]
-                   "Name of the Nixops deployment to target."
-          div_ [class_ "col"] $ do
-            input_ [name_ "revision", list_ "revisions", class_ "form-control"]
-            renderDeployDatalist revisions refs "revisions"
-            small_ [class_ "text-muted"] "Which git revision to deploy."
-          div_ [class_ "col"]
-            $ input_
-                [ class_ "btn btn-secondary form-control"
-                , type_ "submit"
-                , name_ "action"
-                , value_ "Build"
-                ]
-          div_ [class_ "col"]
-            $ input_
-                [ class_ "btn btn-primary form-control"
-                , type_ "submit"
-                , name_ "action"
-                , value_ "Deploy"
-                ]
+renderDeployCard :: [DeploymentName] -> [DeploymentName] -> [Git.Revision] -> [Git.Ref] -> DeployState -> Html ()
+renderDeployCard deploymentNames deploymentWarn revisions refs state = case state of
+  Idle -> do
+    let warn = Text.pack $ unwords $ map unDeploymentName deploymentWarn
+    div_ [class_ "card", id_ "deploy", data_ "warn-deployments" warn] $ do
+      div_ [class_ "card-header"] "New Deploy"
+      div_ [class_ "card-body"]
+        $ form_ [method_ "post", action_ "/jobs"]
+        $ div_ [class_ "row"]
+        $ do
+            div_ [class_ "col"] $ do
+              select_ [name_ "deployment-name", class_ "form-control", id_ "deployment-selector"]
+                $ forM_ deploymentNames
+                $ \(unDeploymentName -> n) ->
+                    option_ [value_ (Text.pack n)] (toHtml n)
+              small_ [class_ "text-muted"]
+                     "Name of the Nixops deployment to target."
+            div_ [class_ "col"] $ do
+              input_ [name_ "revision", list_ "revisions", class_ "form-control"]
+              renderDeployDatalist revisions refs "revisions"
+              small_ [class_ "text-muted"] "Which git revision to deploy."
+            div_ [class_ "col"]
+              $ input_
+                  [ class_ "btn btn-secondary form-control"
+                  , type_ "submit"
+                  , name_ "action"
+                  , value_ "Build"
+                  ]
+            div_ [class_ "col"]
+              $ input_
+                  [ class_ "btn btn-primary form-control"
+                  , type_ "submit"
+                  , name_ "action"
+                  , value_ "Deploy"
+                  ]
   Deploying _ -> return ()
 
 notFoundAction :: Action ()
@@ -292,6 +295,7 @@ homeAction = do
   deployer        <- lift (asks envDeployer)
   gitReader       <- lift (asks envGitReader)
   deploymentNames <- liftIO $ deployer ? GetDeploymentNames
+  deploymentWarn  <- liftIO $ deployer ? GetDeploymentWarn
   revisions       <- liftIO $ gitReader ? GetRevisions
   refs            <- liftIO $ gitReader ? GetRefs
   deployState     <- liftIO $ deployer ? GetCurrentState
@@ -303,6 +307,7 @@ homeAction = do
     div_ [class_ "row mt-5"] $ div_ [class_ "col"] $ renderDeployJobs jobs
     div_ [class_ "row mt-5 mb-5"] $ div_ [class_ "col"] $ renderDeployCard
       deploymentNames
+      deploymentWarn
       revisions
       refs
       deployState

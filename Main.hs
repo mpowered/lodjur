@@ -6,7 +6,6 @@ module Main where
 import           Data.Aeson                   as JSON
 import           Data.ByteString              (ByteString)
 import           Data.ByteString.Char8        as Char8
-import qualified Data.HashSet                 as HashSet
 import           Data.Semigroup               ((<>))
 import           Data.Text                    (Text)
 import           Data.Text.IO                 as Text
@@ -28,6 +27,7 @@ import           Lodjur.Web
 data LodjurConfiguration = LodjurConfiguration
   { gitWorkingDir       :: FilePath
   , nixopsDeployments   :: [DeploymentName]
+  , warnDeployments     :: [DeploymentName]
   , port                :: Port
   , authUser            :: ByteString
   , authPassword        :: ByteString
@@ -42,6 +42,7 @@ instance FromJSON LodjurConfiguration where
   parseJSON = withObject "Configuration" $ \o -> do
     gitWorkingDir <- o .: "git-working-dir"
     nixopsDeployments <- fmap DeploymentName <$> (o .: "nixops-deployments")
+    warnDeployments <- fmap DeploymentName <$> (o .: "warn-deployments")
     port <- o .: "http-port"
     authUser <- Char8.pack <$> (o .: "auth-user")
     authPassword <- Char8.pack <$> (o .: "auth-password")
@@ -105,7 +106,6 @@ main = startServices =<< execParser opts
 
   startServices LodjurOptions {..} = do
     LodjurConfiguration {..} <- readConfiguration configFile
-    let deploymentNames = HashSet.fromList nixopsDeployments
     pool <- Database.newPool databaseConnectInfo stripes ttl connsPerStripe
 
     eventLogger    <- spawn =<< EventLogger.initialize pool
@@ -118,7 +118,8 @@ main = startServices =<< execParser opts
         =<< Deployer.initialize eventLogger
                                 outputLoggers
                                 gitAgent
-                                deploymentNames
+                                nixopsDeployments
+                                warnDeployments
                                 pool
 
     -- Fetch on startup in case we miss webhooks while service is not running

@@ -20,8 +20,6 @@ module Lodjur.Deployment.Deployer
 import           Control.Concurrent
 import           Control.Exception           (Exception, SomeException, throwIO)
 import           Control.Monad               (void)
-import           Data.HashSet                (HashSet)
-import qualified Data.HashSet                as HashSet
 import qualified Data.Text                   as Text
 import           Data.Time.Clock
 import qualified Data.UUID                   as UUID
@@ -55,7 +53,8 @@ data Deployer = Deployer
   , eventLogger     :: Ref EventLogger
   , outputLoggers   :: Ref OutputLoggers
   , gitAgent        :: Ref GitAgent
-  , deploymentNames :: HashSet DeploymentName
+  , deploymentNames :: [DeploymentName]
+  , deploymentWarn  :: [DeploymentName]
   , pool            :: DbPool
   }
 
@@ -66,6 +65,7 @@ data DeployMessage r where
   GetJob :: JobId -> DeployMessage (Sync (Maybe (DeploymentJob, Maybe JobResult)))
   GetJobs :: Maybe Word -> DeployMessage (Sync DeploymentJobs)
   GetDeploymentNames :: DeployMessage (Sync [DeploymentName])
+  GetDeploymentWarn :: DeployMessage (Sync [DeploymentName])
   -- Private messages:
   FinishJob :: DeploymentJob -> JobResult -> DeployMessage Async
 
@@ -73,10 +73,11 @@ initialize
   :: Ref EventLogger
   -> Ref OutputLoggers
   -> Ref GitAgent
-  -> HashSet DeploymentName
+  -> [DeploymentName]
+  -> [DeploymentName]
   -> DbPool
   -> IO Deployer
-initialize eventLogger outputLoggers gitAgent deploymentNames pool = do
+initialize eventLogger outputLoggers gitAgent deploymentNames deploymentWarn pool = do
   Database.initialize pool
   return Deployer {state = Idle, ..}
 
@@ -135,7 +136,7 @@ instance Process Deployer where
     case (state, msg) of
       (Idle     , Deploy deploymentName deploymentRevision deploymentTime deploymentBuildOnly)
         -- We require the deployment name to be known.
-        | HashSet.member deploymentName deploymentNames -> do
+        | elem deploymentName deploymentNames -> do
           jobId <- UUID.toText <$> UUID.nextRandom
           let job = DeploymentJob {..}
           logger <- outputLoggers ? OutputLoggers.SpawnOutputLogger jobId
@@ -152,7 +153,9 @@ instance Process Deployer where
 
       -- Queries:
       (_, GetDeploymentNames) ->
-        return (a, HashSet.toList deploymentNames)
+        return (a, deploymentNames)
+      (_, GetDeploymentWarn) ->
+        return (a, deploymentWarn)
       (_, GetJob jobId) -> do
         job <- Database.getJobById pool jobId
         return (a, job)
