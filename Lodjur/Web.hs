@@ -46,6 +46,7 @@ import           Web.Spock                       hiding (static)
 import           Web.Spock.Lucid
 import           Web.Spock.Config
 
+import           Lodjur.Deployment
 import           Lodjur.Deployment.Deployer
 import           Lodjur.Events.EventLogger
 import qualified Lodjur.Git                      as Git
@@ -168,7 +169,7 @@ renderDeployJobs jobs = div_ [class_ "card"] $ do
     td_ (jobLink job)
     if deploymentBuildOnly job
       then td_ [class_ "text-secondary"] "(Build-only)"
-      else td_ (toHtml (unDeploymentName (deploymentName job)))
+      else td_ (toHtml (unDeploymentName (deploymentJobName job)))
     td_ (renderDeploymentRevision job)
     td_ (toHtml (formatUTCTime (deploymentTime job)))
     case r of
@@ -186,7 +187,7 @@ renderCurrentState state = div_ [class_ "card"] $ do
       a_ [href_ (jobHref job), class_ "text-warning"] $ do
         renderDeploymentRevision job
         " to "
-        toHtml (unDeploymentName (deploymentName job))
+        toHtml (unDeploymentName (deploymentJobName job))
 
 successfulJobsByDeploymentName
   :: [DeploymentName]
@@ -197,15 +198,15 @@ successfulJobsByDeploymentName deploymentNames jobs = foldMap
   deploymentNames
  where
   successfulJobIn n = \case
-    (job, Just JobSuccessful) -> deploymentName job == n
+    (job, Just JobSuccessful) -> deploymentJobName job == n
     _                         -> False
 
 -- TODO: Convert this to a database query.
-renderLatestSuccessful :: [DeploymentName] -> DeploymentJobs -> Html ()
-renderLatestSuccessful deploymentNames jobs =
+renderLatestSuccessful :: [Deployment] -> DeploymentJobs -> Html ()
+renderLatestSuccessful deployments jobs =
   div_ [class_ "card"] $ do
     div_ [class_ "card-header text-success"] "Latest Successful"
-    case successfulJobsByDeploymentName deploymentNames jobs of
+    case successfulJobsByDeploymentName (map deploymentName deployments) jobs of
       [] -> div_ [class_ "card-body text-muted"] "No successful jobs yet."
       successfulJobs ->
         table_ [class_ "table table-bordered mb-0"] $
@@ -226,11 +227,10 @@ renderDeployDatalist revs refs listId =
       option_ [value_ (Git.unRevision rev)] mempty
 
 
-renderDeployCard :: [DeploymentName] -> [DeploymentName] -> [Git.Revision] -> [Git.Ref] -> DeployState -> Html ()
-renderDeployCard deploymentNames deploymentWarn revisions refs state = case state of
+renderDeployCard :: [Deployment] -> [Git.Revision] -> [Git.Ref] -> DeployState -> Html ()
+renderDeployCard deployments revisions refs state = case state of
   Idle -> do
-    let warn = Text.pack $ unwords $ map unDeploymentName deploymentWarn
-    div_ [class_ "card", id_ "deploy", data_ "warn-deployments" warn] $ do
+    div_ [class_ "card", id_ "deploy"] $ do
       div_ [class_ "card-header"] "New Deploy"
       div_ [class_ "card-body"]
         $ form_ [method_ "post", action_ "/jobs"]
@@ -238,11 +238,11 @@ renderDeployCard deploymentNames deploymentWarn revisions refs state = case stat
         $ do
             div_ [class_ "col"] $ do
               select_ [name_ "deployment-name", class_ "form-control", id_ "deployment-selector"]
-                $ forM_ deploymentNames
-                $ \(unDeploymentName -> n) ->
-                    option_ [value_ (Text.pack n)] (toHtml n)
-              small_ [class_ "text-muted"]
-                     "Name of the Nixops deployment to target."
+                $ forM_ deployments $ \Deployment{..} ->
+                  let n = unDeploymentName deploymentName
+                      warnAttrs = if deploymentWarn then [data_ "warn" "warn"] else []
+                  in option_ (value_ n : warnAttrs) (toHtml n)
+              small_ [class_ "text-muted"] "Name of the Nixops deployment to target."
             div_ [class_ "col"] $ do
               input_ [name_ "revision", list_ "revisions", class_ "form-control"]
               renderDeployDatalist revisions refs "revisions"
@@ -295,8 +295,7 @@ jobLink = jobIdLink . jobId
 homeAction :: Action ()
 homeAction = do
   Env {..} <- getState
-  deploymentNames <- liftIO $ envDeployer ? GetDeploymentNames
-  deploymentWarn  <- liftIO $ envDeployer ? GetDeploymentWarn
+  deployments     <- liftIO $ envDeployer ? GetDeployments
   revisions       <- liftIO $ envGitReader ? GetRevisions
   refs            <- liftIO $ envGitReader ? GetRefs
   deployState     <- liftIO $ envDeployer ? GetCurrentState
@@ -304,11 +303,10 @@ homeAction = do
   renderLayout "Lodjur Deployment Manager" [] $ do
     div_ [class_ "row mt-5"] $ do
       div_ [class_ "col col-4"] $ renderCurrentState deployState
-      div_ [class_ "col col-8"] $ renderLatestSuccessful deploymentNames jobs
+      div_ [class_ "col col-8"] $ renderLatestSuccessful deployments jobs
     div_ [class_ "row mt-5"] $ div_ [class_ "col"] $ renderDeployJobs jobs
     div_ [class_ "row mt-5 mb-5"] $ div_ [class_ "col"] $ renderDeployCard
-      deploymentNames
-      deploymentWarn
+      deployments
       revisions
       refs
       deployState
@@ -359,7 +357,7 @@ showJobAction jobId = do
           "Deploy of revision "
           em_ $ toHtml (Git.unRevision (deploymentRevision job'))
           " to "
-          em_ $ toHtml (unDeploymentName (deploymentName job'))
+          em_ $ toHtml (unDeploymentName (deploymentJobName job'))
           "."
         div_ [class_ "row mt-3"] $ div_ [class_ "col"] $ do
           h2_ [class_ "mb-3"] "Event Log"

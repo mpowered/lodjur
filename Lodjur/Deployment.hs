@@ -1,5 +1,5 @@
 {-# LANGUAGE DeriveGeneric              #-}
-{-# LANGUAGE GeneralizedNewtypeDeriving #-}
+{-# LANGUAGE DeriveAnyClass             #-}
 module Lodjur.Deployment where
 
 import           Data.Aeson
@@ -12,14 +12,23 @@ import           GHC.Generics    (Generic)
 import           Lodjur.Git
 
 newtype DeploymentName =
-  DeploymentName { unDeploymentName :: String }
-  deriving (Eq, Show, IsString, Generic, Hashable)
+  DeploymentName { unDeploymentName :: Text }
+  deriving (Eq, Show, Generic, Hashable, FromJSON)
+
+instance IsString DeploymentName where
+  fromString = DeploymentName . fromString
+
+data Deployment =
+  Deployment { deploymentName :: DeploymentName
+             , deploymentWarn :: Bool
+             }
+  deriving (Eq, Show, Generic)
 
 type JobId = Text
 
 data DeploymentJob = DeploymentJob
   { jobId               :: JobId
-  , deploymentName      :: DeploymentName
+  , deploymentJobName      :: DeploymentName
   , deploymentRevision  :: Revision
   , deploymentTime      :: UTCTime
   , deploymentBuildOnly :: Bool

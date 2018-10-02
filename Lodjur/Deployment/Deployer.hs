@@ -53,8 +53,7 @@ data Deployer = Deployer
   , eventLogger     :: Ref EventLogger
   , outputLoggers   :: Ref OutputLoggers
   , gitAgent        :: Ref GitAgent
-  , deploymentNames :: [DeploymentName]
-  , deploymentWarn  :: [DeploymentName]
+  , deployments     :: [Deployment]
   , pool            :: DbPool
   }
 
@@ -64,8 +63,7 @@ data DeployMessage r where
   GetCurrentState :: DeployMessage (Sync DeployState)
   GetJob :: JobId -> DeployMessage (Sync (Maybe (DeploymentJob, Maybe JobResult)))
   GetJobs :: Maybe Word -> DeployMessage (Sync DeploymentJobs)
-  GetDeploymentNames :: DeployMessage (Sync [DeploymentName])
-  GetDeploymentWarn :: DeployMessage (Sync [DeploymentName])
+  GetDeployments :: DeployMessage (Sync [Deployment])
   -- Private messages:
   FinishJob :: DeploymentJob -> JobResult -> DeployMessage Async
 
@@ -73,11 +71,10 @@ initialize
   :: Ref EventLogger
   -> Ref OutputLoggers
   -> Ref GitAgent
-  -> [DeploymentName]
-  -> [DeploymentName]
+  -> [Deployment]
   -> DbPool
   -> IO Deployer
-initialize eventLogger outputLoggers gitAgent deploymentNames deploymentWarn pool = do
+initialize eventLogger outputLoggers gitAgent deployments pool = do
   Database.initialize pool
   return Deployer {state = Idle, ..}
 
@@ -110,7 +107,7 @@ deploy eventLogger outputLogger gitAgent job args = do
   eventLogger ! AppendEvent (jobId job) (JobRunning started)
   _ <- gitAgent ? Checkout (deploymentRevision job) outputLogger
   _ <- nixopsCmdLogged outputLogger $
-                       ["deploy", "-d", unDeploymentName (deploymentName job)]
+                       ["deploy", "-d", Text.unpack (unDeploymentName (deploymentJobName job))]
                        ++ args
   return JobSuccessful
 
@@ -134,11 +131,11 @@ instance Process Deployer where
 
   receive self (a@Deployer{..}, msg)=
     case (state, msg) of
-      (Idle     , Deploy deploymentName deploymentRevision deploymentTime deploymentBuildOnly)
+      (Idle     , Deploy name deploymentRevision deploymentTime deploymentBuildOnly)
         -- We require the deployment name to be known.
-        | elem deploymentName deploymentNames -> do
+        | elem name (map deploymentName deployments) -> do
           jobId <- UUID.toText <$> UUID.nextRandom
-          let job = DeploymentJob {..}
+          let job = DeploymentJob {deploymentJobName = name, ..}
           logger <- outputLoggers ? OutputLoggers.SpawnOutputLogger jobId
           let args = if deploymentBuildOnly then ["--build-only"] else []
           void (forkFinally (deploy eventLogger logger gitAgent job args) (notifyDeployFinished self eventLogger logger job))
@@ -146,16 +143,14 @@ instance Process Deployer where
           return ( a { state = Deploying job } , Just job)
         -- We can't deploy to an unknown deployment.
         | otherwise -> do
-          putStrLn ("Invalid deployment name: " <> unDeploymentName deploymentName)
+          putStrLn ("Invalid deployment name: " <> Text.unpack (unDeploymentName name))
           return (a, Nothing)
       (Deploying{}, Deploy{}      ) ->
         return (a, Nothing)
 
       -- Queries:
-      (_, GetDeploymentNames) ->
-        return (a, deploymentNames)
-      (_, GetDeploymentWarn) ->
-        return (a, deploymentWarn)
+      (_, GetDeployments) ->
+        return (a, deployments)
       (_, GetJob jobId) -> do
         job <- Database.getJobById pool jobId
         return (a, job)

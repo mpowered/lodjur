@@ -1,19 +1,24 @@
-function updateDeploymentCard() {
-    var selectbox = document.querySelector('#deployment-selector');
+function setupWarnings() {
+
     var card = document.querySelector('#deploy');
     var header = document.querySelector('#deploy .card-header');
-    var warn = card.dataset.warnDeployments.split(/\s+/);
-    var isProduction = warn.includes(selectbox.value);
 
-    card.classList.toggle('border-danger', isProduction);
-    header.classList.toggle('bg-danger', isProduction);
-    header.classList.toggle('text-white', isProduction);
-}
+    function updateDeploymentCard(e) {
+        var selectBox = e.target;
+        var selectedOption = selectBox.options[selectBox.selectedIndex];
+        var warn = !!selectedOption.dataset.warn;
 
-document.querySelector('#deployment-selector').addEventListener('change', updateDeploymentCard);
+        card.classList.toggle('border-danger', warn);
+        header.classList.toggle('bg-danger', warn);
+        header.classList.toggle('text-white', warn);
+    }
+
+    document.querySelector('#deployment-selector').addEventListener('change', updateDeploymentCard);
+    updateDeploymentCard();
+};
 
 if (document.readyState === "loading") {
-    document.addEventListener("DOMContentLoaded", updateDeploymentCard);
+    document.addEventListener("DOMContentLoaded", setupWarnings);
 } else {  // `DOMContentLoaded` already fired
-    updateDeploymentCard();
+    setupWarnings();
 }

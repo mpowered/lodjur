@@ -24,10 +24,20 @@ import qualified Lodjur.Output.OutputStreamer as OutputStreamer
 import           Lodjur.Process
 import           Lodjur.Web
 
+data DeploymentConfiguration = DeploymentConfiguration
+  { name :: Text
+  , warn :: Bool 
+  }
+
+deploymentConfigurationToDeployment :: DeploymentConfiguration -> Deployment
+deploymentConfigurationToDeployment DeploymentConfiguration{..} =
+  Deployment { deploymentName = DeploymentName name
+             , deploymentWarn = warn
+             }
+
 data LodjurConfiguration = LodjurConfiguration
   { gitWorkingDir       :: FilePath
-  , nixopsDeployments   :: [DeploymentName]
-  , warnDeployments     :: [DeploymentName]
+  , deployments         :: [DeploymentConfiguration]
   , port                :: Port
   , authUser            :: ByteString
   , authPassword        :: ByteString
@@ -37,12 +47,16 @@ data LodjurConfiguration = LodjurConfiguration
   , staticDirectory     :: FilePath
   }
 
+instance FromJSON DeploymentConfiguration where
+  parseJSON = withObject "Deployment" $ \o -> do
+    name <- o .: "name"
+    warn <- o .: "warn"
+    return DeploymentConfiguration{..}
 
 instance FromJSON LodjurConfiguration where
   parseJSON = withObject "Configuration" $ \o -> do
     gitWorkingDir <- o .: "git-working-dir"
-    nixopsDeployments <- fmap DeploymentName <$> (o .: "nixops-deployments")
-    warnDeployments <- fmap DeploymentName <$> (o .: "warn-deployments")
+    deployments <- o .: "deployments"
     port <- o .: "http-port"
     authUser <- Char8.pack <$> (o .: "auth-user")
     authPassword <- Char8.pack <$> (o .: "auth-password")
@@ -118,8 +132,7 @@ main = startServices =<< execParser opts
         =<< Deployer.initialize eventLogger
                                 outputLoggers
                                 gitAgent
-                                nixopsDeployments
-                                warnDeployments
+                                (deploymentConfigurationToDeployment <$> deployments)
                                 pool
 
     -- Fetch on startup in case we miss webhooks while service is not running

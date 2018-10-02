@@ -26,7 +26,7 @@ insertJob pool DeploymentJob {..} = \case
     "INSERT INTO deployment_job (id, time, deployment_name, revision, build_only, result) VALUES (?, ?, ?, ?, ?, ?)"
     ( jobId
     , deploymentTime
-    , unDeploymentName deploymentName
+    , unDeploymentName deploymentJobName
     , unRevision deploymentRevision
     , deploymentBuildOnly
     , "successful" :: Text
@@ -36,7 +36,7 @@ insertJob pool DeploymentJob {..} = \case
     "INSERT INTO deployment_job (id, time, deployment_name, revision, build_only, result, error_message) VALUES (?, ?, ?, ?, ?, ?, ?)"
     ( jobId
     , deploymentTime
-    , unDeploymentName deploymentName
+    , unDeploymentName deploymentJobName
     , unRevision deploymentRevision
     , deploymentBuildOnly
     , "failed" :: Text
@@ -47,7 +47,7 @@ insertJob pool DeploymentJob {..} = \case
     "INSERT INTO deployment_job (id, time, deployment_name, revision, build_only) VALUES (?, ?, ?, ?, ?)"
     ( jobId
     , deploymentTime
-    , unDeploymentName deploymentName
+    , unDeploymentName deploymentJobName
     , unRevision deploymentRevision
     , deploymentBuildOnly
     )
@@ -64,7 +64,7 @@ updateJobResult pool jobId = \case
     ("failed" :: Text, errMsg, jobId)
 
 parseJob
-  :: (Text, UTCTime, String, Text, Maybe String, Maybe Text, Bool)
+  :: (Text, UTCTime, Text, Text, Maybe String, Maybe Text, Bool)
   -> IO (DeploymentJob, Maybe JobResult)
 parseJob (jobId, t, name, revision, mResult, mMsg, buildOnly) =
   let
