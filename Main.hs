@@ -39,8 +39,6 @@ data LodjurConfiguration = LodjurConfiguration
   { gitWorkingDir       :: FilePath
   , deployments         :: [DeploymentConfiguration]
   , port                :: Port
-  , authUser            :: ByteString
-  , authPassword        :: ByteString
   , databaseConnectInfo ::  ConnectInfo
   , githubSecretToken   :: ByteString
   , githubRepos         :: [Text]
@@ -58,8 +56,6 @@ instance FromJSON LodjurConfiguration where
     gitWorkingDir <- o .: "git-working-dir"
     deployments <- o .: "deployments"
     port <- o .: "http-port"
-    authUser <- Char8.pack <$> (o .: "auth-user")
-    authPassword <- Char8.pack <$> (o .: "auth-password")
     db <- o .: "database"
     databaseConnectInfo <- parseDatabaseConnectInfo db
     githubSecretToken <- Char8.pack <$> (o .: "github-secret-token")
@@ -139,7 +135,6 @@ main = startServices =<< execParser opts
     gitAgent ! GitAgent.FetchRemote
 
     runServer port
-              (authUser, authPassword)
               staticDirectory
               deployer
               eventLogger

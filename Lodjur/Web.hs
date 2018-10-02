@@ -37,9 +37,7 @@ import qualified Lucid.Base                      as Html
 import           Lucid.Bootstrap
 import           Lucid.Html5
 import           Network.HTTP.Types.Status
-import           Network.Wai                     (StreamingBody, rawPathInfo)
-import           Network.Wai.Middleware.HttpAuth (AuthSettings (..), CheckCreds,
-                                                  basicAuth)
+import           Network.Wai                     (StreamingBody)
 import           Network.Wai.Middleware.Static   (Policy, addBase, policy,
                                                   staticPolicy, (>->))
 import           Web.Spock                       hiding (static)
@@ -57,23 +55,10 @@ import           Lodjur.Output.OutputLoggers
 import           Lodjur.Output.OutputStreamer
 import           Lodjur.Process
 
+import           Lodjur.Web.Auth.GitHub
+import           Lodjur.Web.Base
+
 import           Paths_lodjur
-
-data Env = Env
-  { envDeployer          :: Ref Deployer
-  , envEventLogger       :: Ref EventLogger
-  , envOutputLoggers     :: Ref OutputLoggers
-  , envOutputStreamer    :: Ref OutputStreamer
-  , envGitAgent          :: Ref GitAgent
-  , envGitReader         :: Ref GitReader
-  , envGithubRepos       :: [Text]
-  , envGithubSecretToken :: ByteString
-  }
-
-data Session = Session
-
--- type Action = ActionT LText.Text (ReaderT Env IO)
-type Action = SpockAction () Session Env
 
 readState :: Action DeployState
 readState = getState >>= liftIO . (? GetCurrentState) . envDeployer
@@ -530,16 +515,6 @@ refreshRemoteAction = do
 
 type Port = Int
 
-authSettings :: AuthSettings
-authSettings = "Lodjur" { authIsProtected = isProtected }
-  where
-    isProtected req = return (rawPathInfo req `notElem` unauthorizedRoutes)
-    unauthorizedRoutes = ["/webhook/git/refresh"]
-
-checkCredentials :: (ByteString, ByteString) -> CheckCreds
-checkCredentials (cUser, cPass) user pass =
-  return (user == cUser && pass == cPass)
-
 staticPrefix :: String
 staticPrefix = "static/"
 
@@ -557,7 +532,6 @@ redirectStatic staticBase =
 
 runServer
   :: Port
-  -> (ByteString, ByteString)
   -> String
   -> Ref Deployer
   -> Ref EventLogger
@@ -568,14 +542,17 @@ runServer
   -> ByteString
   -> [Text]
   -> IO ()
-runServer port authCreds staticBase envDeployer envEventLogger envOutputLoggers envOutputStreamer envGitAgent envGitReader envGithubSecretToken envGithubRepos = do
+runServer port staticBase envDeployer envEventLogger envOutputLoggers envOutputStreamer envGitAgent envGitReader envGithubSecretToken envGithubRepos = do
   cfg <- defaultSpockCfg Session PCNoDatabase Env {..}
   runSpock port (spock cfg app) 
   where
     app = do
       -- Middleware
-      middleware (basicAuth (checkCredentials authCreds) authSettings)
       middleware (staticPolicy (redirectStatic staticBase))
+
+      -- Auth
+      authRoutes
+
       -- Routes
       get  "/"                              homeAction
       get  "/jobs"                          getDeploymentJobsAction
@@ -583,5 +560,6 @@ runServer port authCreds staticBase envDeployer envEventLogger envOutputLoggers 
       get  ("jobs" <//> var)                showJobAction
       get  ("jobs" <//> var <//> "output")  streamOutputAction
       post "/webhook/git/refresh"           refreshRemoteAction
+
       -- Fallback
       hookAnyAll (const notFoundAction)
