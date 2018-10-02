@@ -21,15 +21,12 @@ import           Data.Aeson.Types
 import qualified Data.Binary.Builder             as Binary
 import           Data.ByteString                 (ByteString)
 import qualified Data.ByteString.Base16          as Base16
-import qualified Data.ByteString.Lazy            as LByteString
-import qualified Data.ByteString.Lazy.Char8      as C8
 import qualified Data.HashMap.Strict             as HashMap
 import qualified Data.List                       as List
 import           Data.String
 import           Data.Text                       (Text)
 import qualified Data.Text                       as Text
 import qualified Data.Text.Encoding              as Text
-import qualified Data.Text.Lazy                  as LText
 import           Data.Time.Clock                 (UTCTime, getCurrentTime)
 import           Data.Time.Clock.POSIX
 import           Data.Time.Format                (defaultTimeLocale, formatTime)
@@ -45,7 +42,9 @@ import           Network.Wai.Middleware.HttpAuth (AuthSettings (..), CheckCreds,
                                                   basicAuth)
 import           Network.Wai.Middleware.Static   (Policy, addBase, policy,
                                                   staticPolicy, (>->))
-import           Web.Scotty.Trans
+import           Web.Spock                       hiding (static)
+import           Web.Spock.Lucid
+import           Web.Spock.Config
 
 import           Lodjur.Deployment.Deployer
 import           Lodjur.Events.EventLogger
@@ -70,13 +69,16 @@ data Env = Env
   , envGithubSecretToken :: ByteString
   }
 
-type Action = ActionT LText.Text (ReaderT Env IO)
+data Session = Session
+
+-- type Action = ActionT LText.Text (ReaderT Env IO)
+type Action = SpockAction () Session Env
 
 readState :: Action DeployState
-readState = lift (asks envDeployer) >>= liftIO . (? GetCurrentState)
+readState = getState >>= liftIO . (? GetCurrentState) . envDeployer
 
 renderHtml :: Html () -> Action ()
-renderHtml = html . Html.renderText
+renderHtml = lucid
 
 formatUTCTime :: UTCTime -> String
 formatUTCTime = formatTime defaultTimeLocale "%c"
@@ -263,7 +265,7 @@ renderDeployCard deploymentNames deploymentWarn revisions refs state = case stat
 
 notFoundAction :: Action ()
 notFoundAction = do
-  status status404
+  setStatus status404
   renderLayout "Not Found" [] $ do
     h1_ [class_ "mt-5"] "Not Found"
     p_ [class_ "lead"] $ do
@@ -273,7 +275,7 @@ notFoundAction = do
 
 badRequestAction :: Html () -> Action ()
 badRequestAction message = do
-  status status400
+  setStatus status400
   renderLayout "Bad request!" [] $ do
     h1_ [class_ "mt-5"] "Bad request!"
     p_  [class_ "lead"] message
@@ -292,14 +294,13 @@ jobLink = jobIdLink . jobId
 
 homeAction :: Action ()
 homeAction = do
-  deployer        <- lift (asks envDeployer)
-  gitReader       <- lift (asks envGitReader)
-  deploymentNames <- liftIO $ deployer ? GetDeploymentNames
-  deploymentWarn  <- liftIO $ deployer ? GetDeploymentWarn
-  revisions       <- liftIO $ gitReader ? GetRevisions
-  refs            <- liftIO $ gitReader ? GetRefs
-  deployState     <- liftIO $ deployer ? GetCurrentState
-  jobs            <- liftIO $ deployer ? GetJobs (Just 10)
+  Env {..} <- getState
+  deploymentNames <- liftIO $ envDeployer ? GetDeploymentNames
+  deploymentWarn  <- liftIO $ envDeployer ? GetDeploymentWarn
+  revisions       <- liftIO $ envGitReader ? GetRevisions
+  refs            <- liftIO $ envGitReader ? GetRefs
+  deployState     <- liftIO $ envDeployer ? GetCurrentState
+  jobs            <- liftIO $ envDeployer ? GetJobs (Just 10)
   renderLayout "Lodjur Deployment Manager" [] $ do
     div_ [class_ "row mt-5"] $ do
       div_ [class_ "col col-4"] $ renderCurrentState deployState
@@ -315,43 +316,41 @@ homeAction = do
 newDeployAction :: Action ()
 newDeployAction = readState >>= \case
   Idle -> do
-    deployer  <- lift (asks envDeployer)
-    dName     <- DeploymentName <$> param "deployment-name"
-    revision  <- Git.Revision <$> param "revision"
-    action    <- param "action"
+    deployer  <- envDeployer <$> getState
+    dName     <- DeploymentName <$> param' "deployment-name"
+    revision  <- Git.Revision <$> param' "revision"
+    action    <- param' "action"
     now       <- liftIO getCurrentTime
     let buildOnly = action == ("Build" :: String)
     liftIO (deployer ? Deploy dName revision now buildOnly) >>= \case
       Just job -> do
-        status status302
-        setHeader "Location" (LText.fromStrict (jobHref job))
+        setStatus status302
+        setHeader "Location" (jobHref job)
       Nothing -> badRequestAction "Could not deploy!"
   Deploying job ->
     badRequestAction $ "Already deploying " <> jobLink job <> "."
 
 getDeploymentJobsAction :: Action ()
 getDeploymentJobsAction = do
-  deployer        <- lift (asks envDeployer)
-  jobs            <- liftIO $ deployer ? GetJobs Nothing
+  Env{..} <- getState
+  jobs            <- liftIO (envDeployer ? GetJobs Nothing)
   renderLayout "Lodjur Deployment Manager" [jobsLink] $
     div_ [class_ "row mt-5"] $ div_ [class_ "col"] $ renderDeployJobs jobs
 
 getJobLogs :: JobId -> Action [Output]
 getJobLogs jobId = do
-  outputLoggers <- lift (asks envOutputLoggers)
+  outputLoggers <- envOutputLoggers <$> getState
   liftIO $ do
     logger <- outputLoggers ? SpawnOutputLogger jobId
     output <- logger ? GetOutputLog
     kill logger
     return output
 
-showJobAction :: Action ()
-showJobAction = do
-  jobId         <- param "job-id"
-  eventLogger   <- lift (asks envEventLogger)
-  deployer      <- lift (asks envDeployer)
-  job           <- liftIO $ deployer ? GetJob jobId
-  eventLogs     <- liftIO $ eventLogger ? GetEventLogs
+showJobAction :: Text -> Action ()
+showJobAction jobId = do
+  Env{..} <- getState
+  job           <- liftIO $ envDeployer ? GetJob jobId
+  eventLogs     <- liftIO $ envEventLogger ? GetEventLogs
   outputLog     <- getJobLogs jobId
   case (job, HashMap.lookup jobId eventLogs) of
     (Just (job', _), Just eventLog) ->
@@ -399,14 +398,10 @@ data OutputEvent = OutputLineEvent
   , outputEventLines :: [String]
   } deriving (Generic, ToJSON)
 
-maybeParam :: Parsable a => LText.Text -> Action (Maybe a)
-maybeParam name = rescue (Just <$> param name) (const $ return Nothing)
-
-streamOutputAction :: Action ()
-streamOutputAction = do
-  jobId <- param "job-id"
-  from  <- maybeParam "from"
-  outputStreamer <- lift (asks envOutputStreamer)
+streamOutputAction :: Text -> Action ()
+streamOutputAction jobId = do
+  from  <- param "from"
+  outputStreamer <- envOutputStreamer <$> getState
   setHeader "Content-Type" "text/event-stream"
   setHeader "Cache-Control" "no-cache"
   setHeader "X-Accel-Buffering" "no"
@@ -493,17 +488,17 @@ instance FromJSON GithubDeleteEvent where
 
 secureJsonData :: FromJSON a => Action a
 secureJsonData = do
-  key <- lift (asks envGithubSecretToken)
+  key <- envGithubSecretToken <$> getState
   message <- body
   xhubsig <- header "X-HUB-SIGNATURE" >>= maybe (raise "Github didn't send a valid X-HUB-SIGNATURE") return
   signature <- maybe (raise "Github X-HUB-SIGNATURE didn't start with 'sha1='") return
-                 (LText.stripPrefix "sha1=" xhubsig)
+                 (Text.stripPrefix "sha1=" xhubsig)
   digest <- maybe (raise "Invalid SHA1 digest sent in X-HUB-SIGNATURE") return
-              (digestFromByteString $ fst $ Base16.decode $ Text.encodeUtf8 $ LText.toStrict signature)
-  unless (hmac key (LByteString.toStrict message) == HMAC (digest :: Digest SHA1)) $
+              (digestFromByteString $ fst $ Base16.decode $ Text.encodeUtf8 $ signature)
+  unless (hmac key message == HMAC (digest :: Digest SHA1)) $
     raise "Signatures don't match"
-  either (\e -> raise $ stringError $ "jsonData - no parse: " ++ e ++ ". Data was:" ++ C8.unpack message) return
-    (eitherDecode message)
+  either (\e -> raise $ "jsonData - no parse: " <> Text.pack e <> ". Data was:" <> Text.decodeUtf8 message) return
+    (eitherDecodeStrict message)
 
 matchRepo :: [Text] -> Text -> Bool
 matchRepo [] _ = True
@@ -526,10 +521,10 @@ refreshRemoteAction = do
       raise "Unsupported event"
  where
   refresh repo = do
-    repos <- lift (asks envGithubRepos)
+    repos <- envGithubRepos <$> getState
     if matchRepo repos repo
       then do
-        gitAgent <- lift (asks envGitAgent)
+        gitAgent <- envGitAgent <$> getState
         liftIO (gitAgent ! FetchRemote)
         text "Queued FetchRemote"
       else
@@ -553,6 +548,11 @@ staticPrefix = "static/"
 static :: (Data.String.IsString a, Semigroup a) => a -> a
 static x = "/static/" <> x
 
+raise :: MonadIO m => Text -> ActionCtxT ctx m b
+raise msg = do
+  setStatus status400
+  text msg
+
 redirectStatic :: String -> Policy
 redirectStatic staticBase =
   policy (List.stripPrefix staticPrefix) >-> addBase staticBase
@@ -570,17 +570,20 @@ runServer
   -> ByteString
   -> [Text]
   -> IO ()
-runServer port authCreds staticBase envDeployer envEventLogger envOutputLoggers envOutputStreamer envGitAgent envGitReader envGithubSecretToken envGithubRepos =
-  scottyT port (`runReaderT` Env {..}) $ do
-    -- Middleware
-    middleware (basicAuth (checkCredentials authCreds) authSettings)
-    middleware (staticPolicy (redirectStatic staticBase))
-    -- Routes
-    get  "/"                    homeAction
-    get  "/jobs"                getDeploymentJobsAction
-    post "/jobs"                newDeployAction
-    get  "/jobs/:job-id"        showJobAction
-    get  "/jobs/:job-id/output" streamOutputAction
-    post "/webhook/git/refresh" refreshRemoteAction
-    -- Fallback
-    notFound notFoundAction
+runServer port authCreds staticBase envDeployer envEventLogger envOutputLoggers envOutputStreamer envGitAgent envGitReader envGithubSecretToken envGithubRepos = do
+  cfg <- defaultSpockCfg Session PCNoDatabase Env {..}
+  runSpock port (spock cfg app) 
+  where
+    app = do
+      -- Middleware
+      middleware (basicAuth (checkCredentials authCreds) authSettings)
+      middleware (staticPolicy (redirectStatic staticBase))
+      -- Routes
+      get  "/"                              homeAction
+      get  "/jobs"                          getDeploymentJobsAction
+      post "/jobs"                          newDeployAction
+      get  ("jobs" <//> var)                showJobAction
+      get  ("jobs" <//> var <//> "output")  streamOutputAction
+      post "/webhook/git/refresh"           refreshRemoteAction
+      -- Fallback
+      hookAnyAll (const notFoundAction)
