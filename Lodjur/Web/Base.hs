@@ -24,7 +24,7 @@ data Env = Env
   , envGithubSecretToken :: ByteString
   }
 
-data Session = Session { currentUser :: User }
+data Session = Session { currentUser :: Maybe User }
 
-type App = SpockM () (Maybe Session) Env
-type Action = SpockAction () (Maybe Session) Env
+type App = SpockM () Session Env
+type Action = SpockAction () Session Env

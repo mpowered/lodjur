@@ -89,11 +89,11 @@ userIdLink userId =
   in a_ [href_ ("https://github.com/" <> uid)] $
       toHtml uid
 
-currentUserNav :: Maybe Session -> Html ()
-currentUserNav sess =
+currentUserNav :: Session -> Html ()
+currentUserNav Session { .. } =
   ul_ [class_ "navbar-nav my-2"] $
-    case sess of
-      Just Session { currentUser = User {..}} ->
+    case currentUser of
+      Just User {..} ->
         li_ [class_ "nav-item dropdown"] $ do
           a_
             [ class_ "nav-link dropdown-toggle"
@@ -625,22 +625,19 @@ redirectStatic staticBase =
 requireUser :: Action User
 requireUser  =
   readSession >>= \case
-    Just Session{..} -> return currentUser
-    Nothing -> do
+    Session{ currentUser = Just u } -> return u
+    _ -> do
       setStatus status401
       text "Not authenticated"
 
 requireLoggedIn :: App () -> App ()
-requireLoggedIn = prehook $ do
-  readSession >>= \case
-    Just Session{} -> return ()
-    Nothing -> notFoundAction
+requireLoggedIn = prehook (void requireUser)
 
 ifLoggedIn :: Action () -> Action () -> Action ()
 ifLoggedIn thenRoute elseRoute = do
   readSession >>= \case
-    Just Session{} -> thenRoute
-    Nothing -> elseRoute
+    Session{ currentUser = Just _ } -> thenRoute
+    _ -> elseRoute
 
 runServer
   :: Port
@@ -657,7 +654,7 @@ runServer
   -> IO ()
 runServer port staticBase envDeployer envEventLogger envOutputLoggers envOutputStreamer envGitAgent envGitReader envGithubSecretToken envGithubRepos githubOauth
   = do
-    cfg <- defaultSpockCfg Nothing PCNoDatabase Env {..}
+    cfg <- defaultSpockCfg (Session Nothing) PCNoDatabase Env {..}
     runSpock port (spock cfg app)
  where
   app = do

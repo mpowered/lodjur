@@ -34,17 +34,17 @@ exchangeCode oauth2 = do
   case result of
     Left err -> do
       setStatus status400
-      writeSession Nothing
+      writeSession (Session Nothing)
       text (Text.pack (show err))
     Right OAuth2Token {..} -> do
       -- TODO: Request this information from GitHub API
       let user = User { userId = UserId "johndoe" }
-      writeSession (Just (Session { currentUser = user }))
+      writeSession (Session { currentUser = Just user })
       redirect "/"
 
 clearSession :: Action ()
 clearSession = do
-  writeSession Nothing
+  writeSession (Session Nothing)
   redirect "/"
 
 authRoutes :: OAuth2 -> App ()
