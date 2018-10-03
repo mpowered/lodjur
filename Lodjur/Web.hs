@@ -35,15 +35,16 @@ import           Data.Time.Clock.POSIX
 import           Data.Time.Format              (defaultTimeLocale, formatTime)
 import           Data.Version
 import           GHC.Generics                  (Generic)
-import           Lucid.Base                    (Html, toHtml, makeAttribute)
+import           Lucid.Base                    (Html, makeAttribute, toHtml)
 import qualified Lucid.Base                    as Html
 import           Lucid.Bootstrap
 import           Lucid.Html5
 import           Network.HTTP.Types.Status
 import           Network.OAuth.OAuth2
-import           Network.Wai                   (StreamingBody)
+import           Network.Wai                   (StreamingBody, pathInfo)
 import           Network.Wai.Middleware.Static (Policy, addBase, policy,
                                                 staticPolicy, (>->))
+import           URI.ByteString                (URIRef (..))
 import           Web.Spock                     hiding (static)
 import           Web.Spock.Config
 import           Web.Spock.Lucid
@@ -68,7 +69,7 @@ import           Paths_lodjur
 readState :: Action DeployState
 readState = getState >>= liftIO . (? GetCurrentState) . envDeployer
 
-renderHtml :: Html () -> Action ()
+renderHtml :: Html () -> Action a
 renderHtml = lucid
 
 formatUTCTime :: UTCTime -> String
@@ -121,7 +122,7 @@ data Layout
   = WithNavigation [Html ()] (Html ())
   | BarePage (Html ())
 
-renderLayout :: Html () -> Layout -> Action ()
+renderLayout :: Html () -> Layout -> Action a
 renderLayout title layout = do
   sess <- readSession
   renderHtml $ doctypehtml_ $ html_ $ do
@@ -211,10 +212,10 @@ renderDeployJobs jobs = div_ [class_ "card"] $ do
     td_ (toHtml (formatUTCTime (deploymentTime job)))
     td_ (userIdLink (deploymentJobStartedBy job))
     td_ $ do
-    case r of
-      Just JobSuccessful -> td_ [class_ "text-success"] "Successful"
-      Just (JobFailed _) -> td_ [class_ "text-danger"] "Failed"
-      Nothing            -> td_ [class_ "text-primary"] "Running"
+      case r of
+        Just JobSuccessful -> td_ [class_ "text-success"] "Successful"
+        Just (JobFailed _) -> td_ [class_ "text-danger"] "Failed"
+        Nothing            -> td_ [class_ "text-primary"] "Running"
 
 renderCurrentState :: DeployState -> Html ()
 renderCurrentState state = div_ [class_ "card"] $ do
@@ -346,15 +347,15 @@ homeAction = do
   deployState <- liftIO $ envDeployer ? GetCurrentState
   jobs        <- liftIO $ envDeployer ? GetJobs (Just 10)
   let content = do
-      div_ [class_ "row mt-5"] $ do
-        div_ [class_ "col col-4"] $ renderCurrentState deployState
-        div_ [class_ "col col-8"] $ renderLatestSuccessful deployments jobs
-      div_ [class_ "row mt-5"] $ div_ [class_ "col"] $ renderDeployJobs jobs
-      div_ [class_ "row mt-5 mb-5"] $ div_ [class_ "col"] $ renderDeployCard
-        deployments
-        revisions
-        refs
-        deployState
+        div_ [class_ "row mt-5"] $ do
+          div_ [class_ "col col-4"] $ renderCurrentState deployState
+          div_ [class_ "col col-8"] $ renderLatestSuccessful deployments jobs
+        div_ [class_ "row mt-5"] $ div_ [class_ "col"] $ renderDeployJobs jobs
+        div_ [class_ "row mt-5 mb-5"] $ div_ [class_ "col"] $ renderDeployCard
+          deployments
+          revisions
+          refs
+          deployState
   renderLayout "Lodjur Deployment Manager" (WithNavigation [] content)
 
 welcomeAction :: Action ()
@@ -627,8 +628,16 @@ requireUser  =
   readSession >>= \case
     Session{ currentUser = Just u } -> return u
     _ -> do
+      currentPath <- ("/" <>) . Text.intercalate "/" . pathInfo <$> request
+      let continueTo = Just (RelativeRef Nothing (Text.encodeUtf8 currentPath) mempty Nothing)
+      writeSession Session { currentUser = Nothing, .. }
       setStatus status401
-      text "Not authenticated"
+      renderLayout "Authenticated Required" $ BarePage $
+        div_ [class_ "authentication-required"] $ do
+          h1_ "Authenticated Required"
+          p_ "The page you are looking for requires authentication."
+          nav_ [class_ "log-in-nav"] $ do
+            a_ [href_ "/auth/github/login", class_ "btn btn-large btn-primary"] "Log in with GitHub"
 
 requireLoggedIn :: App () -> App ()
 requireLoggedIn = prehook (void requireUser)
@@ -654,7 +663,7 @@ runServer
   -> IO ()
 runServer port staticBase envDeployer envEventLogger envOutputLoggers envOutputStreamer envGitAgent envGitReader envGithubSecretToken envGithubRepos githubOauth
   = do
-    cfg <- defaultSpockCfg (Session Nothing) PCNoDatabase Env {..}
+    cfg <- defaultSpockCfg (Session { currentUser = Nothing, continueTo = Nothing }) PCNoDatabase Env {..}
     runSpock port (spock cfg app)
  where
   app = do

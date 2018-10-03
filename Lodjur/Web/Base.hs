@@ -2,6 +2,7 @@ module Lodjur.Web.Base where
 
 import           Data.ByteString              (ByteString)
 import           Data.Text                    (Text)
+import           URI.ByteString
 import           Web.Spock
 
 import           Lodjur.Deployment.Deployer
@@ -24,7 +25,10 @@ data Env = Env
   , envGithubSecretToken :: ByteString
   }
 
-data Session = Session { currentUser :: Maybe User }
+data Session = Session
+  { currentUser :: Maybe User
+  , continueTo  :: Maybe (URIRef Relative)
+  }
 
 type App = SpockM () Session Env
 type Action = SpockAction () Session Env
