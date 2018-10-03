@@ -1,7 +1,7 @@
 module Lodjur.Web.Base where
 
-import           Data.ByteString                 (ByteString)
-import           Data.Text                       (Text)
+import           Data.ByteString              (ByteString)
+import           Data.Text                    (Text)
 import           Web.Spock
 
 import           Lodjur.Deployment.Deployer
@@ -11,6 +11,7 @@ import           Lodjur.Git.GitReader
 import           Lodjur.Output.OutputLoggers
 import           Lodjur.Output.OutputStreamer
 import           Lodjur.Process
+import           Lodjur.User
 
 data Env = Env
   { envDeployer          :: Ref Deployer
@@ -23,7 +24,7 @@ data Env = Env
   , envGithubSecretToken :: ByteString
   }
 
-data Session = Session
+data Session = Session { currentUser :: User }
 
-type App = SpockM () Session Env
-type Action = SpockAction () Session Env
+type App = SpockM () (Maybe Session) Env
+type Action = SpockAction () (Maybe Session) Env

@@ -13,6 +13,7 @@ import           URI.ByteString
 import           Web.Spock
 
 import           Lodjur.Web.Base
+import           Lodjur.User
 
 startGithubAuthentication :: OAuth2 -> Action ()
 startGithubAuthentication oauth2 =
@@ -33,12 +34,18 @@ exchangeCode oauth2 = do
   case result of
     Left err -> do
       setStatus status400
+      writeSession Nothing
       text (Text.pack (show err))
-    Right OAuth2Token {..} ->
+    Right OAuth2Token {..} -> do
+      -- TODO: Request this information from GitHub API
+      let user = User { userId = UserId "johndoe", fullName = "John Doe" }
+      writeSession (Just (Session { currentUser = user }))
       redirect "/"
 
 clearSession :: Action ()
-clearSession = redirect ""
+clearSession = do
+  writeSession Nothing
+  redirect "/"
 
 authRoutes :: OAuth2 -> App ()
 authRoutes oauth2 = do

@@ -35,7 +35,7 @@ import           Data.Time.Clock.POSIX
 import           Data.Time.Format              (defaultTimeLocale, formatTime)
 import           Data.Version
 import           GHC.Generics                  (Generic)
-import           Lucid.Base                    (Html, toHtml)
+import           Lucid.Base                    (Html, toHtml, makeAttribute)
 import qualified Lucid.Base                    as Html
 import           Lucid.Bootstrap
 import           Lucid.Html5
@@ -58,6 +58,7 @@ import           Lodjur.Output.OutputLogger
 import           Lodjur.Output.OutputLoggers
 import           Lodjur.Output.OutputStreamer
 import           Lodjur.Process
+import           Lodjur.User
 
 import           Lodjur.Web.Auth.GitHub
 import           Lodjur.Web.Base
@@ -82,44 +83,71 @@ renderDeploymentRevision = toHtml . Git.unRevision . deploymentRevision
 jobsLink :: Html ()
 jobsLink = a_ [href_ "/jobs"] "Jobs"
 
+
+currentUserNav :: Maybe Session -> Html ()
+currentUserNav sess =
+  ul_ [class_ "navbar-nav my-2"] $
+    case sess of
+      Just Session { currentUser = User {..}} ->
+        li_ [class_ "nav-item dropdown"] $ do
+          a_
+            [ class_ "nav-link dropdown-toggle"
+            , href_ "#"
+            , id_ "navbarDropdownMenuLink"
+            , role_ "button"
+            , data_ "toggle" "dropdown"
+            , makeAttribute "aria-haspopup" "true"
+            , makeAttribute "aria-expanded" "false"
+            ] (toHtml fullName)
+          div_ [class_ "dropdown-menu", makeAttribute "aria-labelledby" "navbarDropdownMenuLink"] $ do
+            a_ [href_ "/auth/github/logout", class_ "dropdown-item"] "Log Out"
+      Nothing ->
+        li_ [class_ "nav-item"] $
+          a_ [href_ "/auth/github/login", class_ "nav-link"] "Log In"
+
+deferredScript :: Text -> Html ()
+deferredScript src =
+  Html.termRawWith
+    "script"
+    [src_ (static src), Html.makeAttribute "defer" "defer"]
+    mempty
+
 renderLayout :: Html () -> [Html ()] -> Html () -> Action ()
-renderLayout title breadcrumbs contents =
+renderLayout title breadcrumbs contents = do
+  sess <- readSession
   renderHtml $ doctypehtml_ $ html_ $ do
     head_ $ do
       title_ title
       link_
         [rel_ "stylesheet", href_ (static "bootstrap/css/bootstrap.min.css")]
       link_ [rel_ "stylesheet", href_ (static "lodjur.css")]
-      Html.termRawWith
-        "script"
-        [src_ (static "job.js"), Html.makeAttribute "defer" "defer"]
-        mempty
-      Html.termRawWith
-        "script"
-        [src_ (static "dashboard.js"), Html.makeAttribute "defer" "defer"]
-        mempty
+      deferredScript "jquery-3.0.0.slim.min.js"
+      deferredScript "bootstrap/js/bootstrap.bundle.min.js"
+      deferredScript "job.js"
+      deferredScript "dashboard.js"
     body_ $ do
-      nav_ [class_ "navbar navbar-dark bg-dark"]
-        $ div_ [class_ "container"]
-        $ do
-            a_ [class_ "navbar-brand", href_ "/"] "Lodjur"
-            toNavBarLinks [("/jobs", "Jobs")]
-            span_ [class_ "navbar-text"] (toHtml $ showVersion version)
+      nav_ [class_ "navbar navbar-expand navbar-dark bg-dark"] $ div_ [class_ "container"] $ do
+        a_ [class_ "navbar-brand", href_ "/"] "Lodjur"
+        toNavBarLinks [("/jobs", "Jobs")]
+        currentUserNav sess
       nav_ [class_ "breadcrumb-nav"] $ div_ [class_ "container"] $ ol_
         [class_ "breadcrumb"]
         (toBreadcrumbItems (homeLink : breadcrumbs))
       container_ contents
+      div_ [class_ "container text-center footer text-muted"] $
+        span_ [] ("Lodjur " <> toHtml (showVersion version))
  where
   toBreadcrumbItems :: [Html ()] -> Html ()
   toBreadcrumbItems []       = return ()
   toBreadcrumbItems elements = do
     foldMap (li_ [class_ "breadcrumb-item"]) (init elements)
     li_ [class_ "breadcrumb-item active"] (last elements)
+
   homeLink = a_ [href_ "/"] "Home"
 
   toNavBarLinks :: [(Text, Html ())] -> Html ()
   toNavBarLinks links =
-    ul_ [class_ "navbar-nav"] $ forM_ links $ \(href, name) ->
+    ul_ [class_ "navbar-nav mr-auto"] $ forM_ links $ \(href, name) ->
       li_ [class_ "nav-item"] $ a_ [href_ href, class_ "nav-link"] name
 
 renderEventLog :: EventLog -> Html ()
@@ -579,7 +607,7 @@ runServer
   -> IO ()
 runServer port staticBase envDeployer envEventLogger envOutputLoggers envOutputStreamer envGitAgent envGitReader envGithubSecretToken envGithubRepos githubOauth
   = do
-    cfg <- defaultSpockCfg Session PCNoDatabase Env {..}
+    cfg <- defaultSpockCfg Nothing PCNoDatabase Env {..}
     runSpock port (spock cfg app)
  where
   app = do

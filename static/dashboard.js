@@ -2,9 +2,10 @@ function setupWarnings() {
 
     var card = document.querySelector('#deploy');
     var header = document.querySelector('#deploy .card-header');
+    deploymentSelector = document.querySelector('#deployment-selector')
 
     function updateDeploymentCard(e) {
-        var selectBox = e.target;
+        var selectBox = e ? e.target : deploymentSelector;
         var selectedOption = selectBox.options[selectBox.selectedIndex];
         var warn = !!selectedOption.dataset.warn;
 
@@ -13,7 +14,7 @@ function setupWarnings() {
         header.classList.toggle('text-white', warn);
     }
 
-    document.querySelector('#deployment-selector').addEventListener('change', updateDeploymentCard);
+    deploymentSelector.addEventListener('change', updateDeploymentCard);
     updateDeploymentCard();
 };
 
