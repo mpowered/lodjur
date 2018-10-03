@@ -1,4 +1,5 @@
 {-# LANGUAGE OverloadedStrings #-}
+{-# LANGUAGE QuasiQuotes       #-}
 {-# LANGUAGE RecordWildCards   #-}
 
 module Main where
@@ -9,9 +10,13 @@ import           Data.ByteString.Char8        as Char8
 import           Data.Semigroup               ((<>))
 import           Data.Text                    (Text)
 import           Data.Text.IO                 as Text
+import           Data.Text.Encoding           as Text
 import           Database.PostgreSQL.Simple
+import           Network.OAuth.OAuth2
 import           Options.Applicative
 import           Text.Toml
+import           URI.ByteString hiding (Port)
+import           URI.ByteString.QQ
 
 import qualified Lodjur.Database              as Database
 import           Lodjur.Deployment
@@ -26,14 +31,12 @@ import           Lodjur.Web
 
 data DeploymentConfiguration = DeploymentConfiguration
   { name :: Text
-  , warn :: Bool 
+  , warn :: Bool
   }
 
 deploymentConfigurationToDeployment :: DeploymentConfiguration -> Deployment
-deploymentConfigurationToDeployment DeploymentConfiguration{..} =
-  Deployment { deploymentName = DeploymentName name
-             , deploymentWarn = warn
-             }
+deploymentConfigurationToDeployment DeploymentConfiguration {..} =
+  Deployment {deploymentName = DeploymentName name, deploymentWarn = warn}
 
 data LodjurConfiguration = LodjurConfiguration
   { gitWorkingDir       :: FilePath
@@ -42,6 +45,7 @@ data LodjurConfiguration = LodjurConfiguration
   , databaseConnectInfo ::  ConnectInfo
   , githubSecretToken   :: ByteString
   , githubRepos         :: [Text]
+  , githubOauth         :: OAuth2
   , staticDirectory     :: FilePath
   }
 
@@ -61,6 +65,17 @@ instance FromJSON LodjurConfiguration where
     githubSecretToken <- Char8.pack <$> (o .: "github-secret-token")
     githubRepos <- o .: "github-repos"
     staticDirectory <- o .: "static-directory"
+
+    oauthClientId <- o .: "github-oauth-client-id"
+    oauthClientSecret <- o .: "github-oauth-client-secret"
+    oauthCallbackUrlStr <- o .: "github-oauth-callback-url"
+    oauthCallback <- either (fail . show) (pure . pure) (parseURI strictURIParserOptions (Text.encodeUtf8 oauthCallbackUrlStr))
+    let githubOauth = OAuth2
+          { oauthOAuthorizeEndpoint = [uri|https://github.com/login/oauth/authorize|]
+          , oauthAccessTokenEndpoint = [uri|https://github.com/login/oauth/access_token|]
+          , ..
+          }
+
     return LodjurConfiguration{..}
     where
       parseDatabaseConnectInfo o = do
@@ -84,11 +99,11 @@ newtype LodjurOptions = LodjurOptions
 
 lodjur :: Parser LodjurOptions
 lodjur = LodjurOptions <$> strOption
-  ( long "config-file"
-    <> metavar "PATH"
-    <> short 'c'
-    <> value "lodjur.toml"
-    <> help "Path to Lodjur configuration file"
+  (  long "config-file"
+  <> metavar "PATH"
+  <> short 'c'
+  <> value "lodjur.toml"
+  <> help "Path to Lodjur configuration file"
   )
 
 readConfiguration :: FilePath -> IO LodjurConfiguration
@@ -106,7 +121,7 @@ main = startServices =<< execParser opts
  where
   opts = info
     (lodjur <**> helper)
-    ( fullDesc <> progDesc "Lodjur" <> header
+    (fullDesc <> progDesc "Lodjur" <> header
       "Mpowered's Nixops Deployment Frontend"
     )
 
@@ -118,18 +133,19 @@ main = startServices =<< execParser opts
     LodjurConfiguration {..} <- readConfiguration configFile
     pool <- Database.newPool databaseConnectInfo stripes ttl connsPerStripe
 
-    eventLogger    <- spawn =<< EventLogger.initialize pool
-    outputLoggers  <- spawn =<< OutputLoggers.initialize pool
-    outputStreamer <- spawn =<< OutputStreamer.initialize pool
-    gitAgent       <- spawn =<< GitAgent.initialize gitWorkingDir
-    gitReader      <- spawn =<< GitReader.initialize gitWorkingDir
-    deployer       <-
+    eventLogger              <- spawn =<< EventLogger.initialize pool
+    outputLoggers            <- spawn =<< OutputLoggers.initialize pool
+    outputStreamer           <- spawn =<< OutputStreamer.initialize pool
+    gitAgent                 <- spawn =<< GitAgent.initialize gitWorkingDir
+    gitReader                <- spawn =<< GitReader.initialize gitWorkingDir
+    deployer                 <-
       spawn
-        =<< Deployer.initialize eventLogger
-                                outputLoggers
-                                gitAgent
-                                (deploymentConfigurationToDeployment <$> deployments)
-                                pool
+        =<< Deployer.initialize
+              eventLogger
+              outputLoggers
+              gitAgent
+              (deploymentConfigurationToDeployment <$> deployments)
+              pool
 
     -- Fetch on startup in case we miss webhooks while service is not running
     gitAgent ! GitAgent.FetchRemote
@@ -144,3 +160,4 @@ main = startServices =<< execParser opts
               gitReader
               githubSecretToken
               githubRepos
+              githubOauth

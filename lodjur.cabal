@@ -24,6 +24,8 @@ executable          lodjur
                   , Lodjur.Output.OutputLoggers
                   , Lodjur.Output.OutputStreamer
                   , Lodjur.Process
+                  , Lodjur.Web.Auth.GitHub
+                  , Lodjur.Web.Base
                   , Lodjur.Web
                   , Paths_lodjur
     build-depends:  base                  >= 4.11 && < 5

@@ -1,5 +1,4 @@
 {-# LANGUAGE OverloadedStrings #-}
-{-# LANGUAGE QuasiQuotes       #-}
 {-# LANGUAGE RecordWildCards   #-}
 module Lodjur.Web.Auth.GitHub where
 
@@ -11,22 +10,12 @@ import           Network.HTTP.Client.TLS
 import           Network.HTTP.Types.Status
 import           Network.OAuth.OAuth2
 import           URI.ByteString
-import           URI.ByteString.QQ
 import           Web.Spock
 
 import           Lodjur.Web.Base
 
-oauth2 :: OAuth2
-oauth2 = OAuth2
-  { oauthClientId = ""
-  , oauthClientSecret = ""
-  , oauthOAuthorizeEndpoint = [uri|https://github.com/login/oauth/authorize|]
-  , oauthAccessTokenEndpoint = [uri|https://github.com/login/oauth/access_token|]
-  , oauthCallback = Just [uri|http://localhost:4000/auth/github/callback|]
-  }
-
-startGithubAuthentication :: Action ()
-startGithubAuthentication =
+startGithubAuthentication :: OAuth2 -> Action ()
+startGithubAuthentication oauth2 =
   let
     scope   = "read:org"
     state   = "foobar"
@@ -35,8 +24,8 @@ startGithubAuthentication =
   in
     redirect (Text.decodeUtf8 (serializeURIRef' url))
 
-exchangeCode :: Action ()
-exchangeCode = do
+exchangeCode :: OAuth2 -> Action ()
+exchangeCode oauth2 = do
   code   <- param' "code"
   result <- liftIO $ do
     manager <- newManager tlsManagerSettings
@@ -51,9 +40,9 @@ exchangeCode = do
 clearSession :: Action ()
 clearSession = redirect ""
 
-authRoutes :: App ()
-authRoutes = do
+authRoutes :: OAuth2 -> App ()
+authRoutes oauth2 = do
   -- Auth
-  get ("auth" <//> "github" <//> "login")    startGithubAuthentication
-  get ("auth" <//> "github" <//> "callback") exchangeCode
+  get ("auth" <//> "github" <//> "login")    (startGithubAuthentication oauth2)
+  get ("auth" <//> "github" <//> "callback") (exchangeCode oauth2)
   get ("auth" <//> "github" <//> "logout")   clearSession
