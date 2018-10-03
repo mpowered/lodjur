@@ -1,3 +1,13 @@
+.bare-page {
+  margin: 5em auto;
+  text-align: center;
+}
+.bare-page h1 {
+  margin-bottom: 1em;
+}
+.log-in-nav {
+  margin: 2em 0;
+}
 .breadcrumb-nav {
   background-color: #eee;
 }

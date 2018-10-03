@@ -112,8 +112,12 @@ deferredScript src =
     [src_ (static src), Html.makeAttribute "defer" "defer"]
     mempty
 
-renderLayout :: Html () -> [Html ()] -> Html () -> Action ()
-renderLayout title breadcrumbs contents = do
+data Layout
+  = WithNavigation [Html ()] (Html ())
+  | BarePage (Html ())
+
+renderLayout :: Html () -> Layout -> Action ()
+renderLayout title layout = do
   sess <- readSession
   renderHtml $ doctypehtml_ $ html_ $ do
     head_ $ do
@@ -125,17 +129,21 @@ renderLayout title breadcrumbs contents = do
       deferredScript "bootstrap/js/bootstrap.bundle.min.js"
       deferredScript "job.js"
       deferredScript "dashboard.js"
-    body_ $ do
-      nav_ [class_ "navbar navbar-expand navbar-dark bg-dark"] $ div_ [class_ "container"] $ do
-        a_ [class_ "navbar-brand", href_ "/"] "Lodjur"
-        toNavBarLinks [("/jobs", "Jobs")]
-        currentUserNav sess
-      nav_ [class_ "breadcrumb-nav"] $ div_ [class_ "container"] $ ol_
-        [class_ "breadcrumb"]
-        (toBreadcrumbItems (homeLink : breadcrumbs))
-      container_ contents
-      div_ [class_ "container text-center footer text-muted"] $
-        span_ [] ("Lodjur " <> toHtml (showVersion version))
+    case layout of
+      WithNavigation breadcrumbs contents ->
+        body_ $ do
+          nav_ [class_ "navbar navbar-expand navbar-dark bg-dark"] $ div_ [class_ "container"] $ do
+            a_ [class_ "navbar-brand", href_ "/"] "Lodjur"
+            toNavBarLinks [("/jobs", "Jobs")]
+            currentUserNav sess
+          nav_ [class_ "breadcrumb-nav"] $ div_ [class_ "container"] $ ol_
+            [class_ "breadcrumb"]
+            (toBreadcrumbItems (homeLink : breadcrumbs))
+          container_ contents
+          div_ [class_ "container text-center footer text-muted"] $
+            span_ [] ("Lodjur " <> toHtml (showVersion version))
+      BarePage contents ->
+        body_ [class_ "bare-page"] $ container_ contents
  where
   toBreadcrumbItems :: [Html ()] -> Html ()
   toBreadcrumbItems []       = return ()
@@ -293,17 +301,19 @@ renderDeployCard deployments revisions refs state = case state of
 notFoundAction :: Action ()
 notFoundAction = do
   setStatus status404
-  renderLayout "Not Found" [] $ do
-    h1_ [class_ "mt-5"] "Not Found"
-    p_ [class_ "lead"] $ do
-      "The requested page could not be found. Try "
-      a_ [href_ "/"] "going back to the start page"
-      "."
+  renderLayout "Not Found" (BarePage content)
+  where
+    content = do
+      h1_ [class_ "mt-5"] "Not Found"
+      p_ [class_ "lead"] $ do
+        "The requested page could not be found. Try "
+        a_ [href_ "/"] "going back to the start page"
+        "."
 
 badRequestAction :: Html () -> Action ()
 badRequestAction message = do
   setStatus status400
-  renderLayout "Bad request!" [] $ do
+  renderLayout "Bad request!" $ WithNavigation [] $ do
     h1_ [class_ "mt-5"] "Bad request!"
     p_ [class_ "lead"] message
 
@@ -327,16 +337,26 @@ homeAction = do
   refs        <- liftIO $ envGitReader ? GetRefs
   deployState <- liftIO $ envDeployer ? GetCurrentState
   jobs        <- liftIO $ envDeployer ? GetJobs (Just 10)
-  renderLayout "Lodjur Deployment Manager" [] $ do
-    div_ [class_ "row mt-5"] $ do
-      div_ [class_ "col col-4"] $ renderCurrentState deployState
-      div_ [class_ "col col-8"] $ renderLatestSuccessful deployments jobs
-    div_ [class_ "row mt-5"] $ div_ [class_ "col"] $ renderDeployJobs jobs
-    div_ [class_ "row mt-5 mb-5"] $ div_ [class_ "col"] $ renderDeployCard
-      deployments
-      revisions
-      refs
-      deployState
+  let content = do
+      div_ [class_ "row mt-5"] $ do
+        div_ [class_ "col col-4"] $ renderCurrentState deployState
+        div_ [class_ "col col-8"] $ renderLatestSuccessful deployments jobs
+      div_ [class_ "row mt-5"] $ div_ [class_ "col"] $ renderDeployJobs jobs
+      div_ [class_ "row mt-5 mb-5"] $ div_ [class_ "col"] $ renderDeployCard
+        deployments
+        revisions
+        refs
+        deployState
+  renderLayout "Lodjur Deployment Manager" (WithNavigation [] content)
+
+welcomeAction :: Action ()
+welcomeAction =
+  renderLayout "Lodjur Deployment Manager" $ BarePage $
+    div_ [class_ "landing-page"] $ do
+      h1_ "Lodjur Deployment Manager"
+      p_ "Welcome to Lodjur, the NixOps deployment manager! To get going, please login."
+      nav_ [class_ "log-in-nav"] $ do
+        a_ [href_ "/auth/github/login", class_ "btn btn-large btn-primary"] "Log in with GitHub"
 
 newDeployAction :: Action ()
 newDeployAction = readState >>= \case
@@ -359,10 +379,9 @@ getDeploymentJobsAction :: Action ()
 getDeploymentJobsAction = do
   Env {..} <- getState
   jobs     <- liftIO (envDeployer ? GetJobs Nothing)
-  renderLayout "Lodjur Deployment Manager" [jobsLink]
-    $ div_ [class_ "row mt-5"]
-    $ div_ [class_ "col"]
-    $ renderDeployJobs jobs
+  renderLayout "Lodjur Deployment Manager" $ WithNavigation [jobsLink] $
+    div_ [class_ "row mt-5"] $ div_ [class_ "col"] $
+      renderDeployJobs jobs
 
 getJobLogs :: JobId -> Action [Output]
 getJobLogs jobId = do
@@ -381,7 +400,7 @@ showJobAction jobId = do
   outputLog <- getJobLogs jobId
   case (job, HashMap.lookup jobId eventLogs) of
     (Just (job', _), Just eventLog) ->
-      renderLayout "Job Details" ["Jobs", jobIdLink jobId] $ do
+      renderLayout "Job Details" $ WithNavigation ["Jobs", jobIdLink jobId] $ do
         div_ [class_ "row mt-5 mb-5"] $ div_ [class_ "col"] $ do
           "Deploy of revision "
           em_ $ toHtml (Git.unRevision (deploymentRevision job'))
@@ -592,6 +611,18 @@ redirectStatic :: String -> Policy
 redirectStatic staticBase =
   policy (List.stripPrefix staticPrefix) >-> addBase staticBase
 
+requireLoggedIn :: App () -> App ()
+requireLoggedIn = prehook $ do
+  readSession >>= \case
+    Just Session{} -> return ()
+    Nothing -> notFoundAction
+
+ifLoggedIn :: Action () -> Action () -> Action ()
+ifLoggedIn thenRoute elseRoute = do
+  readSession >>= \case
+    Just Session{} -> thenRoute
+    Nothing -> elseRoute
+
 runServer
   :: Port
   -> String
@@ -618,12 +649,13 @@ runServer port staticBase envDeployer envEventLogger envOutputLoggers envOutputS
     authRoutes githubOauth
 
     -- Routes
-    get "/"     homeAction
-    get "/jobs" getDeploymentJobsAction
-    post "/jobs" newDeployAction
-    get ("jobs" <//> var)               showJobAction
-    get ("jobs" <//> var <//> "output") streamOutputAction
-    post "/webhook/git/refresh" refreshRemoteAction
+    get "/"     (ifLoggedIn homeAction welcomeAction)
+    requireLoggedIn $ do
+      get "/jobs" getDeploymentJobsAction
+      post "/jobs" newDeployAction
+      get ("jobs" <//> var)               showJobAction
+      get ("jobs" <//> var <//> "output") streamOutputAction
+      post "/webhook/git/refresh" refreshRemoteAction
 
     -- Fallback
     hookAnyAll (const notFoundAction)
