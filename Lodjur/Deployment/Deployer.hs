@@ -40,6 +40,7 @@ import           Lodjur.Output.OutputLogger  (OutputLogMessage (..),
 import           Lodjur.Output.OutputLoggers (OutputLoggers)
 import qualified Lodjur.Output.OutputLoggers as OutputLoggers
 import           Lodjur.Process
+import           Lodjur.User
 
 data DeployState
   = Idle
@@ -59,7 +60,7 @@ data Deployer = Deployer
 
 data DeployMessage r where
   -- Public messages:
-  Deploy :: DeploymentName -> Git.Revision -> UTCTime -> Bool -> DeployMessage (Sync (Maybe DeploymentJob))
+  Deploy :: DeploymentName -> Git.Revision -> UTCTime -> Bool -> UserId -> DeployMessage (Sync (Maybe DeploymentJob))
   GetCurrentState :: DeployMessage (Sync DeployState)
   GetJob :: JobId -> DeployMessage (Sync (Maybe (DeploymentJob, Maybe JobResult)))
   GetJobs :: Maybe Word -> DeployMessage (Sync DeploymentJobs)
@@ -131,7 +132,7 @@ instance Process Deployer where
 
   receive self (a@Deployer{..}, msg)=
     case (state, msg) of
-      (Idle     , Deploy name deploymentRevision deploymentTime deploymentBuildOnly)
+      (Idle     , Deploy name deploymentRevision deploymentTime deploymentBuildOnly deploymentJobStartedBy)
         -- We require the deployment name to be known.
         | elem name (map deploymentName deployments) -> do
           jobId <- UUID.toText <$> UUID.nextRandom

@@ -1,5 +1,5 @@
-{-# LANGUAGE DeriveGeneric              #-}
-{-# LANGUAGE DeriveAnyClass             #-}
+{-# LANGUAGE DeriveAnyClass #-}
+{-# LANGUAGE DeriveGeneric  #-}
 module Lodjur.Deployment where
 
 import           Data.Aeson
@@ -10,6 +10,7 @@ import           Data.Time.Clock (UTCTime)
 import           GHC.Generics    (Generic)
 
 import           Lodjur.Git
+import           Lodjur.User
 
 newtype DeploymentName =
   DeploymentName { unDeploymentName :: Text }
@@ -27,11 +28,12 @@ data Deployment =
 type JobId = Text
 
 data DeploymentJob = DeploymentJob
-  { jobId               :: JobId
+  { jobId                  :: JobId
   , deploymentJobName      :: DeploymentName
-  , deploymentRevision  :: Revision
-  , deploymentTime      :: UTCTime
-  , deploymentBuildOnly :: Bool
+  , deploymentRevision     :: Revision
+  , deploymentTime         :: UTCTime
+  , deploymentBuildOnly    :: Bool
+  , deploymentJobStartedBy :: UserId
   } deriving (Show, Eq)
 
 data JobResult

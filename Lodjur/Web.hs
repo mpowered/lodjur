@@ -83,6 +83,11 @@ renderDeploymentRevision = toHtml . Git.unRevision . deploymentRevision
 jobsLink :: Html ()
 jobsLink = a_ [href_ "/jobs"] "Jobs"
 
+userIdLink :: UserId -> Html ()
+userIdLink userId =
+  let uid = unUserId userId
+  in a_ [href_ ("https://github.com/" <> uid)] $
+      toHtml uid
 
 currentUserNav :: Maybe Session -> Html ()
 currentUserNav sess =
@@ -98,7 +103,7 @@ currentUserNav sess =
             , data_ "toggle" "dropdown"
             , makeAttribute "aria-haspopup" "true"
             , makeAttribute "aria-expanded" "false"
-            ] (toHtml fullName)
+            ] (toHtml (unUserId userId))
           div_ [class_ "dropdown-menu", makeAttribute "aria-labelledby" "navbarDropdownMenuLink"] $ do
             a_ [href_ "/auth/github/logout", class_ "dropdown-item"] "Log Out"
       Nothing ->
@@ -192,6 +197,7 @@ renderDeployJobs jobs = div_ [class_ "card"] $ do
       th_ "Deployment"
       th_ "Revision"
       th_ "Created At"
+      th_ "Created By"
       th_ "Result"
     mapM_ renderJob jobs
  where
@@ -203,6 +209,8 @@ renderDeployJobs jobs = div_ [class_ "card"] $ do
       else td_ (toHtml (unDeploymentName (deploymentJobName job)))
     td_ (renderDeploymentRevision job)
     td_ (toHtml (formatUTCTime (deploymentTime job)))
+    td_ (userIdLink (deploymentJobStartedBy job))
+    td_ $ do
     case r of
       Just JobSuccessful -> td_ [class_ "text-success"] "Successful"
       Just (JobFailed _) -> td_ [class_ "text-danger"] "Failed"
@@ -361,13 +369,14 @@ welcomeAction =
 newDeployAction :: Action ()
 newDeployAction = readState >>= \case
   Idle -> do
+    user <- requireUser
     deployer <- envDeployer <$> getState
     dName    <- DeploymentName <$> param' "deployment-name"
     revision <- Git.Revision <$> param' "revision"
     action   <- param' "action"
     now      <- liftIO getCurrentTime
     let buildOnly = action == ("Build" :: String)
-    liftIO (deployer ? Deploy dName revision now buildOnly) >>= \case
+    liftIO (deployer ? Deploy dName revision now buildOnly (userId user)) >>= \case
       Just job -> do
         setStatus status302
         setHeader "Location" (jobHref job)
@@ -406,6 +415,8 @@ showJobAction jobId = do
           em_ $ toHtml (Git.unRevision (deploymentRevision job'))
           " to "
           em_ $ toHtml (unDeploymentName (deploymentJobName job'))
+          ", by "
+          userIdLink (deploymentJobStartedBy job')
           "."
         div_ [class_ "row mt-3"] $ div_ [class_ "col"] $ do
           h2_ [class_ "mb-3"] "Event Log"
@@ -610,6 +621,14 @@ raise msg = do
 redirectStatic :: String -> Policy
 redirectStatic staticBase =
   policy (List.stripPrefix staticPrefix) >-> addBase staticBase
+
+requireUser :: Action User
+requireUser  =
+  readSession >>= \case
+    Just Session{..} -> return currentUser
+    Nothing -> do
+      setStatus status401
+      text "Not authenticated"
 
 requireLoggedIn :: App () -> App ()
 requireLoggedIn = prehook $ do

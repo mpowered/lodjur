@@ -38,7 +38,7 @@ exchangeCode oauth2 = do
       text (Text.pack (show err))
     Right OAuth2Token {..} -> do
       -- TODO: Request this information from GitHub API
-      let user = User { userId = UserId "johndoe", fullName = "John Doe" }
+      let user = User { userId = UserId "johndoe" }
       writeSession (Just (Session { currentUser = user }))
       redirect "/"
 
