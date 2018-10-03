@@ -1,8 +1,6 @@
 # Example configuration
 
 git-working-dir = "/home/me/my-repo"
-nixops-deployments = ["my-deployment"]
-warn-deployments = ["my-deployment"]
 http-port = 4000
 auth-user = "me"
 auth-password = "pass"
@@ -10,9 +8,21 @@ github-secret-token = "secret"
 github-repos = ["mpowered/example"]
 static-directory = "static"
 
+github-oauth-client-id = "..."
+github-oauth-client-secret = "..."
+github-oauth-callback-url = "https://example.com/auth/github/callback"
+
 [database]
 host = "localhost"
 port = 5432
 name = "lodjur"
 user = "lodjur"
 password = "lodjur"
+
+[[deployments]]
+name = "my-deployment-1"
+warn = false
+
+[[deployments]]
+name = "my-deployment-2"
+warn = true
