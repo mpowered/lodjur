@@ -632,9 +632,9 @@ requireUser  =
       let continueTo = Just (RelativeRef Nothing (Text.encodeUtf8 currentPath) mempty Nothing)
       writeSession Session { currentUser = Nothing, .. }
       setStatus status401
-      renderLayout "Authenticated Required" $ BarePage $
+      renderLayout "Authentication Required" $ BarePage $
         div_ [class_ "authentication-required"] $ do
-          h1_ "Authenticated Required"
+          h1_ "Authentication Required"
           p_ "The page you are looking for requires authentication."
           nav_ [class_ "log-in-nav"] $ do
             a_ [href_ "/auth/github/login", class_ "btn btn-large btn-primary"] "Log in with GitHub"

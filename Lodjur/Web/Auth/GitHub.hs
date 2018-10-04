@@ -29,44 +29,62 @@ startGithubAuthentication oauth2 = do
     url     = appendQueryParams params' (authorizationUrl oauth2)
   redirect (Text.decodeUtf8 (serializeURIRef' url))
 
-exchangeCode :: OAuth2 -> Action ()
-exchangeCode oauth2 = do
+checkError :: Action ()
+checkError = do
   merr   <- param "error"
   case merr of
     Just err -> do
-      setStatus status400
       allParams <- params
+      setStatus status400
       text ("Error: " <> err <> ", Params: " <> Text.pack (show allParams))
-    Nothing -> do
-      code   <- param' "code"
-      result <- liftIO $ do
-        manager <- newManager tlsManagerSettings
-        fetchAccessToken manager oauth2 (ExchangeToken code)
-      case result of
-        Left err -> do
-          setStatus status400
-          writeSession Session { currentUser = Nothing, continueTo = Nothing }
-          text (Text.pack (show err))
-        Right OAuth2Token {..} -> do
-          githubResult <- liftIO . runExceptT $ do
-            user <- ExceptT (getUser accessToken)
-            teams <- ExceptT (getTeams accessToken)
-            return (user, teams)
-          case githubResult of
-            Left err -> do
-              setStatus status400
-              text ("Failed: " <> Text.pack (show err))
-            Right (githubUser, teams)
-              | isAuthorized teams -> do
-                let user = User { userId = UserId (GitHub.untagName $ GitHub.userLogin githubUser) }
-                continueTo' <- continueTo <$> readSession
-                writeSession Session { currentUser = Just user, continueTo = Nothing }
-                case continueTo' of
-                  Just relRef -> redirect (Text.decodeUtf8 (serializeURIRef' relRef))
-                  Nothing -> redirect "/"
-              | otherwise -> do
-                setStatus status403
-                text "You are not authorized, because you don't have read/write permissions in the mpowered/core team."
+    Nothing ->
+      return ()
+
+exchangeCode :: OAuth2 -> Action AccessToken
+exchangeCode oauth2 = do
+  code   <- param' "code"
+  result <- liftIO $ do
+    manager <- newManager tlsManagerSettings
+    fetchAccessToken manager oauth2 (ExchangeToken code)
+  case result of
+    Left err -> do
+      setStatus status400
+      writeSession Session { currentUser = Nothing, continueTo = Nothing }
+      text (Text.pack (show err))
+    Right OAuth2Token {..} ->
+      return accessToken
+
+getUserAndTeams :: AccessToken -> Action (GitHub.User, [GitHub.Team])
+getUserAndTeams accessToken = do
+  githubResult <- liftIO . runExceptT $ do
+    user <- ExceptT (getUser accessToken)
+    teams <- ExceptT (getTeams accessToken)
+    return (user, teams)
+  case githubResult of
+    Left err -> do
+      setStatus status400
+      text ("Failed: " <> Text.pack (show err))
+    Right userAndTeams ->
+      return userAndTeams
+
+loginAndRedirect :: GitHub.User -> Action ()
+loginAndRedirect githubUser = do
+  let user = User { userId = UserId (GitHub.untagName $ GitHub.userLogin githubUser) }
+  continueTo' <- continueTo <$> readSession
+  writeSession Session { currentUser = Just user, continueTo = Nothing }
+  case continueTo' of
+    Just relRef -> redirect (Text.decodeUtf8 (serializeURIRef' relRef))
+    Nothing -> redirect "/"
+
+authorizeAndLogin :: OAuth2 -> Action ()
+authorizeAndLogin oauth2 = do
+  checkError
+  accessToken <- exchangeCode oauth2
+  (githubUser, teams) <- getUserAndTeams accessToken
+  if isAuthorized teams
+    then loginAndRedirect githubUser
+    else do setStatus status403
+            text "You are not authorized, because you don't have read/write permissions in the mpowered/core team."
 
 isAuthorized :: [GitHub.Team] -> Bool
 isAuthorized = any authorizedInTeam
@@ -74,7 +92,6 @@ isAuthorized = any authorizedInTeam
     authorizedInTeam t = team t == "core" && org t == "mpowered"
     team = GitHub.untagName . GitHub.teamSlug
     org  = GitHub.untagName . GitHub.simpleOrganizationLogin . GitHub.teamOrganization
-
 
 toOAuth :: AccessToken -> GitHub.Auth
 toOAuth (AccessToken accessToken) =
@@ -99,5 +116,5 @@ authRoutes :: OAuth2 -> App ()
 authRoutes oauth2 = do
   -- Auth
   get ("auth" <//> "github" <//> "login")    (startGithubAuthentication oauth2)
-  get ("auth" <//> "github" <//> "callback") (exchangeCode oauth2)
+  get ("auth" <//> "github" <//> "callback") (authorizeAndLogin oauth2)
   get ("auth" <//> "github" <//> "logout")   clearSession
