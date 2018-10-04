@@ -11,6 +11,8 @@ static-directory = "static"
 github-oauth-client-id = "..."
 github-oauth-client-secret = "..."
 github-oauth-callback-url = "https://example.com/auth/github/callback"
+github-authorized-team = "core"
+github-authorized-organization = "mpowered"
 
 [database]
 host = "localhost"

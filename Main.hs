@@ -18,6 +18,7 @@ import           Text.Toml
 import           URI.ByteString hiding (Port)
 import           URI.ByteString.QQ
 
+import           Lodjur.Auth
 import qualified Lodjur.Database              as Database
 import           Lodjur.Deployment
 import qualified Lodjur.Deployment.Deployer   as Deployer
@@ -46,6 +47,7 @@ data LodjurConfiguration = LodjurConfiguration
   , githubSecretToken   :: ByteString
   , githubRepos         :: [Text]
   , githubOauth         :: OAuth2
+  , githubTeamAuth      :: TeamAuthConfig
   , staticDirectory     :: FilePath
   }
 
@@ -75,6 +77,9 @@ instance FromJSON LodjurConfiguration where
           , oauthAccessTokenEndpoint = [uri|https://github.com/login/oauth/access_token|]
           , ..
           }
+    githubAuthTeam <- o .: "github-authorized-team"
+    githubAuthOrg <- o .: "github-authorized-organization"
+    let githubTeamAuth = TeamAuthConfig{..}
 
     return LodjurConfiguration{..}
     where
@@ -161,3 +166,4 @@ main = startServices =<< execParser opts
               githubSecretToken
               githubRepos
               githubOauth
+              githubTeamAuth

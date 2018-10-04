@@ -17,6 +17,7 @@ import           Network.OAuth.OAuth2
 import           URI.ByteString
 import           Web.Spock
 
+import           Lodjur.Auth
 import           Lodjur.User
 import           Lodjur.Web.Base
 
@@ -76,20 +77,24 @@ loginAndRedirect githubUser = do
     Just relRef -> redirect (Text.decodeUtf8 (serializeURIRef' relRef))
     Nothing -> redirect "/"
 
-authorizeAndLogin :: OAuth2 -> Action ()
-authorizeAndLogin oauth2 = do
+authorizeAndLogin :: OAuth2 -> TeamAuthConfig -> Action ()
+authorizeAndLogin oauth2 teamAuth = do
   checkError
   accessToken <- exchangeCode oauth2
   (githubUser, teams) <- getUserAndTeams accessToken
-  if isAuthorized teams
+  if isAuthorized teamAuth teams
     then loginAndRedirect githubUser
     else do setStatus status403
-            text "You are not authorized, because you don't have read/write permissions in the mpowered/core team."
+            text (mconcat [ "You are not authorized, "
+                          , "because you don't have read/write permissions in the "
+                          , githubAuthOrg teamAuth <> "/" <> githubAuthTeam teamAuth
+                          , " team."
+                          ])
 
-isAuthorized :: [GitHub.Team] -> Bool
-isAuthorized = any authorizedInTeam
+isAuthorized :: TeamAuthConfig -> [GitHub.Team] -> Bool
+isAuthorized TeamAuthConfig{..} = any authorizedInTeam
   where
-    authorizedInTeam t = team t == "core" && org t == "mpowered"
+    authorizedInTeam t = team t == githubAuthTeam && org t == githubAuthOrg
     team = GitHub.untagName . GitHub.teamSlug
     org  = GitHub.untagName . GitHub.simpleOrganizationLogin . GitHub.teamOrganization
 
@@ -112,9 +117,9 @@ clearSession = do
   writeSession Session { currentUser = Nothing, continueTo = Nothing }
   redirect "/"
 
-authRoutes :: OAuth2 -> App ()
-authRoutes oauth2 = do
+authRoutes :: OAuth2 -> TeamAuthConfig -> App ()
+authRoutes oauth2 teamAuthCfg = do
   -- Auth
   get ("auth" <//> "github" <//> "login")    (startGithubAuthentication oauth2)
-  get ("auth" <//> "github" <//> "callback") (authorizeAndLogin oauth2)
+  get ("auth" <//> "github" <//> "callback") (authorizeAndLogin oauth2 teamAuthCfg)
   get ("auth" <//> "github" <//> "logout")   clearSession

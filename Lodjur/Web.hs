@@ -49,6 +49,7 @@ import           Web.Spock                     hiding (static)
 import           Web.Spock.Config
 import           Web.Spock.Lucid
 
+import           Lodjur.Auth
 import           Lodjur.Deployment
 import           Lodjur.Deployment.Deployer
 import           Lodjur.Events.EventLogger
@@ -660,8 +661,9 @@ runServer
   -> ByteString
   -> [Text]
   -> OAuth2
+  -> TeamAuthConfig
   -> IO ()
-runServer port staticBase envDeployer envEventLogger envOutputLoggers envOutputStreamer envGitAgent envGitReader envGithubSecretToken envGithubRepos githubOauth
+runServer port staticBase envDeployer envEventLogger envOutputLoggers envOutputStreamer envGitAgent envGitReader envGithubSecretToken envGithubRepos githubOauth teamAuth
   = do
     cfg <- defaultSpockCfg (Session { currentUser = Nothing, continueTo = Nothing }) PCNoDatabase Env {..}
     runSpock port (spock cfg app)
@@ -671,7 +673,7 @@ runServer port staticBase envDeployer envEventLogger envOutputLoggers envOutputS
     middleware (staticPolicy (redirectStatic staticBase))
 
     -- Auth
-    authRoutes githubOauth
+    authRoutes githubOauth teamAuth
 
     -- Routes
     get "/"     (ifLoggedIn homeAction welcomeAction)

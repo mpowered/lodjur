@@ -7,7 +7,8 @@ executable          lodjur
     hs-source-dirs: .
     main-is:        Main.hs
     ghc-options:    -Wall -threaded -O2 -rtsopts -with-rtsopts=-N
-    other-modules:  Lodjur.Database
+    other-modules:  Lodjur.Auth
+                  , Lodjur.Database
                   , Lodjur.Deployment
                   , Lodjur.Deployment.Database
                   , Lodjur.Deployment.Deployer
