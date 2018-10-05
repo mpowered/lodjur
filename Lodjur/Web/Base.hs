@@ -28,7 +28,11 @@ data Env = Env
 data Session = Session
   { currentUser :: Maybe User
   , continueTo  :: Maybe (URIRef Relative)
+  , oauthState  :: Maybe Text
   }
+
+emptySession :: Session
+emptySession = Session Nothing Nothing Nothing
 
 type App = SpockM () Session Env
 type Action = SpockAction () Session Env

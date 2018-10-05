@@ -7,6 +7,8 @@ import           Control.Monad.IO.Class               (liftIO)
 import           Data.Foldable                        (toList)
 import qualified Data.Text                            as Text
 import qualified Data.Text.Encoding                   as Text
+import qualified Data.UUID                            as UUID
+import qualified Data.UUID.V4                         as UUID
 import qualified GitHub
 import qualified GitHub.Endpoints.Organizations.Teams as GitHub
 import qualified GitHub.Endpoints.Users               as GitHub
@@ -23,10 +25,11 @@ import           Lodjur.Web.Base
 
 startGithubAuthentication :: OAuth2 -> Action ()
 startGithubAuthentication oauth2 = do
+  state <- liftIO (UUID.toText <$> UUID.nextRandom)
+  modifySession (\s -> s { oauthState = Just state })
   let
     scope   = "read:org"
-    state   = "foobar"
-    params' = [("scope", scope), ("state", state), ("allow_signup", "false")]
+    params' = [("scope", scope), ("state", Text.encodeUtf8 state), ("allow_signup", "false")]
     url     = appendQueryParams params' (authorizationUrl oauth2)
   redirect (Text.decodeUtf8 (serializeURIRef' url))
 
@@ -41,8 +44,18 @@ checkError = do
     Nothing ->
       return ()
 
+checkState :: Action ()
+checkState = do
+  savedState <- oauthState <$> readSession
+  modifySession (\s -> s { oauthState = Nothing })
+  state   <- param' "state"
+  when (state == savedState) $ do
+    setStatus status400
+    text "Bad OAuth state."
+
 exchangeCode :: OAuth2 -> Action AccessToken
 exchangeCode oauth2 = do
+  checkState
   code   <- param' "code"
   result <- liftIO $ do
     manager <- newManager tlsManagerSettings
@@ -50,7 +63,7 @@ exchangeCode oauth2 = do
   case result of
     Left err -> do
       setStatus status400
-      writeSession Session { currentUser = Nothing, continueTo = Nothing }
+      writeSession emptySession
       text (Text.pack (show err))
     Right OAuth2Token {..} ->
       return accessToken
@@ -72,7 +85,7 @@ loginAndRedirect :: GitHub.User -> Action ()
 loginAndRedirect githubUser = do
   let user = User { userId = UserId (GitHub.untagName $ GitHub.userLogin githubUser) }
   continueTo' <- continueTo <$> readSession
-  writeSession Session { currentUser = Just user, continueTo = Nothing }
+  writeSession emptySession { currentUser = Just user }
   case continueTo' of
     Just relRef -> redirect (Text.decodeUtf8 (serializeURIRef' relRef))
     Nothing -> redirect "/"
@@ -114,7 +127,7 @@ getTeams at =
 
 clearSession :: Action ()
 clearSession = do
-  writeSession Session { currentUser = Nothing, continueTo = Nothing }
+  writeSession emptySession
   redirect "/"
 
 authRoutes :: OAuth2 -> TeamAuthConfig -> App ()
