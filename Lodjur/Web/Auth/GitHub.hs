@@ -49,7 +49,7 @@ checkState = do
   savedState <- oauthState <$> readSession
   modifySession (\s -> s { oauthState = Nothing })
   state   <- param' "state"
-  when (state == savedState) $ do
+  unless (Just state == savedState) $ do
     setStatus status400
     text "Bad OAuth state."
 

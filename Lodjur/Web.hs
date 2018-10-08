@@ -2,6 +2,7 @@
 {-# LANGUAGE DeriveGeneric     #-}
 {-# LANGUAGE FlexibleContexts  #-}
 {-# LANGUAGE LambdaCase        #-}
+{-# LANGUAGE NamedFieldPuns    #-}
 {-# LANGUAGE OverloadedStrings #-}
 {-# LANGUAGE RecordWildCards   #-}
 {-# LANGUAGE TupleSections     #-}
@@ -285,7 +286,7 @@ renderDeployCard deployments revisions refs state = case state of
                 $ \Deployment {..} ->
                     let n = unDeploymentName deploymentName
                         warnAttrs =
-                          if deploymentWarn then [data_ "warn" "warn"] else []
+                          [data_ "warn" "warn" | deploymentWarn]
                     in  option_ (value_ n : warnAttrs) (toHtml n)
               small_ [class_ "text-muted"]
                      "Name of the Nixops deployment to target."
@@ -565,7 +566,7 @@ secureJsonData = do
   digest <- maybe
     (raise "Invalid SHA1 digest sent in X-HUB-SIGNATURE")
     return
-    (digestFromByteString $ fst $ Base16.decode $ Text.encodeUtf8 $ signature)
+    (digestFromByteString $ fst $ Base16.decode $ Text.encodeUtf8 signature)
   unless (hmac key message == HMAC (digest :: Digest SHA1))
     $ raise "Signatures don't match"
   either
@@ -631,20 +632,20 @@ requireUser  =
     _ -> do
       currentPath <- ("/" <>) . Text.intercalate "/" . pathInfo <$> request
       let continueTo = Just (RelativeRef Nothing (Text.encodeUtf8 currentPath) mempty Nothing)
-      writeSession Session { currentUser = Nothing, .. }
+      writeSession emptySession { continueTo }
       setStatus status401
       renderLayout "Authentication Required" $ BarePage $
         div_ [class_ "authentication-required"] $ do
           h1_ "Authentication Required"
           p_ "The page you are looking for requires authentication."
-          nav_ [class_ "log-in-nav"] $ do
+          nav_ [class_ "log-in-nav"] $
             a_ [href_ "/auth/github/login", class_ "btn btn-large btn-primary"] "Log in with GitHub"
 
 requireLoggedIn :: App () -> App ()
 requireLoggedIn = prehook (void requireUser)
 
 ifLoggedIn :: Action () -> Action () -> Action ()
-ifLoggedIn thenRoute elseRoute = do
+ifLoggedIn thenRoute elseRoute =
   readSession >>= \case
     Session{ currentUser = Just _ } -> thenRoute
     _ -> elseRoute
@@ -665,7 +666,7 @@ runServer
   -> IO ()
 runServer port staticBase envDeployer envEventLogger envOutputLoggers envOutputStreamer envGitAgent envGitReader envGithubSecretToken envGithubRepos githubOauth teamAuth
   = do
-    cfg <- defaultSpockCfg (Session { currentUser = Nothing, continueTo = Nothing }) PCNoDatabase Env {..}
+    cfg <- defaultSpockCfg emptySession PCNoDatabase Env {..}
     runSpock port (spock cfg app)
  where
   app = do
