@@ -12,6 +12,8 @@ import           Data.Text                    (Text)
 import           Data.Text.IO                 as Text
 import           Data.Text.Encoding           as Text
 import           Database.PostgreSQL.Simple
+import           Network.HTTP.Client
+import           Network.HTTP.Client.TLS
 import           Network.OAuth.OAuth2
 import           Options.Applicative
 import           Text.Toml
@@ -29,6 +31,7 @@ import qualified Lodjur.Output.OutputLoggers  as OutputLoggers
 import qualified Lodjur.Output.OutputStreamer as OutputStreamer
 import           Lodjur.Process
 import           Lodjur.Web
+import           Lodjur.Web.Base
 
 data DeploymentConfiguration = DeploymentConfiguration
   { name :: Text
@@ -135,35 +138,31 @@ main = startServices =<< execParser opts
   connsPerStripe = 4
 
   startServices LodjurOptions {..} = do
-    LodjurConfiguration {..} <- readConfiguration configFile
+    LodjurConfiguration
+      { githubRepos = envGithubRepos
+      , githubSecretToken = envGithubSecretToken
+      , ..
+      } <- readConfiguration configFile
     pool <- Database.newPool databaseConnectInfo stripes ttl connsPerStripe
 
-    eventLogger              <- spawn =<< EventLogger.initialize pool
-    outputLoggers            <- spawn =<< OutputLoggers.initialize pool
-    outputStreamer           <- spawn =<< OutputStreamer.initialize pool
-    gitAgent                 <- spawn =<< GitAgent.initialize gitWorkingDir
-    gitReader                <- spawn =<< GitReader.initialize gitWorkingDir
-    deployer                 <-
+    envManager                  <- newManager tlsManagerSettings
+    envEventLogger              <- spawn =<< EventLogger.initialize pool
+    envOutputLoggers            <- spawn =<< OutputLoggers.initialize pool
+    envOutputStreamer           <- spawn =<< OutputStreamer.initialize pool
+    envGitAgent                 <- spawn =<< GitAgent.initialize gitWorkingDir
+    envGitReader                <- spawn =<< GitReader.initialize gitWorkingDir
+    envDeployer                 <-
       spawn
         =<< Deployer.initialize
-              eventLogger
-              outputLoggers
-              gitAgent
+              envEventLogger
+              envOutputLoggers
+              envGitAgent
               (deploymentConfigurationToDeployment <$> deployments)
               pool
 
-    -- Fetch on startup in case we miss webhooks while service is not running
-    gitAgent ! GitAgent.FetchRemote
+    let env = Env {..}
 
-    runServer port
-              staticDirectory
-              deployer
-              eventLogger
-              outputLoggers
-              outputStreamer
-              gitAgent
-              gitReader
-              githubSecretToken
-              githubRepos
-              githubOauth
-              githubTeamAuth
+    -- Fetch on startup in case we miss webhooks while service is not running
+    envGitAgent ! GitAgent.FetchRemote
+
+    runServer port staticDirectory env githubOauth githubTeamAuth

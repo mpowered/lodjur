@@ -23,7 +23,6 @@ import           Crypto.MAC.HMAC
 import           Data.Aeson
 import           Data.Aeson.Types
 import qualified Data.Binary.Builder           as Binary
-import           Data.ByteString               (ByteString)
 import qualified Data.ByteString.Base16        as Base16
 import qualified Data.HashMap.Strict           as HashMap
 import qualified Data.List                     as List
@@ -653,20 +652,12 @@ ifLoggedIn thenRoute elseRoute =
 runServer
   :: Port
   -> String
-  -> Ref Deployer
-  -> Ref EventLogger
-  -> Ref OutputLoggers
-  -> Ref OutputStreamer
-  -> Ref GitAgent
-  -> Ref GitReader
-  -> ByteString
-  -> [Text]
+  -> Env
   -> OAuth2
   -> TeamAuthConfig
   -> IO ()
-runServer port staticBase envDeployer envEventLogger envOutputLoggers envOutputStreamer envGitAgent envGitReader envGithubSecretToken envGithubRepos githubOauth teamAuth
-  = do
-    cfg <- defaultSpockCfg emptySession PCNoDatabase Env {..}
+runServer port staticBase env githubOauth teamAuth = do
+    cfg <- defaultSpockCfg emptySession PCNoDatabase env
     runSpock port (spock cfg app)
  where
   app = do

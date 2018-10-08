@@ -2,6 +2,7 @@ module Lodjur.Web.Base where
 
 import           Data.ByteString              (ByteString)
 import           Data.Text                    (Text)
+import           Network.HTTP.Client
 import           URI.ByteString
 import           Web.Spock
 
@@ -23,6 +24,7 @@ data Env = Env
   , envGitReader         :: Ref GitReader
   , envGithubRepos       :: [Text]
   , envGithubSecretToken :: ByteString
+  , envManager           :: Manager
   }
 
 data Session = Session

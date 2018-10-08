@@ -10,10 +10,6 @@ import qualified Data.Text.Encoding                   as Text
 import qualified Data.UUID                            as UUID
 import qualified Data.UUID.V4                         as UUID
 import qualified GitHub
-import qualified GitHub.Endpoints.Organizations.Teams as GitHub
-import qualified GitHub.Endpoints.Users               as GitHub
-import           Network.HTTP.Client
-import           Network.HTTP.Client.TLS
 import           Network.HTTP.Types.Status
 import           Network.OAuth.OAuth2
 import           URI.ByteString
@@ -55,11 +51,11 @@ checkState = do
 
 exchangeCode :: OAuth2 -> Action AccessToken
 exchangeCode oauth2 = do
+  Env {..} <- getState
   checkState
   code   <- param' "code"
-  result <- liftIO $ do
-    manager <- newManager tlsManagerSettings
-    fetchAccessToken manager oauth2 (ExchangeToken code)
+  result <- liftIO $
+    fetchAccessToken envManager oauth2 (ExchangeToken code)
   case result of
     Left err -> do
       setStatus status400
@@ -70,7 +66,7 @@ exchangeCode oauth2 = do
 
 getUserAndTeams :: AccessToken -> Action (GitHub.User, [GitHub.Team])
 getUserAndTeams accessToken = do
-  githubResult <- liftIO . runExceptT $ do
+  githubResult <- runExceptT $ do
     user <- ExceptT (getUser accessToken)
     teams <- ExceptT (getTeams accessToken)
     return (user, teams)
@@ -115,15 +111,23 @@ toOAuth :: AccessToken -> GitHub.Auth
 toOAuth (AccessToken accessToken) =
   GitHub.OAuth (Text.encodeUtf8 accessToken)
 
-getUser :: AccessToken -> IO (Either GitHub.Error GitHub.User)
-getUser at =
-  -- TODO use manager?
-  GitHub.userInfoCurrent' (toOAuth at)
+getUser :: AccessToken -> Action (Either GitHub.Error GitHub.User)
+getUser at = do
+  Env {..} <- getState
+  liftIO $
+    GitHub.executeRequestWithMgr
+      envManager
+      (toOAuth at)
+      GitHub.userInfoCurrentR
 
-getTeams :: AccessToken -> IO (Either GitHub.Error [GitHub.Team])
-getTeams at =
-  -- TODO use manager?
-  fmap toList <$> GitHub.listTeamsCurrent' (toOAuth at)
+getTeams :: AccessToken -> Action (Either GitHub.Error [GitHub.Team])
+getTeams at = do
+  Env {..} <- getState
+  liftIO . fmap (fmap toList) $
+    GitHub.executeRequestWithMgr
+      envManager
+      (toOAuth at)
+      (GitHub.listTeamsCurrentR GitHub.FetchAll)
 
 clearSession :: Action ()
 clearSession = do
