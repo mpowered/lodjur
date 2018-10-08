@@ -46,7 +46,7 @@ data LodjurConfiguration = LodjurConfiguration
   { gitWorkingDir       :: FilePath
   , deployments         :: [DeploymentConfiguration]
   , port                :: Port
-  , databaseConnectInfo ::  ConnectInfo
+  , databaseConnectInfo :: ConnectInfo
   , githubSecretToken   :: ByteString
   , githubRepos         :: [Text]
   , githubOauth         :: OAuth2
