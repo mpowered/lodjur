@@ -1,24 +1,30 @@
-{ mkDerivation, aeson, base, base16-bytestring, binary, bytestring
-, cryptonite, github, hashable, hoauth2, htoml, http-client
-, http-client-tls, http-types, iso8601-time, lucid, monad-control
-, mtl, optparse-applicative, postgresql-simple, process
-, resource-pool, Spock, Spock-lucid, stdenv, text, time
-, unordered-containers, uri-bytestring, uuid, wai
-, wai-middleware-static
-}:
-mkDerivation {
-  pname = "lodjur";
-  version = "0.2.0";
-  src = ./.;
-  isLibrary = false;
-  isExecutable = true;
-  executableHaskellDepends = [
-    aeson base base16-bytestring binary bytestring cryptonite github
-    hashable hoauth2 htoml http-client http-client-tls http-types
-    iso8601-time lucid monad-control mtl optparse-applicative
-    postgresql-simple process resource-pool Spock Spock-lucid text time
-    unordered-containers uri-bytestring uuid wai wai-middleware-static
-  ];
-  license = stdenv.lib.licenses.unfree;
-  hydraPlatforms = stdenv.lib.platforms.none;
+{ compiler ? "ghc843" }:
+
+let
+  nixpkgs = import (builtins.fetchGit {
+    url = https://github.com/NixOS/nixpkgs-channels;
+    ref = "nixos-18.09";
+  }) {};
+
+  inherit (nixpkgs) pkgs;
+
+  haskellPackages = pkgs.haskell.packages."${compiler}".override {
+    overrides = self: super: {
+      lodjur = self.callPackage ./default.nix {};
+      hoauth2 = pkgs.haskell.lib.doJailbreak super.hoauth2;
+      stm-containers = pkgs.haskell.lib.dontCheck super.stm-containers;
+      superbuffer = pkgs.haskell.lib.dontCheck super.superbuffer;
+      # stm-containers = hself.callHackage "stm-containers" "1.1.0.2" {};
+      # primitive = hself.callHackage "primitive" "0.6.4.0" {};
+    };
+  };
+
+  drv = haskellPackages.callCabal2nix "lodjur" ./. {};
+
+in
+{
+  lodjur = drv;
+  lodjur-shell = haskellPackages.shellFor {
+    packages = p: [drv];
+  };
 }
