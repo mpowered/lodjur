@@ -674,7 +674,7 @@ runServer port staticBase env githubOauth teamAuth = do
       post "/jobs" newDeployAction
       get ("jobs" <//> var)               showJobAction
       get ("jobs" <//> var <//> "output") streamOutputAction
-      post "/webhook/git/refresh" refreshRemoteAction
+    post "/webhook/git/refresh" refreshRemoteAction
 
     -- Fallback
     hookAnyAll (const notFoundAction)
