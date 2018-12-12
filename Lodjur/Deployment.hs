@@ -32,9 +32,15 @@ data DeploymentJob = DeploymentJob
   , deploymentJobName      :: DeploymentName
   , deploymentRevision     :: Revision
   , deploymentTime         :: UTCTime
-  , deploymentBuildOnly    :: Bool
+  , deploymentType         :: DeploymentType
   , deploymentJobStartedBy :: UserId
   } deriving (Show, Eq)
+
+data DeploymentType
+  = BuildDeploy
+  | BuildOnly
+  | BuildCheck
+  deriving (Eq, Ord, Enum, Show)
 
 data JobResult
   = JobSuccessful

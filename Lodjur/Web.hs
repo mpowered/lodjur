@@ -206,9 +206,10 @@ renderDeployJobs jobs = div_ [class_ "card"] $ do
   renderJob :: (DeploymentJob, Maybe JobResult) -> Html ()
   renderJob (job, r) = tr_ $ do
     td_ (jobLink job)
-    if deploymentBuildOnly job
-      then td_ [class_ "text-secondary"] "(Build-only)"
-      else td_ (toHtml (unDeploymentName (deploymentJobName job)))
+    case deploymentType job of
+      BuildOnly -> td_ [class_ "text-secondary"] "(Build-only)"
+      BuildCheck -> td_ [class_ "text-secondary"] "(Build and check)"
+      BuildDeploy -> td_ (toHtml (unDeploymentName (deploymentJobName job)))
     td_ (renderDeploymentRevision job)
     td_ (toHtml (formatUTCTime (deploymentTime job)))
     td_ (userIdLink (deploymentJobStartedBy job))
@@ -301,6 +302,12 @@ renderDeployCard deployments revisions refs state = case state of
               , value_ "Build"
               ]
             div_ [class_ "col"] $ input_
+              [ class_ "btn btn-secondary form-control"
+              , type_ "submit"
+              , name_ "action"
+              , value_ "Check"
+              ]
+            div_ [class_ "col"] $ input_
               [ class_ "btn btn-primary form-control"
               , type_ "submit"
               , name_ "action"
@@ -371,14 +378,19 @@ welcomeAction =
 newDeployAction :: Action ()
 newDeployAction = readState >>= \case
   Idle -> do
-    user <- requireUser
+    user     <- requireUser
     deployer <- envDeployer <$> getState
     dName    <- DeploymentName <$> param' "deployment-name"
     revision <- Git.Revision <$> param' "revision"
     action   <- param' "action"
     now      <- liftIO getCurrentTime
-    let buildOnly = action == ("Build" :: String)
-    liftIO (deployer ? Deploy dName revision now buildOnly (userId user)) >>= \case
+    deployType <-
+      case action of
+        "Build" -> return BuildOnly
+        "Check" -> return BuildCheck
+        "Deploy" -> return BuildDeploy
+        _ -> raise $ "Unknown deploy action: " <> Text.pack action
+    liftIO (deployer ? Deploy deployType dName revision now (userId user)) >>= \case
       Just job -> do
         setStatus status302
         setHeader "Location" (jobHref job)

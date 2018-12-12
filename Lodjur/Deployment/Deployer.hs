@@ -8,6 +8,7 @@ module Lodjur.Deployment.Deployer
   ( DeploymentName (..)
   , JobId
   , DeploymentJob (..)
+  , DeploymentType (..)
   , DeploymentJobs
   , DeployState (..)
   , JobEvent (..)
@@ -60,7 +61,7 @@ data Deployer = Deployer
 
 data DeployMessage r where
   -- Public messages:
-  Deploy :: DeploymentName -> Git.Revision -> UTCTime -> Bool -> UserId -> DeployMessage (Sync (Maybe DeploymentJob))
+  Deploy :: DeploymentType -> DeploymentName -> Git.Revision -> UTCTime -> UserId -> DeployMessage (Sync (Maybe DeploymentJob))
   GetCurrentState :: DeployMessage (Sync DeployState)
   GetJob :: JobId -> DeployMessage (Sync (Maybe (DeploymentJob, Maybe JobResult)))
   GetJobs :: Maybe Word -> DeployMessage (Sync DeploymentJobs)
@@ -132,13 +133,13 @@ instance Process Deployer where
 
   receive self (a@Deployer{..}, msg)=
     case (state, msg) of
-      (Idle     , Deploy name deploymentRevision deploymentTime deploymentBuildOnly deploymentJobStartedBy)
+      (Idle     , Deploy deploymentType name deploymentRevision deploymentTime deploymentJobStartedBy)
         -- We require the deployment name to be known.
         | elem name (map deploymentName deployments) -> do
           jobId <- UUID.toText <$> UUID.nextRandom
           let job = DeploymentJob {deploymentJobName = name, ..}
           logger <- outputLoggers ? OutputLoggers.SpawnOutputLogger jobId
-          let args = if deploymentBuildOnly then ["--build-only"] else []
+          let args = if deploymentType == BuildOnly then ["--build-only"] else []
           void (forkFinally (deploy eventLogger logger gitAgent job args) (notifyDeployFinished self eventLogger logger job))
           Database.insertJob pool job Nothing
           return ( a { state = Deploying job } , Just job)
