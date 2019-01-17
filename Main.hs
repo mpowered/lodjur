@@ -157,6 +157,7 @@ main = startServices =<< execParser opts
               envEventLogger
               envOutputLoggers
               envGitAgent
+              gitWorkingDir
               (deploymentConfigurationToDeployment <$> deployments)
               pool
 

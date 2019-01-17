@@ -20,7 +20,7 @@ module Lodjur.Deployment.Deployer
 
 import           Control.Concurrent
 import           Control.Exception           (Exception, SomeException, throwIO)
-import           Control.Monad               (void)
+import           Control.Monad               (void, when)
 import qualified Data.Text                   as Text
 import           Data.Time.Clock
 import qualified Data.UUID                   as UUID
@@ -55,6 +55,7 @@ data Deployer = Deployer
   , eventLogger     :: Ref EventLogger
   , outputLoggers   :: Ref OutputLoggers
   , gitAgent        :: Ref GitAgent
+  , gitWorkDir      :: FilePath
   , deployments     :: [Deployment]
   , pool            :: DbPool
   }
@@ -73,10 +74,11 @@ initialize
   :: Ref EventLogger
   -> Ref OutputLoggers
   -> Ref GitAgent
+  -> FilePath
   -> [Deployment]
   -> DbPool
   -> IO Deployer
-initialize eventLogger outputLoggers gitAgent deployments pool = do
+initialize eventLogger outputLoggers gitAgent gitWorkDir deployments pool = do
   Database.initialize pool
   return Deployer {state = Idle, ..}
 
@@ -90,6 +92,14 @@ data NixopsFailed = NixopsFailed String String Int
 
 instance Exception NixopsFailed
 
+data CheckFailed = CheckFailed Int
+  deriving (Eq, Show)
+
+instance Exception CheckFailed
+
+data Check = DoCheck | NoCheck
+  deriving (Eq, Show)
+
 nixopsCmdLogged :: Ref OutputLogger -> [String] -> IO String
 nixopsCmdLogged outputLogger args = do
   exitcode <- logCreateProcessWithExitCode outputLogger (proc "nixops" args)
@@ -97,20 +107,33 @@ nixopsCmdLogged outputLogger args = do
     ExitSuccess      -> return ""
     ExitFailure code -> throwIO (NixopsFailed "" "" code)
 
+checkLogged :: Ref OutputLogger -> [String] -> FilePath -> IO String
+checkLogged outputLogger args gitWorkingDir = do
+  exitcode <- logCreateProcessWithExitCode
+    outputLogger
+    ((proc "./check.sh" args) { cwd = Just gitWorkingDir })
+  case exitcode of
+    ExitSuccess      -> return ""
+    ExitFailure code -> throwIO (CheckFailed code)
+
 deploy
   :: Ref EventLogger
   -> Ref OutputLogger
   -> Ref GitAgent
+  -> FilePath
   -> DeploymentJob
   -> [String]
+  -> Check
   -> IO JobResult
-deploy eventLogger outputLogger gitAgent job args = do
+deploy eventLogger outputLogger gitAgent gitWorkDir job args check = do
   started <- getCurrentTime
   eventLogger ! AppendEvent (jobId job) (JobRunning started)
   _ <- gitAgent ? Checkout (deploymentRevision job) outputLogger
   _ <- nixopsCmdLogged outputLogger $
                        ["deploy", "-d", Text.unpack (unDeploymentName (deploymentJobName job))]
                        ++ args
+  when (check == DoCheck) $
+      void $ checkLogged outputLogger [] gitWorkDir
   return JobSuccessful
 
 notifyDeployFinished
@@ -139,8 +162,14 @@ instance Process Deployer where
           jobId <- UUID.toText <$> UUID.nextRandom
           let job = DeploymentJob {deploymentJobName = name, ..}
           logger <- outputLoggers ? OutputLoggers.SpawnOutputLogger jobId
-          let args = if deploymentType == BuildOnly then ["--build-only"] else []
-          void (forkFinally (deploy eventLogger logger gitAgent job args) (notifyDeployFinished self eventLogger logger job))
+          let (args, check) =
+                case deploymentType of
+                  BuildOnly   -> (["--build-only"], NoCheck)
+                  BuildCheck  -> (["--build-only"], DoCheck)
+                  BuildDeploy -> ([], NoCheck)
+          void $ forkFinally
+            (deploy eventLogger logger gitAgent gitWorkDir job args check)
+            (notifyDeployFinished self eventLogger logger job)
           Database.insertJob pool job Nothing
           return ( a { state = Deploying job } , Just job)
         -- We can't deploy to an unknown deployment.
