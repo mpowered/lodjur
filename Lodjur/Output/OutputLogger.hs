@@ -19,15 +19,14 @@ import           System.IO.Error        (isEOFError)
 import           System.Process
 
 import           Lodjur.Database        (DbPool)
-import           Lodjur.Deployment      hiding (jobId)
 import           Lodjur.Output
 import qualified Lodjur.Output.Database as Database
 import           Lodjur.Process
 
-data OutputLogger = OutputLogger { dbPool :: DbPool , jobId :: JobId }
+data OutputLogger = OutputLogger { dbPool :: DbPool , logId :: LogId }
 
-initialize :: DbPool -> JobId -> IO OutputLogger
-initialize dbPool jobId = return OutputLogger {..}
+initialize :: DbPool -> LogId -> IO OutputLogger
+initialize dbPool logId = return OutputLogger {..}
 
 data OutputLogMessage r where
   -- Public messages:
@@ -40,15 +39,15 @@ instance Process OutputLogger where
 
   receive _self (logger, AppendOutput lines') = do
     now <- getCurrentTime
-    Database.appendOutput (dbPool logger) (jobId logger) now lines'
+    Database.appendOutput (dbPool logger) (logId logger) now lines'
     return logger
 
   receive _self (logger, OutputFence) = do
-    Database.fence (dbPool logger) (jobId logger)
+    Database.fence (dbPool logger) (logId logger)
     return logger
 
   receive _self (logger, GetOutputLog) = do
-    out <- Database.getOutputLog (dbPool logger) Nothing Nothing (jobId logger)
+    out <- Database.getOutputLog (dbPool logger) Nothing Nothing (logId logger)
     return (logger, out)
 
   terminate _ = return ()

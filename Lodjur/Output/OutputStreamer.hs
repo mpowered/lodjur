@@ -16,7 +16,6 @@ import qualified Data.HashMap.Strict    as HashMap
 import           Data.Maybe             (isJust)
 
 import           Lodjur.Database        (Connection, DbPool, withConnNoTran)
-import           Lodjur.Deployment
 import           Lodjur.Output
 import qualified Lodjur.Output.Database as Database
 import           Lodjur.Process
@@ -33,7 +32,7 @@ data Sub = Sub
   , subFence :: Maybe Integer
   }
 
-type Subscriptions = HashMap JobId [Sub]
+type Subscriptions = HashMap LogId [Sub]
 
 data OutputStreamer = OutputStreamer
   { dbPool :: DbPool
@@ -49,22 +48,22 @@ initialize dbPool = do
 
 data OutputStreamMessage r where
   -- Public messages:
-  SubscribeOutputLog :: JobId -> Maybe Integer -> OutputChan -> OutputStreamMessage Async
-  UnsubscribeOutputLog :: JobId -> OutputChan -> OutputStreamMessage (Sync ())
+  SubscribeOutputLog :: LogId -> Maybe Integer -> OutputChan -> OutputStreamMessage Async
+  UnsubscribeOutputLog :: LogId -> OutputChan -> OutputStreamMessage (Sync ())
 
 instance Process OutputStreamer where
   type Message OutputStreamer = OutputStreamMessage
 
-  receive _self (streamer, SubscribeOutputLog job since chan) = do
+  receive _self (streamer, SubscribeOutputLog logid since chan) = do
     subs <- takeMVar (subscriptions streamer)
     putMVar (subscriptions streamer) $
-      HashMap.insertWith (++) job [Sub chan since Nothing] subs
+      HashMap.insertWith (++) logid [Sub chan since Nothing] subs
     return streamer
 
-  receive _self (streamer, UnsubscribeOutputLog job chan) = do
+  receive _self (streamer, UnsubscribeOutputLog logid chan) = do
     subs <- takeMVar (subscriptions streamer)
     putMVar (subscriptions streamer) $
-      HashMap.update (dropChan chan) job subs
+      HashMap.update (dropChan chan) logid subs
     return (streamer, ())
    where
     dropChan c ss =
@@ -96,22 +95,22 @@ distributer conn var = do
     else do
       n <- Database.outputNotification conn
       case n of
-        Just job ->
-          notifyJob subs job >>= putMVar var
+        Just logid ->
+          notifyJob subs logid >>= putMVar var
         Nothing -> do
           foldM notifyJob subs (HashMap.keys subs) >>= putMVar var
           threadDelay 1000000
       distributer conn var
  where
-  notifyJob subs job = do
-    let ss = HashMap.lookupDefault [] job subs
-    ss' <- mapM (notify conn job) ss
-    return $ HashMap.insert job ss' subs
+  notifyJob subs logid = do
+    let ss = HashMap.lookupDefault [] logid subs
+    ss' <- mapM (notify conn logid) ss
+    return $ HashMap.insert logid ss' subs
 
-notify :: Connection -> JobId -> Sub -> IO Sub
-notify conn job Sub{..} = do
-  fence <- maybe (Database.nextFence conn job Nothing) (return . Just) subFence
-  out <- Database.getOutputLogConn conn subSince fence job
+notify :: Connection -> LogId -> Sub -> IO Sub
+notify conn logid Sub{..} = do
+  fence <- maybe (Database.nextFence conn logid Nothing) (return . Just) subFence
+  out <- Database.getOutputLogConn conn subSince fence logid
   writeList2Chan subChan (map NextOutput out)
   when (isJust fence) $
     writeChan subChan Fence
