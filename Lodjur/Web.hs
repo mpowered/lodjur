@@ -56,6 +56,7 @@ import           Lodjur.Events.EventLogger
 import qualified Lodjur.Git                    as Git
 import           Lodjur.Git.GitAgent
 import           Lodjur.Git.GitReader
+import           Lodjur.Output
 import           Lodjur.Output.OutputLogger
 import           Lodjur.Output.OutputLoggers
 import           Lodjur.Output.OutputStreamer
@@ -406,11 +407,11 @@ getDeploymentJobsAction = do
     div_ [class_ "row mt-5"] $ div_ [class_ "col"] $
       renderDeployJobs jobs
 
-getJobLogs :: JobId -> Action [Output]
-getJobLogs jobId = do
+getLogs :: LogId -> Action [Output]
+getLogs logId = do
   outputLoggers <- envOutputLoggers <$> getState
   liftIO $ do
-    logger <- outputLoggers ? SpawnOutputLogger jobId
+    logger <- outputLoggers ? SpawnOutputLogger logId
     output <- logger ? GetOutputLog
     kill logger
     return output
@@ -419,8 +420,9 @@ showJobAction :: Text -> Action ()
 showJobAction jobId = do
   Env {..}  <- getState
   job       <- liftIO $ envDeployer ? GetJob jobId
+  logid     <- liftIO $ envDeployer ? GetJobLog jobId "deploy"
   eventLogs <- liftIO $ envEventLogger ? GetEventLogs
-  outputLog <- getJobLogs jobId
+  outputLog <- maybe (return []) getLogs logid
   case (job, HashMap.lookup jobId eventLogs) of
     (Just (job', _), Just eventLog) ->
       renderLayout "Job Details" $ WithNavigation ["Jobs", jobIdLink jobId] $ do
@@ -475,23 +477,27 @@ data OutputEvent = OutputLineEvent
 
 streamOutputAction :: Text -> Action ()
 streamOutputAction jobId = do
+  Env {..}  <- getState
   from           <- param "from"
-  outputStreamer <- envOutputStreamer <$> getState
+  logId          <- liftIO $ envDeployer ? GetJobLog jobId "deploy"
   setHeader "Content-Type"      "text/event-stream"
   setHeader "Cache-Control"     "no-cache"
   setHeader "X-Accel-Buffering" "no"
   chan <- liftIO newChan
-  stream (streamLog outputStreamer chan jobId from)
+  stream (streamLog envOutputStreamer chan logId from)
 
 streamLog
   :: Ref OutputStreamer
   -> Chan OutputStream
-  -> JobId
+  -> Maybe LogId
   -> Maybe Integer
   -> StreamingBody
-streamLog outputStreamer chan jobId from send flush = bracket_
-  (outputStreamer ! SubscribeOutputLog jobId from chan)
-  (outputStreamer ? UnsubscribeOutputLog jobId chan)
+streamLog _ _ Nothing _ send flush = do
+  void . send $ Binary.fromByteString "event: end\n"
+  void flush
+streamLog outputStreamer chan (Just logId) from send flush = bracket_
+  (outputStreamer ! SubscribeOutputLog logId from chan)
+  (outputStreamer ? UnsubscribeOutputLog logId chan)
   go
  where
   go = do

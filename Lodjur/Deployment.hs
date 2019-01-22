@@ -26,6 +26,7 @@ data Deployment =
   deriving (Eq, Show, Generic)
 
 type JobId = Text
+type LogType = Text
 
 data DeploymentJob = DeploymentJob
   { jobId                  :: JobId
