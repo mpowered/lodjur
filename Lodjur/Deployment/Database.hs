@@ -5,25 +5,23 @@
 module Lodjur.Deployment.Database where
 
 import           Control.Monad              (void)
+import           Data.Aeson
 import           Data.Text                  (Text)
 import           Data.Text                  as Text
 import           Data.Time.Clock            (UTCTime)
-import qualified Data.UUID                  as UUID
-import qualified Data.UUID.V4               as UUID
 import           Database.PostgreSQL.Simple
 
 import           Lodjur.Database
 import           Lodjur.Deployment
 import           Lodjur.Git
-import           Lodjur.Output
 import           Lodjur.User
 
 initialize :: DbPool -> IO ()
 initialize pool = withConn pool $ \conn -> mapM_ (execute_ conn)
   [ "CREATE TABLE IF NOT EXISTS deployment_job (id TEXT PRIMARY KEY, time TIMESTAMPTZ NOT NULL, deployment_name TEXT NOT NULL, revision TEXT NOT NULL, result TEXT NULL, error_message TEXT NULL, deployment_type TEXT NOT NULL, started_by TEXT NOT NULL)"
   , "CREATE INDEX IF NOT EXISTS deployment_job_time ON deployment_job (\"time\")"
-  , "CREATE TABLE IF NOT EXISTS deployment_log (job_id TEXT, log_type TEXT, log_id TEXT)"
-  , "CREATE INDEX IF NOT EXISTS deployment_log_job_logty ON deployment_log (\"job_id\", \"log_type\")"
+  , "CREATE TABLE IF NOT EXISTS check_results (job_id TEXT NOT NULL, application_name TEXT NOT NULL, result JSONB, passed INTEGER DEFAULT 0, failed INTEGER DEFAULT 0, duration REAL DEFAULT 0)"
+  , "CREATE INDEX IF NOT EXISTS check_results_job ON check_results (\"job_id\")"
   ]
 
 insertJob :: DbPool -> DeploymentJob -> Maybe JobResult -> IO ()
@@ -124,32 +122,22 @@ parseDeployType "check"  = Just BuildCheck
 parseDeployType "deploy" = Just BuildDeploy
 parseDeployType _        = Nothing
 
-createJobLog :: DbPool -> JobId -> LogType -> IO LogId
-createJobLog pool jobid logty = do
-  logid <- UUID.toText <$> UUID.nextRandom
-  associateJobLog pool jobid logty logid
-  return logid
-
-associateJobLog :: DbPool -> JobId -> LogType -> LogId -> IO ()
-associateJobLog pool jobid logty logid =
-  withConn pool $ \conn -> void $ execute
+insertCheckResult :: DbPool -> JobId -> AppName -> Value -> Int -> Int -> Float -> IO ()
+insertCheckResult pool jobId appName tests passed failed duration = withConn pool $ \conn ->
+  void $ execute
     conn
-    "INSERT INTO deployment_log (job_id, log_type, log_id) VALUES (?, ?, ?)"
-    ( jobid, logty, logid )
+    "INSERT INTO check_results (job_id, application_name, result, passed, failed, duration) VALUES (?, ?, ?, ?, ?, ?)"
+    ( jobId
+    , appName
+    , tests
+    , passed
+    , failed
+    , duration
+    )
 
-getJobLog :: DbPool -> JobId -> LogType -> IO (Maybe LogId)
-getJobLog pool jobid logty = withConn pool $ \conn -> do
-  rows <- query
-    conn
-    "SELECT log_id FROM deployment_log WHERE job_id = ? AND log_type = ?"
-    (jobid, logty)
-  case rows of
-    []      -> return Nothing
-    (Only logid:_) -> return $ Just logid
-
-getJobLogs :: DbPool -> JobId -> IO [(LogType, LogId)]
-getJobLogs pool jobid = withConn pool $ \conn ->
+getCheckResults :: DbPool -> JobId -> AppName -> IO [(Value, Int, Int, Float)]
+getCheckResults pool jobId appName = withConn pool $ \ conn ->
   query
     conn
-    "SELECT log_type, log_id FROM deployment_log WHERE job_id = ?"
-    (Only jobid)
+    "SELECT result, passed, failed, duration FROM check_results WHERE job_id = ? AND application_name = ?"
+    (jobId, appName)

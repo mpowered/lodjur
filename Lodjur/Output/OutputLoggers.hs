@@ -7,7 +7,7 @@ module Lodjur.Output.OutputLoggers
   ) where
 
 import           Lodjur.Database            (DbPool)
-import           Lodjur.Output
+import           Lodjur.Deployment          (JobId)
 import qualified Lodjur.Output.Database     as Database
 import           Lodjur.Output.OutputLogger (OutputLogger)
 import qualified Lodjur.Output.OutputLogger as OutputLogger
@@ -22,13 +22,13 @@ initialize pool = do
 
 data OutputLoggersMessage r where
   -- Public messages:
-  SpawnOutputLogger :: LogId -> OutputLoggersMessage (Sync (Ref OutputLogger))
+  SpawnOutputLogger :: JobId -> OutputLoggersMessage (Sync (Ref OutputLogger))
 
 instance Process OutputLoggers where
   type Message OutputLoggers = OutputLoggersMessage
 
-  receive _self (a@(OutputLoggers pool), SpawnOutputLogger logId) = do
-    logger <- spawn =<< OutputLogger.initialize pool logId
+  receive _self (a@(OutputLoggers pool), SpawnOutputLogger jobId) = do
+    logger <- spawn =<< OutputLogger.initialize pool jobId
     return (a, logger)
 
   terminate _ = return ()

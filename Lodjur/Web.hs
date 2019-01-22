@@ -407,11 +407,11 @@ getDeploymentJobsAction = do
     div_ [class_ "row mt-5"] $ div_ [class_ "col"] $
       renderDeployJobs jobs
 
-getLogs :: LogId -> Action [Output]
-getLogs logId = do
+getLogs :: JobId -> Action [Output]
+getLogs jobId = do
   outputLoggers <- envOutputLoggers <$> getState
   liftIO $ do
-    logger <- outputLoggers ? SpawnOutputLogger logId
+    logger <- outputLoggers ? SpawnOutputLogger jobId
     output <- logger ? GetOutputLog
     kill logger
     return output
@@ -420,9 +420,8 @@ showJobAction :: Text -> Action ()
 showJobAction jobId = do
   Env {..}  <- getState
   job       <- liftIO $ envDeployer ? GetJob jobId
-  logid     <- liftIO $ envDeployer ? GetJobLog jobId "deploy"
   eventLogs <- liftIO $ envEventLogger ? GetEventLogs
-  outputLog <- maybe (return []) getLogs logid
+  outputLog <- getLogs jobId
   case (job, HashMap.lookup jobId eventLogs) of
     (Just (job', _), Just eventLog) ->
       renderLayout "Job Details" $ WithNavigation ["Jobs", jobIdLink jobId] $ do
@@ -479,25 +478,21 @@ streamOutputAction :: Text -> Action ()
 streamOutputAction jobId = do
   Env {..}  <- getState
   from           <- param "from"
-  logId          <- liftIO $ envDeployer ? GetJobLog jobId "deploy"
   setHeader "Content-Type"      "text/event-stream"
   setHeader "Cache-Control"     "no-cache"
   setHeader "X-Accel-Buffering" "no"
   chan <- liftIO newChan
-  stream (streamLog envOutputStreamer chan logId from)
+  stream (streamLog envOutputStreamer chan jobId from)
 
 streamLog
   :: Ref OutputStreamer
   -> Chan OutputStream
-  -> Maybe LogId
+  -> JobId
   -> Maybe Integer
   -> StreamingBody
-streamLog _ _ Nothing _ send flush = do
-  void . send $ Binary.fromByteString "event: end\n"
-  void flush
-streamLog outputStreamer chan (Just logId) from send flush = bracket_
-  (outputStreamer ! SubscribeOutputLog logId from chan)
-  (outputStreamer ? UnsubscribeOutputLog logId chan)
+streamLog outputStreamer chan jobId from send flush = bracket_
+  (outputStreamer ! SubscribeOutputLog jobId from chan)
+  (outputStreamer ? UnsubscribeOutputLog jobId chan)
   go
  where
   go = do

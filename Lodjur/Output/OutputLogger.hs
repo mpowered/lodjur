@@ -7,27 +7,27 @@ module Lodjur.Output.OutputLogger
   , OutputLogMessage (..)
   , initialize
   , logCreateProcessWithExitCode
-  , logFiles
   ) where
 
 import           Control.Concurrent
-import           Control.Exception      (tryJust)
-import           Control.Monad          (guard, void)
+import           Control.Exception          (tryJust)
+import           Control.Monad              (guard, void)
 import           Data.Time.Clock
 import           System.Exit
 import           System.IO
-import           System.IO.Error        (isEOFError)
+import           System.IO.Error            (isEOFError)
 import           System.Process
 
-import           Lodjur.Database        (DbPool)
+import           Lodjur.Database            (DbPool)
+import           Lodjur.Deployment          (JobId)
 import           Lodjur.Output
-import qualified Lodjur.Output.Database as Database
+import qualified Lodjur.Output.Database     as Database
 import           Lodjur.Process
 
-data OutputLogger = OutputLogger { dbPool :: DbPool , logId :: LogId }
+data OutputLogger = OutputLogger { dbPool :: DbPool , jobId :: JobId }
 
-initialize :: DbPool -> LogId -> IO OutputLogger
-initialize dbPool logId = return OutputLogger {..}
+initialize :: DbPool -> JobId -> IO OutputLogger
+initialize dbPool jobId = return OutputLogger {..}
 
 data OutputLogMessage r where
   -- Public messages:
@@ -40,15 +40,15 @@ instance Process OutputLogger where
 
   receive _self (logger, AppendOutput lines') = do
     now <- getCurrentTime
-    Database.appendOutput (dbPool logger) (logId logger) now lines'
+    Database.appendOutput (dbPool logger) (jobId logger) now lines'
     return logger
 
   receive _self (logger, OutputFence) = do
-    Database.fence (dbPool logger) (logId logger)
+    Database.fence (dbPool logger) (jobId logger)
     return (logger, ())
 
   receive _self (logger, GetOutputLog) = do
-    out <- Database.getOutputLog (dbPool logger) Nothing Nothing (logId logger)
+    out <- Database.getOutputLog (dbPool logger) Nothing Nothing (jobId logger)
     return (logger, out)
 
   terminate _ = return ()
@@ -91,12 +91,3 @@ logStream logger h done = forkIO $ go []
         else
           go lns'
     putMVar done ()
-
-logFiles :: [(Ref OutputLogger, FilePath)] -> IO ()
-logFiles = mapM_ (uncurry logFile)
-  where
-    logFile logger file =
-      withFile file ReadMode $ \h -> do
-        contents <- hGetContents h
-        logger ! AppendOutput (lines contents)
-        logger ? OutputFence

@@ -6,7 +6,6 @@
 {-# LANGUAGE TypeFamilies      #-}
 module Lodjur.Deployment.Deployer
   ( DeploymentName (..)
-  , JobId
   , DeploymentJob (..)
   , DeploymentType (..)
   , DeploymentJobs
@@ -21,6 +20,8 @@ module Lodjur.Deployment.Deployer
 import           Control.Concurrent
 import           Control.Exception           (Exception, SomeException, throwIO)
 import           Control.Monad               (filterM, void, when)
+import           Data.Aeson                  (decodeFileStrict')
+import           Data.List                   (isPrefixOf)
 import qualified Data.Text                   as Text
 import           Data.Time.Clock
 import qualified Data.UUID                   as UUID
@@ -37,11 +38,9 @@ import           Lodjur.Events.EventLogger   (EventLogMessage (..), EventLogger,
                                               JobEvent (..))
 import qualified Lodjur.Git                  as Git
 import           Lodjur.Git.GitAgent         (GitAgent, GitAgentMessage (..))
-import           Lodjur.Output               (LogId)
 import           Lodjur.Output.OutputLogger  (OutputLogMessage (..),
                                               OutputLogger,
-                                              logCreateProcessWithExitCode,
-                                              logFiles)
+                                              logCreateProcessWithExitCode)
 import           Lodjur.Output.OutputLoggers (OutputLoggers)
 import qualified Lodjur.Output.OutputLoggers as OutputLoggers
 import           Lodjur.Process
@@ -70,8 +69,6 @@ data DeployMessage r where
   GetCurrentState :: DeployMessage (Sync DeployState)
   GetJob :: JobId -> DeployMessage (Sync (Maybe (DeploymentJob, Maybe JobResult)))
   GetJobs :: Maybe Word -> DeployMessage (Sync DeploymentJobs)
-  GetJobLog :: JobId -> LogType -> DeployMessage (Sync (Maybe LogId))
-  GetJobLogs :: JobId -> DeployMessage (Sync [(LogType, LogId)])
   GetDeployments :: DeployMessage (Sync [Deployment])
   -- Private messages:
   FinishJob :: DeploymentJob -> JobResult -> DeployMessage Async
@@ -122,12 +119,26 @@ checkLogged outputLogger args gitWorkingDir = do
     ExitSuccess      -> return ()
     ExitFailure code -> throwIO (CheckFailed code)
 
-importCheckOutputs :: Ref OutputLoggers -> DbPool -> JobId -> FilePath -> IO ()
-importCheckOutputs outputLoggers pool jobId dir = do
+importCheckResults :: DbPool -> JobId -> FilePath -> AppName -> IO ()
+importCheckResults pool jobId dir appName = do
   putStrLn $ "Importing files in: " <> dir
   direntries <- listDirectory dir
-  files <- filterM doesFileExist $ map (dir </>) direntries
-  putStrLn $ "Files: " <> unwords files
+  let appRelated = filter (isPrefixOf (Text.unpack appName) . takeFileName) direntries
+  files <- filterM doesFileExist $ map (dir </>) appRelated
+  mapM_ (importCheckResult pool jobId appName) files
+
+importCheckResult :: DbPool -> JobId -> AppName -> FilePath -> IO ()
+importCheckResult pool jobId appName file = do
+  putStrLn $ "Importing files: " <> file
+  rspec <- decodeFileStrict' file
+  case rspec of
+    Just RSpecResult {..} -> do
+      let RSpecSummary {..} = rspecSummary
+          rspecPassedCount = rspecExampleCount - rspecFailureCount - rspecPendingCount
+      Database.insertCheckResult pool jobId appName rspecExamples rspecPassedCount rspecFailureCount rspecDuration
+    Nothing ->
+      putStrLn $ "Failed to import rspec file: " <> file
+  {-
   loggers <- mapM loggerForFile files
   logFiles (zip loggers files)
   mapM_ kill loggers
@@ -136,11 +147,11 @@ importCheckOutputs outputLoggers pool jobId dir = do
       logId <- Database.createJobLog pool jobId (logType file)
       outputLoggers ? OutputLoggers.SpawnOutputLogger logId
     logType = Text.pack
+  -}
 
 deploy
   :: DbPool
   -> Ref EventLogger
-  -> Ref OutputLoggers
   -> Ref OutputLogger
   -> Ref GitAgent
   -> FilePath
@@ -148,7 +159,7 @@ deploy
   -> [String]
   -> Check
   -> IO JobResult
-deploy pool eventLogger outputLoggers outputLogger gitAgent gitWorkDir job args check = do
+deploy pool eventLogger outputLogger gitAgent gitWorkDir job args check = do
   started <- getCurrentTime
   eventLogger ! AppendEvent (jobId job) (JobRunning started)
   _ <- gitAgent ? Checkout (deploymentRevision job) outputLogger
@@ -157,8 +168,10 @@ deploy pool eventLogger outputLoggers outputLogger gitAgent gitWorkDir job args 
                        ++ args
   when (check == DoCheck) $ do
     checkLogged outputLogger [] gitWorkDir
-    importCheckOutputs outputLoggers pool (jobId job) (gitWorkDir </> "check-logs")
+    mapM_ (importCheckResults pool (jobId job) (gitWorkDir </> "check-logs")) appNames
   return JobSuccessful
+  where
+    appNames = ["toolkit", "beagle", "sms"]
 
 notifyDeployFinished
   :: Ref Deployer
@@ -184,16 +197,15 @@ instance Process Deployer where
         -- We require the deployment name to be known.
         | elem name (map deploymentName deployments) -> do
           jobId <- UUID.toText <$> UUID.nextRandom
-          logId <- Database.createJobLog pool jobId "deploy"
           let job = DeploymentJob {deploymentJobName = name, ..}
-          logger <- outputLoggers ? OutputLoggers.SpawnOutputLogger logId
+          logger <- outputLoggers ? OutputLoggers.SpawnOutputLogger jobId
           let (args, check) =
                 case deploymentType of
                   BuildOnly   -> (["--build-only"], NoCheck)
                   BuildCheck  -> (["--build-only"], DoCheck)
                   BuildDeploy -> ([], NoCheck)
           void $ forkFinally
-            (deploy pool eventLogger outputLoggers logger gitAgent gitWorkDir job args check)
+            (deploy pool eventLogger logger gitAgent gitWorkDir job args check)
             (notifyDeployFinished self eventLogger logger job)
           Database.insertJob pool job Nothing
           return ( a { state = Deploying job } , Just job)
@@ -215,12 +227,6 @@ instance Process Deployer where
         return (a, jobs)
       (_, GetCurrentState) ->
         return (a, state)
-      (_, GetJobLog jobid logty) -> do
-        logids <- Database.getJobLog pool jobid logty
-        return (a, logids)
-      (_, GetJobLogs jobid) -> do
-        logids <- Database.getJobLogs pool jobid
-        return (a, logids)
 
       -- Private messages:
       (_, FinishJob job result) -> do
