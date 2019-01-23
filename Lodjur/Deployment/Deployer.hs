@@ -132,12 +132,10 @@ importCheckResult pool jobId appName file = do
   putStrLn $ "Importing files: " <> file
   rspec <- decodeFileStrict' file
   case rspec of
-    Just RSpecResult {..} -> do
-      let RSpecSummary {..} = rspecSummary
-          rspecPassedCount = rspecExampleCount - rspecFailureCount - rspecPendingCount
-      Database.insertCheckResult pool jobId appName rspecExamples rspecPassedCount rspecFailureCount rspecDuration
-    Nothing ->
-      putStrLn $ "Failed to import rspec file: " <> file
+    Just checkResult -> do
+      checkId <- UUID.toText <$> UUID.nextRandom
+      Database.insertCheckResult pool checkId jobId appName checkResult
+    Nothing -> putStrLn $ "Failed to import rspec file: " <> file
   {-
   loggers <- mapM loggerForFile files
   logFiles (zip loggers files)

@@ -29,7 +29,7 @@ data Deployment =
   deriving (Eq, Show, Generic)
 
 type JobId = Text
-type LogType = Text
+type CheckId = Text
 
 data DeploymentJob = DeploymentJob
   { jobId                  :: JobId
@@ -57,7 +57,7 @@ instance FromJSON JobResult
 type AppName = Text
 
 data RSpecResult = RSpecResult
-  { rspecExamples       :: Value        -- [TestResult]
+  { rspecExamples       :: [TestResult]
   , rspecSummary        :: RSpecSummary
   } deriving (Show, Eq)
 
@@ -67,6 +67,16 @@ instance FromJSON RSpecResult where
     rspecSummary        <- o .: "summary"
     return RSpecResult {..}
   parseJSON invalid = typeMismatch "RSpecResult" invalid
+
+instance Semigroup RSpecResult where
+  a <> b =
+    RSpecResult
+      (rspecExamples a <> rspecExamples b)
+      (rspecSummary a <> rspecSummary b)
+
+instance Monoid RSpecResult where
+  mempty = RSpecResult mempty mempty
+  mappend = (<>)
 
 data RSpecSummary = RSpecSummary
   { rspecDuration       :: Float
@@ -83,6 +93,18 @@ instance FromJSON RSpecSummary where
     rspecPendingCount   <- o .: "pending_count"
     return RSpecSummary {..}
   parseJSON invalid = typeMismatch "RSpecSummary" invalid
+
+instance Semigroup RSpecSummary where
+  a <> b =
+    RSpecSummary
+      (rspecDuration a + rspecDuration b)
+      (rspecExampleCount a + rspecExampleCount b)
+      (rspecFailureCount a + rspecFailureCount b)
+      (rspecPendingCount a + rspecPendingCount b)
+
+instance Monoid RSpecSummary where
+  mempty = RSpecSummary 0 0 0 0
+  mappend = (<>)
 
 data TestResult = TestResult
   { testDescription     :: Text
@@ -103,18 +125,3 @@ instance FromJSON TestResult where
     testException       <- o .:? "exception"
     return TestResult {..}
   parseJSON invalid = typeMismatch "TestResult" invalid
-
-data CheckResult = CheckResult
-  { checkPassed         :: Int
-  , checkFailed         :: Int
-  , checkDuration       :: Float
-  , checkTests          :: [TestResult]
-  } deriving (Show, Eq)
-
-instance Semigroup CheckResult where
-  a <> b =
-    CheckResult
-      (checkPassed a + checkPassed b)
-      (checkFailed a + checkFailed b)
-      (checkDuration a + checkDuration b)
-      (checkTests a <> checkTests b)

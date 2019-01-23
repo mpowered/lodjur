@@ -4,10 +4,9 @@
 {-# LANGUAGE RecordWildCards   #-}
 module Lodjur.Deployment.Database where
 
-import           Control.Monad              (void)
-import           Data.Aeson
+import           Control.Monad              (forM, void)
 import           Data.Text                  (Text)
-import           Data.Text                  as Text
+import qualified Data.Text                  as Text
 import           Data.Time.Clock            (UTCTime)
 import           Database.PostgreSQL.Simple
 
@@ -20,8 +19,10 @@ initialize :: DbPool -> IO ()
 initialize pool = withConn pool $ \conn -> mapM_ (execute_ conn)
   [ "CREATE TABLE IF NOT EXISTS deployment_job (id TEXT PRIMARY KEY, time TIMESTAMPTZ NOT NULL, deployment_name TEXT NOT NULL, revision TEXT NOT NULL, result TEXT NULL, error_message TEXT NULL, deployment_type TEXT NOT NULL, started_by TEXT NOT NULL)"
   , "CREATE INDEX IF NOT EXISTS deployment_job_time ON deployment_job (\"time\")"
-  , "CREATE TABLE IF NOT EXISTS check_results (job_id TEXT NOT NULL, application_name TEXT NOT NULL, result JSONB, passed INTEGER DEFAULT 0, failed INTEGER DEFAULT 0, duration REAL DEFAULT 0)"
+  , "CREATE TABLE IF NOT EXISTS check_results (id TEXT PRIMARY KEY, job_id TEXT NOT NULL, application_name TEXT NOT NULL, examples INTEGER DEFAULT 0, failed INTEGER DEFAULT 0, pending INTEGER DEFAULT 0, duration REAL DEFAULT 0)"
   , "CREATE INDEX IF NOT EXISTS check_results_job ON check_results (\"job_id\")"
+  , "CREATE TABLE IF NOT EXISTS check_tests (check_result_id TEXT NOT NULL, description TEXT NOT NULL, full_description TEXT NOT NULL, status TEXT NOT NULL, file_path TEXT NOT NULL, line_number INTEGER NOT NULL, exception JSONB NULL)"
+  , "CREATE INDEX IF NOT EXISTS check_tests_check_result_id ON check_tests (\"check_result_id\")"
   ]
 
 insertJob :: DbPool -> DeploymentJob -> Maybe JobResult -> IO ()
@@ -122,22 +123,50 @@ parseDeployType "check"  = Just BuildCheck
 parseDeployType "deploy" = Just BuildDeploy
 parseDeployType _        = Nothing
 
-insertCheckResult :: DbPool -> JobId -> AppName -> Value -> Int -> Int -> Float -> IO ()
-insertCheckResult pool jobId appName tests passed failed duration = withConn pool $ \conn ->
-  void $ execute
-    conn
-    "INSERT INTO check_results (job_id, application_name, result, passed, failed, duration) VALUES (?, ?, ?, ?, ?, ?)"
-    ( jobId
-    , appName
-    , tests
-    , passed
-    , failed
-    , duration
-    )
+insertCheckResult :: DbPool -> CheckId -> JobId -> AppName -> RSpecResult -> IO ()
+insertCheckResult pool checkId jobId appName RSpecResult {..} = do
+  let RSpecSummary {..} = rspecSummary
+  withConn pool $ \conn -> do
+    void $ execute
+      conn
+      "INSERT INTO check_results (id, job_id, application_name, examples, failed, pending, duration) VALUES (?, ?, ?, ?, ?, ?, ?)"
+      ( checkId
+      , jobId
+      , appName
+      , rspecExampleCount
+      , rspecFailureCount
+      , rspecPendingCount
+      , rspecDuration
+      )
+    void $ executeMany
+      conn
+      "INSERT INTO check_tests (check_result_id, description, full_description, status, file_path, line_number, exception) VALUES (?, ?, ?, ?, ?, ?, ?)"
+      [ ( checkId
+        , testDescription
+        , testFullDescription
+        , testStatus
+        , testFilePath
+        , testLineNumber
+        , testException
+        )
+      | TestResult {..} <- rspecExamples
+      ]
 
-getCheckResults :: DbPool -> JobId -> AppName -> IO [(Value, Int, Int, Float)]
-getCheckResults pool jobId appName = withConn pool $ \ conn ->
-  query
+getCheckResults :: DbPool -> JobId -> AppName -> IO RSpecResult
+getCheckResults pool jobId appName = mconcat <$> getAllCheckResults pool jobId appName
+
+getAllCheckResults :: DbPool -> JobId -> AppName -> IO [RSpecResult]
+getAllCheckResults pool jobId appName = withConn pool $ \ conn -> do
+  checks <- query
     conn
-    "SELECT result, passed, failed, duration FROM check_results WHERE job_id = ? AND application_name = ?"
+    "SELECT id, examles, failed, pending, duration FROM check_results WHERE job_id = ? AND application_name = ?"
     (jobId, appName)
+  forM checks $ \(checkId, rspecExampleCount, rspecFailureCount, rspecPendingCount, rspecDuration) -> do
+      let rspecSummary = RSpecSummary {..}
+      rspecExamples <- map parseTest <$> query
+        conn
+        "SELECT description, full_description, status, file_path, line_number, exception FROM check_tests WHERE check_result_id = ?"
+        (Only (checkId :: CheckId))
+      return $ RSpecResult {..}
+  where
+    parseTest (testDescription, testFullDescription, testStatus, testFilePath, testLineNumber, testException) = TestResult {..}
