@@ -159,7 +159,7 @@ getAllCheckResults :: DbPool -> JobId -> AppName -> IO [RSpecResult]
 getAllCheckResults pool jobId appName = withConn pool $ \ conn -> do
   checks <- query
     conn
-    "SELECT id, examles, failed, pending, duration FROM check_results WHERE job_id = ? AND application_name = ?"
+    "SELECT id, examples, failed, pending, duration FROM check_results WHERE job_id = ? AND application_name = ?"
     (jobId, appName)
   forM checks $ \(checkId, rspecExampleCount, rspecFailureCount, rspecPendingCount, rspecDuration) -> do
       let rspecSummary = RSpecSummary {..}

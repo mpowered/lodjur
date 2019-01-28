@@ -418,10 +418,11 @@ getLogs jobId = do
 
 showJobAction :: Text -> Action ()
 showJobAction jobId = do
-  Env {..}  <- getState
-  job       <- liftIO $ envDeployer ? GetJob jobId
-  eventLogs <- liftIO $ envEventLogger ? GetEventLogs
-  outputLog <- getLogs jobId
+  Env {..}   <- getState
+  job        <- liftIO $ envDeployer ? GetJob jobId
+  eventLogs  <- liftIO $ envEventLogger ? GetEventLogs
+  outputLog  <- getLogs jobId
+  appResults <- liftIO $ envDeployer ? GetCheckResults jobId
   case (job, HashMap.lookup jobId eventLogs) of
     (Just (job', _), Just eventLog) ->
       renderLayout "Job Details" $ WithNavigation ["Jobs", jobIdLink jobId] $ do
@@ -436,37 +437,60 @@ showJobAction jobId = do
         div_ [class_ "row mt-3"] $ div_ [class_ "col"] $ do
           h2_ [class_ "mb-3"] "Event Log"
           renderEventLog eventLog
-        div_ [class_ "row mt-3 mb-5"] $ div_ [class_ "col"] $ do
-          h2_ [class_ "mb-3"] "Command Output"
-          let lineAttr = data_ "last-line-at" . lastLineAt $ outputLog
-              allAttrs =
-                lineAttr : [class_ "command-output", data_ "job-id" jobId]
-          div_ allAttrs $ pre_ $ foldM_ displayOutput Nothing outputLog
-        div_ [class_ "autoscroll"]
-          $ div_ [class_ "form-check form-check-inline form-control-small"]
-          $ do
-              input_
-                [ class_ "form-check-input"
-                , type_ "checkbox"
-                , id_ "autoscroll-check"
-                ]
-              label_ [class_ "form-check-label", for_ "autoscroll-check"]
-                     "Auto-Scroll"
+        commandOutput jobId outputLog
+        mapM_ (uncurry checkResults) appResults
     _ -> notFoundAction
+
+commandOutput :: JobId -> [Output] -> Html ()
+commandOutput jobId outputLog = do
+  div_ [class_ "row mt-3 mb-5"] $ div_ [class_ "col"] $ do
+    h2_ [class_ "mb-3"] "Command Output"
+    let lineAttr = data_ "last-line-at" . lastLineAt $ outputLog
+        allAttrs =
+          lineAttr : [class_ "command-output", data_ "job-id" jobId]
+    div_ allAttrs $ pre_ $ foldM_ displayOutput Nothing outputLog
+  div_ [class_ "autoscroll"]
+    $ div_ [class_ "form-check form-check-inline form-control-small"]
+    $ do
+        input_
+          [ class_ "form-check-input"
+          , type_ "checkbox"
+          , id_ "autoscroll-check"
+          ]
+        label_ [class_ "form-check-label", for_ "autoscroll-check"]
+                "Auto-Scroll"
  where
   displayOutput :: Maybe UTCTime -> Output -> Html (Maybe UTCTime)
-  displayOutput previousTime output = div_ [class_ "line"] $ do
-    case previousTime of
-      Just t | t `sameSecond` outputTime output -> return ()
-      _ -> time_ $ toHtml (hourMinSec (outputTime output))
-    toHtml (unlines (outputLines output))
-    return (Just (outputTime output))
+  displayOutput previousTime output = foldM displayLine previousTime (outputLines output)
+    where
+      displayLine :: Maybe UTCTime -> String -> Html (Maybe UTCTime)
+      displayLine previousTime' line = div_ [class_ "line"] $ do
+        case previousTime' of
+          Just t | t `sameSecond` outputTime output -> return ()
+          _ -> time_ $ toHtml (hourMinSec (outputTime output))
+        toHtml line
+        return (Just (outputTime output))
   sameSecond t1 t2 = toSeconds t1 == toSeconds t2
   toSeconds :: UTCTime -> Integer
   toSeconds  = round . utcTimeToPOSIXSeconds
   lastLineAt = \case
     []        -> ""
-    outputLog -> Text.pack (show $ outputIndex (last outputLog))
+    outputLog' -> Text.pack (show $ outputIndex (last outputLog'))
+
+checkResults :: AppName -> RSpecResult -> Html ()
+checkResults appName result =
+  div_ [class_ "row mt-3 mb-5"] $ div_ [class_ "col"] $ do
+    h2_ [class_ "mb-3"] (toHtml $ "RSpec Results for " <> appName)
+    div_ [] $ pre_ $ mapM_ displayTest (rspecExamples result)
+  where
+    displayTest :: TestResult -> Html ()
+    displayTest TestResult {..} =
+      div_ [class_ "row"] $ do
+        div_ [class_ "col"] $ toHtml testDescription
+        div_ [class_ "col"] $ toHtml testFullDescription
+        div_ [class_ "col"] $ toHtml testStatus
+        div_ [class_ "col"] $ toHtml testFilePath
+        div_ [class_ "col"] $ toHtml (show testLineNumber)
 
 data OutputEvent = OutputLineEvent
   { outputEventIndex :: Integer

@@ -22,6 +22,7 @@ import           Control.Exception           (Exception, SomeException, throwIO)
 import           Control.Monad               (filterM, void, when)
 import           Data.Aeson                  (decodeFileStrict')
 import           Data.List                   (isPrefixOf)
+import           Data.Text                   (Text)
 import qualified Data.Text                   as Text
 import           Data.Time.Clock
 import qualified Data.UUID                   as UUID
@@ -69,6 +70,7 @@ data DeployMessage r where
   GetCurrentState :: DeployMessage (Sync DeployState)
   GetJob :: JobId -> DeployMessage (Sync (Maybe (DeploymentJob, Maybe JobResult)))
   GetJobs :: Maybe Word -> DeployMessage (Sync DeploymentJobs)
+  GetCheckResults :: JobId -> DeployMessage (Sync [(AppName, RSpecResult)])
   GetDeployments :: DeployMessage (Sync [Deployment])
   -- Private messages:
   FinishJob :: DeploymentJob -> JobResult -> DeployMessage Async
@@ -103,6 +105,9 @@ instance Exception CheckFailed
 data Check = DoCheck | NoCheck
   deriving (Eq, Show)
 
+appNames :: [Text]
+appNames = ["toolkit", "beagle", "sms"]
+
 nixopsCmdLogged :: Ref OutputLogger -> [String] -> IO String
 nixopsCmdLogged outputLogger args = do
   exitcode <- logCreateProcessWithExitCode outputLogger (proc "nixops" args)
@@ -121,7 +126,6 @@ checkLogged outputLogger args gitWorkingDir = do
 
 importCheckResults :: DbPool -> JobId -> FilePath -> AppName -> IO ()
 importCheckResults pool jobId dir appName = do
-  putStrLn $ "Importing files in: " <> dir
   direntries <- listDirectory dir
   let appRelated = filter (isPrefixOf (Text.unpack appName) . takeFileName) direntries
   files <- filterM doesFileExist $ map (dir </>) appRelated
@@ -129,23 +133,12 @@ importCheckResults pool jobId dir appName = do
 
 importCheckResult :: DbPool -> JobId -> AppName -> FilePath -> IO ()
 importCheckResult pool jobId appName file = do
-  putStrLn $ "Importing files: " <> file
   rspec <- decodeFileStrict' file
   case rspec of
     Just checkResult -> do
       checkId <- UUID.toText <$> UUID.nextRandom
       Database.insertCheckResult pool checkId jobId appName checkResult
     Nothing -> putStrLn $ "Failed to import rspec file: " <> file
-  {-
-  loggers <- mapM loggerForFile files
-  logFiles (zip loggers files)
-  mapM_ kill loggers
-  where
-    loggerForFile file = do
-      logId <- Database.createJobLog pool jobId (logType file)
-      outputLoggers ? OutputLoggers.SpawnOutputLogger logId
-    logType = Text.pack
-  -}
 
 deploy
   :: DbPool
@@ -168,8 +161,6 @@ deploy pool eventLogger outputLogger gitAgent gitWorkDir job args check = do
     checkLogged outputLogger [] gitWorkDir
     mapM_ (importCheckResults pool (jobId job) (gitWorkDir </> "check-logs")) appNames
   return JobSuccessful
-  where
-    appNames = ["toolkit", "beagle", "sms"]
 
 notifyDeployFinished
   :: Ref Deployer
@@ -225,6 +216,9 @@ instance Process Deployer where
         return (a, jobs)
       (_, GetCurrentState) ->
         return (a, state)
+      (_, GetCheckResults jobId) -> do
+        results <- mapM (Database.getCheckResults pool jobId) appNames
+        return (a, zip appNames results)
 
       -- Private messages:
       (_, FinishJob job result) -> do
