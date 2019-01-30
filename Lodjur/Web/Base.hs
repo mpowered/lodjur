@@ -25,6 +25,7 @@ data Env = Env
   , envGithubRepos       :: [Text]
   , envGithubSecretToken :: ByteString
   , envManager           :: Manager
+  , envRunMode           :: RunMode
   }
 
 data Session = Session
@@ -38,3 +39,12 @@ emptySession = Session Nothing Nothing Nothing
 
 type App = SpockM () Session Env
 type Action = SpockAction () Session Env
+
+data RunMode
+  -- | Normal operation: Uses Github to authorize users
+  = NormalMode
+
+  -- | Development mode: Bypasses Github authorization and instead uses
+  -- "Developer" as the user
+  | DevMode
+  deriving (Eq, Show)

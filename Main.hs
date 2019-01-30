@@ -101,18 +101,24 @@ instance FromJSON LodjurConfiguration where
           }
 
 
-newtype LodjurOptions = LodjurOptions
+data LodjurOptions = LodjurOptions
   { configFile :: FilePath
+  , runMode    :: RunMode
   }
 
 lodjur :: Parser LodjurOptions
-lodjur = LodjurOptions <$> strOption
-  (  long "config-file"
-  <> metavar "PATH"
-  <> short 'c'
-  <> value "lodjur.toml"
-  <> help "Path to Lodjur configuration file"
-  )
+lodjur = LodjurOptions
+  <$> strOption
+    (  long "config-file"
+    <> metavar "PATH"
+    <> short 'c'
+    <> value "lodjur.toml"
+    <> help "Path to Lodjur configuration file"
+    )
+  <*> flag NormalMode DevMode
+    (  long "devmode"
+    <> help "Run in dev mode (bypass Github auth)"
+    )
 
 readConfiguration :: FilePath -> IO LodjurConfiguration
 readConfiguration path = do
@@ -161,7 +167,7 @@ main = startServices =<< execParser opts
               (deploymentConfigurationToDeployment <$> deployments)
               pool
 
-    let env = Env {..}
+    let env = Env { envRunMode = runMode, .. }
 
     -- Fetch on startup in case we miss webhooks while service is not running
     envGitAgent ! GitAgent.FetchRemote

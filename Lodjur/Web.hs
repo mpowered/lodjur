@@ -68,6 +68,15 @@ import           Lodjur.Web.Base
 
 import           Paths_lodjur
 
+readSession' :: Action Session
+readSession' = do
+  Env {..} <- getState
+  case envRunMode of
+    NormalMode ->
+      readSession
+    DevMode ->
+      return $ emptySession { currentUser = Just (User (UserId "Developer")) }
+
 readState :: Action DeployState
 readState = getState >>= liftIO . (? GetCurrentState) . envDeployer
 
@@ -126,7 +135,7 @@ data Layout
 
 renderLayout :: Html () -> Layout -> Action a
 renderLayout title layout = do
-  sess <- readSession
+  sess <- readSession'
   renderHtml $ doctypehtml_ $ html_ $ do
     head_ $ do
       title_ title
@@ -663,7 +672,7 @@ redirectStatic staticBase =
 
 requireUser :: Action User
 requireUser  =
-  readSession >>= \case
+  readSession' >>= \case
     Session{ currentUser = Just u } -> return u
     _ -> do
       currentPath <- ("/" <>) . Text.intercalate "/" . pathInfo <$> request
@@ -682,7 +691,7 @@ requireLoggedIn = prehook (void requireUser)
 
 ifLoggedIn :: Action () -> Action () -> Action ()
 ifLoggedIn thenRoute elseRoute =
-  readSession >>= \case
+  readSession' >>= \case
     Session{ currentUser = Just _ } -> thenRoute
     _ -> elseRoute
 
@@ -695,6 +704,8 @@ runServer
   -> IO ()
 runServer port staticBase env githubOauth teamAuth = do
     cfg <- defaultSpockCfg emptySession PCNoDatabase env
+    when (envRunMode env /= NormalMode) $
+      putStrLn $ "RunMode: Running in " ++ show (envRunMode env)
     runSpock port (spock cfg app)
  where
   app = do
@@ -702,7 +713,8 @@ runServer port staticBase env githubOauth teamAuth = do
     middleware (staticPolicy (redirectStatic staticBase))
 
     -- Auth
-    authRoutes githubOauth teamAuth
+    when (envRunMode env /= DevMode) $
+      authRoutes githubOauth teamAuth
 
     -- Routes
     get "/"     (ifLoggedIn homeAction welcomeAction)
