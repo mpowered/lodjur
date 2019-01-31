@@ -20,7 +20,7 @@ import           Control.Monad.IO.Class        (liftIO)
 import           Control.Monad.Reader
 import           Crypto.Hash
 import           Crypto.MAC.HMAC
-import           Data.Aeson
+import           Data.Aeson                    hiding (json)
 import           Data.Aeson.Types
 import qualified Data.Binary.Builder           as Binary
 import qualified Data.ByteString.Base16        as Base16
@@ -509,8 +509,8 @@ data OutputEvent = OutputLineEvent
 
 streamOutputAction :: Text -> Action ()
 streamOutputAction jobId = do
-  Env {..}  <- getState
-  from           <- param "from"
+  Env {..} <- getState
+  from     <- param "from"
   setHeader "Content-Type"      "text/event-stream"
   setHeader "Cache-Control"     "no-cache"
   setHeader "X-Accel-Buffering" "no"
@@ -546,6 +546,12 @@ streamLog outputStreamer chan jobId from send flush = bracket_
       Fence -> do
         void . send $ Binary.fromByteString "event: end\n"
         void flush
+
+getResultAction :: Text -> Text -> Action ()
+getResultAction jobId appName = do
+  Env {..}  <- getState
+  appResult <- liftIO $ envDeployer ? GetCheckResult jobId appName
+  json appResult
 
 data GithubRepository = GithubRepository
   { repositoryId       :: Integer
@@ -723,6 +729,7 @@ runServer port staticBase env githubOauth teamAuth = do
       post "/jobs" newDeployAction
       get ("jobs" <//> var)               showJobAction
       get ("jobs" <//> var <//> "output") streamOutputAction
+      get ("jobs" <//> var <//> "result" <//> var) getResultAction
     post "/webhook/git/refresh" refreshRemoteAction
 
     -- Fallback

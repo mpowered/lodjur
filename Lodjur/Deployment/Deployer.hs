@@ -70,6 +70,7 @@ data DeployMessage r where
   GetCurrentState :: DeployMessage (Sync DeployState)
   GetJob :: JobId -> DeployMessage (Sync (Maybe (DeploymentJob, Maybe JobResult)))
   GetJobs :: Maybe Word -> DeployMessage (Sync DeploymentJobs)
+  GetCheckResult :: JobId -> AppName -> DeployMessage (Sync RSpecResult)
   GetCheckResults :: JobId -> DeployMessage (Sync [(AppName, RSpecResult)])
   GetDeployments :: DeployMessage (Sync [Deployment])
   -- Private messages:
@@ -216,6 +217,9 @@ instance Process Deployer where
         return (a, jobs)
       (_, GetCurrentState) ->
         return (a, state)
+      (_, GetCheckResult jobId appName) -> do
+        result <- Database.getCheckResults pool jobId appName
+        return (a, result)
       (_, GetCheckResults jobId) -> do
         results <- mapM (Database.getCheckResults pool jobId) appNames
         return (a, zip appNames results)

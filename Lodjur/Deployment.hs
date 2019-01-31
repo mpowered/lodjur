@@ -68,6 +68,12 @@ instance FromJSON RSpecResult where
     return RSpecResult {..}
   parseJSON invalid = typeMismatch "RSpecResult" invalid
 
+instance ToJSON RSpecResult where
+  toJSON RSpecResult {..} = object
+    [ "examples" .= rspecExamples
+    , "summary"  .= rspecSummary
+    ]
+
 instance Semigroup RSpecResult where
   a <> b =
     RSpecResult
@@ -93,6 +99,14 @@ instance FromJSON RSpecSummary where
     rspecPendingCount   <- o .: "pending_count"
     return RSpecSummary {..}
   parseJSON invalid = typeMismatch "RSpecSummary" invalid
+
+instance ToJSON RSpecSummary where
+  toJSON RSpecSummary {..} = object
+    [ "duration"      .= rspecDuration
+    , "example_count" .= rspecExampleCount
+    , "failure_count" .= rspecFailureCount
+    , "pending_count" .= rspecPendingCount
+    ]
 
 instance Semigroup RSpecSummary where
   a <> b =
@@ -125,3 +139,13 @@ instance FromJSON TestResult where
     testException       <- o .:? "exception"
     return TestResult {..}
   parseJSON invalid = typeMismatch "TestResult" invalid
+
+instance ToJSON TestResult where
+  toJSON TestResult {..} = object
+    [ "description"      .= testDescription
+    , "full_description" .= testFullDescription
+    , "status"           .= testStatus
+    , "file_path"        .= testFilePath
+    , "line_number"      .= testLineNumber
+    , "exception"        .= testException
+    ]
