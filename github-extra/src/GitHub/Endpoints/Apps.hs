@@ -14,7 +14,11 @@ import GitHub.Data
 import GitHub.Extra
 import GitHub.Internal.Prelude
 import GitHub.Request
+import qualified Network.HTTP.Types as Types
 import Prelude ()
+
+appPreviewHeaders :: Types.RequestHeaders
+appPreviewHeaders = [("Accept", "application/vnd.github.machine-man-preview+json")]
 
 -- | Create a new installation token.
 -- Requires a Bearer JWT token
@@ -25,5 +29,5 @@ createInstallationToken auth = executeRequest auth . createInstallationTokenR
 -- See <https://developer.github.com/v3/apps/##create-a-new-installation-token>
 createInstallationTokenR :: Id Installation -> Request 'RW AccessToken
 createInstallationTokenR instId =
-  command Post ["app", "installations", toPathPart instId, "access_tokens" ] ""
-
+  HeaderQuery appPreviewHeaders
+    (Command Post ["app", "installations", toPathPart instId, "access_tokens" ] "")
