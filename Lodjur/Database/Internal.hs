@@ -10,7 +10,7 @@
 {-# LANGUAGE TypeFamilies          #-}
 {-# LANGUAGE UndecidableInstances  #-}
 
-module Lodjur.DB where
+module Lodjur.Database.Internal where
 
 import           Data.Aeson                             (Value)
 import           Data.Int                               (Int32)

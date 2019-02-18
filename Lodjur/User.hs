@@ -8,6 +8,6 @@ import           GHC.Generics
 
 newtype UserId = UserId { unUserId :: Text } deriving (Show, Eq, Generic, Hashable)
 
-data User = User
+newtype User = User
   { userId   :: UserId
-  }
+  } deriving (Show)

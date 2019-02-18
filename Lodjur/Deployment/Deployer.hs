@@ -7,7 +7,6 @@
 module Lodjur.Deployment.Deployer
   ( DeploymentName (..)
   , DeploymentJob (..)
-  , DeploymentType (..)
   , DeploymentJobs
   , DeployState (..)
   , JobEvent (..)
@@ -66,7 +65,8 @@ data Deployer = Deployer
 
 data DeployMessage r where
   -- Public messages:
-  Deploy :: DeploymentType -> DeploymentName -> Git.Revision -> UTCTime -> UserId -> DeployMessage (Sync (Maybe DeploymentJob))
+  -- Build :: DeploymentType -> DeploymentName -> Git.Revision -> UTCTime -> UserId -> DeployMessage (Sync (Maybe DeploymentJob))
+  Deploy :: DeploymentName -> Git.Revision -> UTCTime -> UserId -> DeployMessage (Sync (Maybe DeploymentJob))
   GetCurrentState :: DeployMessage (Sync DeployState)
   GetJob :: JobId -> DeployMessage (Sync (Maybe (DeploymentJob, Maybe JobResult)))
   GetJobs :: Maybe Word -> DeployMessage (Sync DeploymentJobs)
@@ -183,19 +183,19 @@ instance Process Deployer where
 
   receive self (a@Deployer{..}, msg)=
     case (state, msg) of
-      (Idle     , Deploy deploymentType name deploymentRevision deploymentTime deploymentJobStartedBy)
+      (Idle     , Deploy name deploymentRevision deploymentTime deploymentJobStartedBy)
         -- We require the deployment name to be known.
         | elem name (map deploymentName deployments) -> do
           jobId <- UUID.toText <$> UUID.nextRandom
           let job = DeploymentJob {deploymentJobName = name, ..}
           logger <- outputLoggers ? OutputLoggers.SpawnOutputLogger jobId
-          let (args, check) =
-                case deploymentType of
-                  BuildOnly   -> (["--build-only"], NoCheck)
-                  BuildCheck  -> (["--build-only"], DoCheck)
-                  BuildDeploy -> ([], NoCheck)
+          -- let (args, check) =
+          --       case deploymentType of
+          --         BuildOnly   -> (["--build-only"], NoCheck)
+          --         BuildCheck  -> (["--build-only"], DoCheck)
+          --         BuildDeploy -> ([], NoCheck)
           void $ forkFinally
-            (deploy pool eventLogger logger gitAgent gitWorkDir job args check)
+            (deploy pool eventLogger logger gitAgent gitWorkDir job [] NoCheck) -- TODO remove args and check
             (notifyDeployFinished self eventLogger logger job)
           Database.insertJob pool job Nothing
           return ( a { state = Deploying job } , Just job)

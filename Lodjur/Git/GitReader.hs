@@ -50,7 +50,7 @@ gitListRefs workingDir =
   parseShowRefPairs <$> gitCmd ["show-ref"] workingDir
   where
     parseShowRefPairs =
-      mapMaybe toPair . map Text.words . Text.lines . Text.pack
+      mapMaybe (toPair . Text.words) . Text.lines . Text.pack
       where
         toPair [hash, ref] =
           case Text.splitOn "/" ref of

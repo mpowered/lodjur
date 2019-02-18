@@ -19,13 +19,13 @@ import           Lodjur.Auth
 import           Lodjur.User
 import           Lodjur.Web.Base
 
+-- For GitHub apps scopes aren't needed
 startGithubAuthentication :: OAuth2 -> Action ()
 startGithubAuthentication oauth2 = do
   state <- liftIO (UUID.toText <$> UUID.nextRandom)
   modifySession (\s -> s { oauthState = Just state })
   let
-    scope   = "read:org"
-    params' = [("scope", scope), ("state", Text.encodeUtf8 state), ("allow_signup", "false")]
+    params' = [("state", Text.encodeUtf8 state), ("allow_signup", "false")]
     url     = appendQueryParams params' (authorizationUrl oauth2)
   redirect (Text.decodeUtf8 (serializeURIRef' url))
 
@@ -77,6 +77,16 @@ getUserAndTeams accessToken = do
     Right userAndTeams ->
       return userAndTeams
 
+getUser' :: AccessToken -> Action GitHub.User
+getUser' accessToken = do
+  githubResult <- getUser accessToken
+  case githubResult of
+    Left err -> do
+      setStatus status400
+      text ("Failed: " <> Text.pack (show err))
+    Right user ->
+      return user
+
 loginAndRedirect :: GitHub.User -> Action ()
 loginAndRedirect githubUser = do
   let user = User { userId = UserId (GitHub.untagName $ GitHub.userLogin githubUser) }
@@ -90,15 +100,16 @@ authorizeAndLogin :: OAuth2 -> TeamAuthConfig -> Action ()
 authorizeAndLogin oauth2 teamAuth = do
   checkError
   accessToken <- exchangeCode oauth2
-  (githubUser, teams) <- getUserAndTeams accessToken
-  if isAuthorized teamAuth teams
-    then loginAndRedirect githubUser
-    else do setStatus status403
-            text (mconcat [ "You are not authorized, "
-                          , "because you don't have read/write permissions in the "
-                          , githubAuthOrg teamAuth <> "/" <> githubAuthTeam teamAuth
-                          , " team."
-                          ])
+  githubUser <- getUser' accessToken
+  loginAndRedirect githubUser
+  -- if isAuthorized teamAuth teams
+  --   then loginAndRedirect githubUser
+  --   else do setStatus status403
+  --           text (mconcat [ "You are not authorized, "
+  --                         , "because you don't have read/write permissions in the "
+  --                         , githubAuthOrg teamAuth <> "/" <> githubAuthTeam teamAuth
+  --                         , " team."
+  --                         ])
 
 isAuthorized :: TeamAuthConfig -> [GitHub.Team] -> Bool
 isAuthorized TeamAuthConfig{..} = any authorizedInTeam
@@ -137,6 +148,6 @@ clearSession = do
 authRoutes :: OAuth2 -> TeamAuthConfig -> App ()
 authRoutes oauth2 teamAuthCfg = do
   -- Auth
-  get ("auth" <//> "github" <//> "login")    (startGithubAuthentication oauth2)
-  get ("auth" <//> "github" <//> "callback") (authorizeAndLogin oauth2 teamAuthCfg)
-  get ("auth" <//> "github" <//> "logout")   clearSession
+  get ("github" <//> "login")    (startGithubAuthentication oauth2)
+  get ("github" <//> "callback") (authorizeAndLogin oauth2 teamAuthCfg)
+  get ("github" <//> "logout")   clearSession

@@ -1,12 +1,13 @@
-{-# LANGUAGE GeneralizedNewtypeDeriving #-}
 module Lodjur.Git where
 
 import           Data.Text (Text)
+import           Data.Time.Clock            (UTCTime)
 
 type Hash = Text
 
 data Revision = Revision
-  { unRevision :: Hash
+  { revisionHash :: Hash
+  , revisionTime :: UTCTime
   } deriving (Show, Eq)
 
 data Ref

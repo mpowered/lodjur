@@ -2,15 +2,16 @@
 
 module Main where
 
-import           Control.Monad.Trans.Maybe
+-- import           Control.Monad.Trans.Maybe
 import qualified Data.Aeson               as Aeson
 import           Data.Pool
 import           Data.Time.Clock
 import qualified Data.UUID.V4             as UUID
-import           Data.UUID                (UUID)
+-- import           Data.UUID                (UUID)
 import           Lodjur.DB
 import           Database.Beam
 import qualified Database.Beam.Postgres   as Pg
+import           Lodjur.Git               (Hash)
 
 main :: IO ()
 main = do
@@ -20,9 +21,9 @@ main = do
   did <- UUID.nextRandom
   cid <- UUID.nextRandom
   let rev = Revision "abc" now
-      b   = Build (Job bid "build" (pk rev) now now JobRunning "shaun")
-      d   = Deploy (Job did "deploy" (pk rev) now now JobRunning "shaun") "target"
-      c   = Check (Job cid "check testapp" (pk rev) now now JobRunning "shaun") 1 0 0 0.5
+      b   = Build bid (pk rev) now now JobRunning "shaun"
+      d   = Deploy did (pk rev) now now JobRunning "shaun" "target"
+      c   = Check cid (pk rev) now now JobRunning "shaun" "testapp" 1 0 0 0.5
   withResource pool $ \conn ->
     Pg.runBeamPostgresDebug putStrLn conn $ do
       runDelete $
@@ -53,54 +54,67 @@ main = do
               (val_ (Aeson.String ""))
           ]
 
+{-
   rows <- withResource pool $ \conn ->
     Pg.runBeamPostgresDebug putStrLn conn $
       runSelectReturningOne $
         select $ do
           r <- all_ (dbRevisions db)
-          j <- oneToOne_ (dbBuilds db) (jobRevision . buildJob) r
+          j <- oneToOne_ (dbBuilds db) buildRevision r
           pure (r, j)
 
   print rows
+-}
 
-{-
-  job' <- withResource pool $ \conn ->
-    getJob' conn jobid
-  print job'
+  jobs <- withResource pool $ \conn ->
+    getJobs conn rev
+  print jobs
 
-data Job'
-  = BuildJob'
-    { buildJob'     :: Job
-    }
-  | DeployJob'
-    { deployJob'    :: Job
-    , deployDeploy  :: Deploy
-    }
-  | CheckJob'
-    { checkJob'     :: Job
-    , checkChecks   :: [Check]
-    }
+data Job
+  = BuildJob Build
+  | DeployJob Deploy
+  | CheckJob Check
   deriving (Show)
 
-getJob' :: Pg.Connection -> UUID -> IO (Maybe Job')
-getJob' conn uuid = runMaybeT $ do
-  job <- MaybeT $ getJob conn uuid
-  case jobType job of
-    BuildJob -> return $ BuildJob' job
-    DeployJob -> do
-      deploy <- MaybeT $ getDeploy conn job
-      return $ DeployJob' job deploy
-    CheckJob -> do
-      checks <- liftIO $ getChecks conn job
-      return $ CheckJob' job checks
+lookupRevision :: Pg.Connection -> Hash -> IO (Maybe Revision)
+lookupRevision conn revid =
+  Pg.runBeamPostgresDebug putStrLn conn $
+    runSelectReturningOne $
+      select $
+        filter_ (\a -> revId a ==. val_ revid) $
+          all_ (dbRevisions db)
 
-getJob :: Pg.Connection -> UUID -> IO (Maybe Job)
-getJob conn uuid =
+getJobs :: Pg.Connection -> Revision -> IO [Job]
+getJobs conn rev =
+  Pg.runBeamPostgresDebug putStrLn conn $ do
+    builds <-
+      runSelectReturningList $
+        select $
+          filter_ (\a -> buildRevision a ==. val_ (pk rev)) $
+            all_ (dbBuilds db)
+    deploys <-
+      runSelectReturningList $
+        select $
+          filter_ (\a -> deployRevision a ==. val_ (pk rev)) $
+            all_ (dbDeploys db)
+    checks <-
+      runSelectReturningList $
+        select $
+          filter_ (\a -> checkRevision a ==. val_ (pk rev)) $
+            all_ (dbChecks db)
+    return
+      $  map BuildJob builds
+      ++ map DeployJob deploys
+      ++ map CheckJob checks
+
+{-
+getBuilds :: Pg.Connection -> UUID -> IO (Maybe Build)
+getBuild conn uuid =
   Pg.runBeamPostgresDebug putStrLn conn $
     runSelectReturningOne $
       select $
         filter_ (\j -> jobId j ==. val_ uuid) $
-          all_ (dbJobs db)
+          all_ (dbBuilds db)
 
 getDeploy :: Pg.Connection -> Job -> IO (Maybe Deploy)
 getDeploy conn job =
@@ -117,5 +131,4 @@ getChecks conn job =
       select $
         filter_ (\c -> checkJob c ==. val_ (pk job)) $
           all_ (dbChecks db)
-
 -}

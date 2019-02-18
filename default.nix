@@ -10,12 +10,11 @@ let
 
   haskellPackages = pkgs.haskell.packages."${compiler}".override {
     overrides = self: super: {
-      lodjur = self.callPackage ./default.nix {};
+      github = pkgs.haskell.lib.doJailbreak (self.callPackage ./github {});
+      jwt = self.callPackage ./jwt.nix {};
       hoauth2 = pkgs.haskell.lib.doJailbreak super.hoauth2;
       stm-containers = pkgs.haskell.lib.dontCheck super.stm-containers;
       superbuffer = pkgs.haskell.lib.dontCheck super.superbuffer;
-      # stm-containers = hself.callHackage "stm-containers" "1.1.0.2" {};
-      # primitive = hself.callHackage "primitive" "0.6.4.0" {};
     };
   };
 

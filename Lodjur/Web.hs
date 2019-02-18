@@ -24,6 +24,7 @@ import           Data.Aeson                    hiding (json)
 import           Data.Aeson.Types
 import qualified Data.Binary.Builder           as Binary
 import qualified Data.ByteString.Base16        as Base16
+import qualified Data.ByteString.Char8         as C8
 import qualified Data.HashMap.Strict           as HashMap
 import qualified Data.List                     as List
 import           Data.String
@@ -50,33 +51,26 @@ import           Web.Spock.Config
 import           Web.Spock.Lucid
 
 import           Lodjur.Auth
-import           Lodjur.Deployment
-import           Lodjur.Deployment.Deployer
-import           Lodjur.Events.EventLogger
-import qualified Lodjur.Git                    as Git
-import           Lodjur.Git.GitAgent
-import           Lodjur.Git.GitReader
-import           Lodjur.Output
-import           Lodjur.Output.OutputLogger
-import           Lodjur.Output.OutputLoggers
-import           Lodjur.Output.OutputStreamer
-import           Lodjur.Process
-import           Lodjur.User
+-- import           Lodjur.Deployment
+-- import           Lodjur.Deployment.Deployer
+-- import           Lodjur.Events.EventLogger
+-- import qualified Lodjur.Git                    as Git
+-- import           Lodjur.Git.GitAgent
+-- import           Lodjur.Output
+-- import           Lodjur.Output.OutputLogger
+-- import           Lodjur.Output.OutputLoggers
+-- import           Lodjur.Output.OutputStreamer
+-- import           Lodjur.Process
+-- import           Lodjur.User
 
 import           Lodjur.Web.Auth.GitHub
 import           Lodjur.Web.Base
 
 import           Paths_lodjur
 
-readSession' :: Action Session
-readSession' = do
-  Env {..} <- getState
-  case envRunMode of
-    NormalMode ->
-      readSession
-    DevMode ->
-      return $ emptySession { currentUser = Just (User (UserId "Developer")) }
+type Port = Int
 
+{-
 readState :: Action DeployState
 readState = getState >>= liftIO . (? GetCurrentState) . envDeployer
 
@@ -135,7 +129,7 @@ data Layout
 
 renderLayout :: Html () -> Layout -> Action a
 renderLayout title layout = do
-  sess <- readSession'
+  sess <- readSession
   renderHtml $ doctypehtml_ $ html_ $ do
     head_ $ do
       title_ title
@@ -206,7 +200,6 @@ renderDeployJobs jobs = div_ [class_ "card"] $ do
   table_ [class_ "table mb-0"] $ do
     tr_ $ do
       th_ "Job"
-      th_ "Deployment"
       th_ "Revision"
       th_ "Created At"
       th_ "Created By"
@@ -216,10 +209,6 @@ renderDeployJobs jobs = div_ [class_ "card"] $ do
   renderJob :: (DeploymentJob, Maybe JobResult) -> Html ()
   renderJob (job, r) = tr_ $ do
     td_ (jobLink job)
-    case deploymentType job of
-      BuildOnly -> td_ [class_ "text-secondary"] "(Build-only)"
-      BuildCheck -> td_ [class_ "text-secondary"] "(Build and check)"
-      BuildDeploy -> td_ (toHtml (unDeploymentName (deploymentJobName job)))
     td_ (renderDeploymentRevision job)
     td_ (toHtml (formatUTCTime (deploymentTime job)))
     td_ (userIdLink (deploymentJobStartedBy job))
@@ -265,66 +254,6 @@ renderLatestSuccessful deployments jobs = div_ [class_ "card"] $ do
             td_ (renderDeploymentRevision job)
             td_ (jobLink job)
 
-renderDeployDatalist :: [Git.Revision] -> [Git.Ref] -> Text -> Html ()
-renderDeployDatalist revs refs listId = datalist_ [id_ listId] $ do
-  forM_ refs $ \case
-    Git.Branch name rev ->
-      option_ [value_ (Git.unRevision rev)] (toHtml name <> " (branch)")
-    Git.Tag name rev ->
-      option_ [value_ (Git.unRevision rev)] (toHtml name <> " (tag)")
-  forM_ (revs <> map Git.refRevision refs)
-    $ \rev -> option_ [value_ (Git.unRevision rev)] mempty
-
-
-renderDeployCard
-  :: [Deployment] -> [Git.Revision] -> [Git.Ref] -> DeployState -> Html ()
-renderDeployCard deployments revisions refs state = case state of
-  Idle -> do
-    div_ [class_ "card", id_ "deploy"] $ do
-      div_ [class_ "card-header"] "New Deploy"
-      div_ [class_ "card-body"]
-        $ form_ [method_ "post", action_ "/jobs"]
-        $ div_ [class_ "row"]
-        $ do
-            div_ [class_ "col"] $ do
-              select_
-                  [ name_ "deployment-name"
-                  , class_ "form-control"
-                  , id_ "deployment-selector"
-                  ]
-                $ forM_ deployments
-                $ \Deployment {..} ->
-                    let n = unDeploymentName deploymentName
-                        warnAttrs =
-                          [data_ "warn" "warn" | deploymentWarn]
-                    in  option_ (value_ n : warnAttrs) (toHtml n)
-              small_ [class_ "text-muted"]
-                     "Name of the Nixops deployment to target."
-            div_ [class_ "col"] $ do
-              input_
-                [name_ "revision", list_ "revisions", class_ "form-control"]
-              renderDeployDatalist revisions refs "revisions"
-              small_ [class_ "text-muted"] "Which git revision to deploy."
-            div_ [class_ "col"] $ input_
-              [ class_ "btn btn-secondary form-control"
-              , type_ "submit"
-              , name_ "action"
-              , value_ "Build"
-              ]
-            div_ [class_ "col"] $ input_
-              [ class_ "btn btn-secondary form-control"
-              , type_ "submit"
-              , name_ "action"
-              , value_ "Check"
-              ]
-            div_ [class_ "col"] $ input_
-              [ class_ "btn btn-primary form-control"
-              , type_ "submit"
-              , name_ "action"
-              , value_ "Deploy"
-              ]
-  Deploying _ -> return ()
-
 notFoundAction :: Action ()
 notFoundAction = do
   setStatus status404
@@ -360,8 +289,6 @@ homeAction :: Action ()
 homeAction = do
   Env {..}    <- getState
   deployments <- liftIO $ envDeployer ? GetDeployments
-  revisions   <- liftIO $ envGitReader ? GetRevisions
-  refs        <- liftIO $ envGitReader ? GetRefs
   deployState <- liftIO $ envDeployer ? GetCurrentState
   jobs        <- liftIO $ envDeployer ? GetJobs (Just 10)
   let content = do
@@ -369,11 +296,6 @@ homeAction = do
           div_ [class_ "col col-4"] $ renderCurrentState deployState
           div_ [class_ "col col-8"] $ renderLatestSuccessful deployments jobs
         div_ [class_ "row mt-5"] $ div_ [class_ "col"] $ renderDeployJobs jobs
-        div_ [class_ "row mt-5 mb-5"] $ div_ [class_ "col"] $ renderDeployCard
-          deployments
-          revisions
-          refs
-          deployState
   renderLayout "Lodjur Deployment Manager" (WithNavigation [] content)
 
 welcomeAction :: Action ()
@@ -392,15 +314,15 @@ newDeployAction = readState >>= \case
     deployer <- envDeployer <$> getState
     dName    <- DeploymentName <$> param' "deployment-name"
     revision <- Git.Revision <$> param' "revision"
-    action   <- param' "action"
+    -- action   <- param' "action"
     now      <- liftIO getCurrentTime
-    deployType <-
-      case action of
-        "Build" -> return BuildOnly
-        "Check" -> return BuildCheck
-        "Deploy" -> return BuildDeploy
-        _ -> raise $ "Unknown deploy action: " <> Text.pack action
-    liftIO (deployer ? Deploy deployType dName revision now (userId user)) >>= \case
+    -- deployType <-
+    --   case action of
+    --     "Build" -> return BuildOnly
+    --     "Check" -> return BuildCheck
+    --     "Deploy" -> return BuildDeploy
+    --     _ -> raise $ "Unknown deploy action: " <> Text.pack action
+    liftIO (deployer ? Deploy dName revision now (userId user)) >>= \case
       Just job -> do
         setStatus status302
         setHeader "Location" (jobHref job)
@@ -430,8 +352,8 @@ showJobAction jobId = do
   Env {..}   <- getState
   job        <- liftIO $ envDeployer ? GetJob jobId
   eventLogs  <- liftIO $ envEventLogger ? GetEventLogs
-  outputLog  <- getLogs jobId
-  appResults <- liftIO $ envDeployer ? GetCheckResults jobId
+  -- outputLog  <- getLogs jobId
+  -- appResults <- liftIO $ envDeployer ? GetCheckResults jobId
   case (job, HashMap.lookup jobId eventLogs) of
     (Just (job', _), Just eventLog) ->
       renderLayout "Job Details" $ WithNavigation ["Jobs", jobIdLink jobId] $ do
@@ -446,8 +368,8 @@ showJobAction jobId = do
         div_ [class_ "row mt-3"] $ div_ [class_ "col"] $ do
           h2_ [class_ "mb-3"] "Event Log"
           renderEventLog eventLog
-        commandOutput jobId outputLog
-        mapM_ (uncurry checkResults) appResults
+        -- commandOutput jobId outputLog
+        -- mapM_ (uncurry checkResults) appResults
     _ -> notFoundAction
 
 commandOutput :: JobId -> [Output] -> Html ()
@@ -552,6 +474,7 @@ getResultAction jobId appName = do
   Env {..}  <- getState
   appResult <- liftIO $ envDeployer ? GetCheckResult jobId appName
   json appResult
+-}
 
 data GithubRepository = GithubRepository
   { repositoryId       :: Integer
@@ -607,6 +530,7 @@ secureJsonData :: FromJSON a => Action a
 secureJsonData = do
   key     <- envGithubSecretToken <$> getState
   message <- body
+  liftIO $ C8.putStrLn message
   xhubsig <-
     header "X-HUB-SIGNATURE"
       >>= maybe (raise "Github didn't send a valid X-HUB-SIGNATURE") return
@@ -635,42 +559,45 @@ matchRepo :: [Text] -> Text -> Bool
 matchRepo [] _ = True
 matchRepo rs r = r `elem` rs
 
-refreshRemoteAction :: Action ()
-refreshRemoteAction = do
+webhookAction :: Action ()
+webhookAction = do
   event <- header "X-GitHub-Event"
-  case event of
-    Just "push" -> do
-      payload <- secureJsonData
-      refresh (repositoryFullName $ pushRepository payload)
-    Just "create" -> do
-      payload <- secureJsonData
-      refresh (repositoryFullName $ createRepository payload)
-    Just "delete" -> do
-      payload <- secureJsonData
-      refresh (repositoryFullName $ deleteRepository payload)
-    _ -> raise "Unsupported event"
- where
-  refresh repo = do
-    repos <- envGithubRepos <$> getState
-    if matchRepo repos repo
-      then do
-        gitAgent <- envGitAgent <$> getState
-        liftIO (gitAgent ! FetchRemote)
-        text "Queued FetchRemote"
-      else text "Ignored refresh request for uninteresting repository"
-
-type Port = Int
-
-staticPrefix :: String
-staticPrefix = "static/"
-
-static :: (Data.String.IsString a, Semigroup a) => a -> a
-static x = "/static/" <> x
+  payload <- secureJsonData
+  liftIO $ do
+    print event
+    print (payload :: Value)
+  -- case event of
+  --   Just "push" -> do
+  --     payload <- secureJsonData
+  --     refresh (repositoryFullName $ pushRepository payload)
+  --   Just "create" -> do
+  --     payload <- secureJsonData
+  --     refresh (repositoryFullName $ createRepository payload)
+  --   Just "delete" -> do
+  --     payload <- secureJsonData
+  --     refresh (repositoryFullName $ deleteRepository payload)
+  --   _ -> raise "Unsupported event"
+ -- where
+ --  refresh repo = do
+ --    repos <- envGithubRepos <$> getState
+ --    if matchRepo repos repo
+ --      then do
+ --        -- gitAgent <- envGitAgent <$> getState
+ --        -- liftIO (gitAgent ! FetchRemote)
+ --        text "Queued FetchRemote"
+ --      else text "Ignored refresh request for uninteresting repository"
 
 raise :: MonadIO m => Text -> ActionCtxT ctx m b
 raise msg = do
   setStatus status400
   text msg
+
+{-
+staticPrefix :: String
+staticPrefix = "static/"
+
+static :: (Data.String.IsString a, Semigroup a) => a -> a
+static x = "/static/" <> x
 
 redirectStatic :: String -> Policy
 redirectStatic staticBase =
@@ -678,7 +605,7 @@ redirectStatic staticBase =
 
 requireUser :: Action User
 requireUser  =
-  readSession' >>= \case
+  readSession >>= \case
     Session{ currentUser = Just u } -> return u
     _ -> do
       currentPath <- ("/" <>) . Text.intercalate "/" . pathInfo <$> request
@@ -695,9 +622,20 @@ requireUser  =
 requireLoggedIn :: App () -> App ()
 requireLoggedIn = prehook (void requireUser)
 
+-}
+
+homeAction :: Action ()
+homeAction = do
+  sess <- readSession
+  text (Text.pack $ show sess)
+
+welcomeAction :: Action ()
+welcomeAction =
+  redirect "/github/login"
+
 ifLoggedIn :: Action () -> Action () -> Action ()
 ifLoggedIn thenRoute elseRoute =
-  readSession' >>= \case
+  readSession >>= \case
     Session{ currentUser = Just _ } -> thenRoute
     _ -> elseRoute
 
@@ -710,27 +648,24 @@ runServer
   -> IO ()
 runServer port staticBase env githubOauth teamAuth = do
     cfg <- defaultSpockCfg emptySession PCNoDatabase env
-    when (envRunMode env /= NormalMode) $
-      putStrLn $ "RunMode: Running in " ++ show (envRunMode env)
     runSpock port (spock cfg app)
  where
   app = do
     -- Middleware
-    middleware (staticPolicy (redirectStatic staticBase))
+    -- middleware (staticPolicy (redirectStatic staticBase))
 
     -- Auth
-    when (envRunMode env /= DevMode) $
-      authRoutes githubOauth teamAuth
+    authRoutes githubOauth teamAuth
 
     -- Routes
     get "/"     (ifLoggedIn homeAction welcomeAction)
-    requireLoggedIn $ do
-      get "/jobs" getDeploymentJobsAction
-      post "/jobs" newDeployAction
-      get ("jobs" <//> var)               showJobAction
-      get ("jobs" <//> var <//> "output") streamOutputAction
-      get ("jobs" <//> var <//> "result" <//> var) getResultAction
-    post "/webhook/git/refresh" refreshRemoteAction
+    -- requireLoggedIn $ do
+    --   get "/jobs" getDeploymentJobsAction
+    --   post "/jobs" newDeployAction
+    --   get ("jobs" <//> var)               showJobAction
+    --   get ("jobs" <//> var <//> "output") streamOutputAction
+    --   get ("jobs" <//> var <//> "result" <//> var) getResultAction
+    post "/github/webhook" webhookAction
 
     -- Fallback
-    hookAnyAll (const notFoundAction)
+    -- hookAnyAll (const notFoundAction)

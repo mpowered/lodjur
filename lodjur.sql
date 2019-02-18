@@ -4,34 +4,32 @@ CREATE TABLE revisions (
 );
 
 CREATE TABLE builds (
-    job__id uuid PRIMARY KEY,
-    job__description text NOT NULL,
-    job__revision__id text REFERENCES revisions (id),
-    job__start_time timestamp with time zone NOT NULL,
-    job__finish_time timestamp with time zone NOT NULL,
-    job__status text NOT NULL,
-    job__started_by text NOT NULL
+    id uuid PRIMARY KEY,
+    revision__id text REFERENCES revisions (id) ON DELETE cascade,
+    start_time timestamp with time zone NOT NULL,
+    finish_time timestamp with time zone NOT NULL,
+    status text NOT NULL,
+    started_by text NOT NULL
 );
 
 CREATE TABLE deploys (
-    job__id uuid PRIMARY KEY,
-    job__description text NOT NULL,
-    job__revision__id text REFERENCES revisions (id),
-    job__start_time timestamp with time zone NOT NULL,
-    job__finish_time timestamp with time zone NOT NULL,
-    job__status text NOT NULL,
-    job__started_by text NOT NULL,
+    id uuid PRIMARY KEY,
+    revision__id text REFERENCES revisions (id) ON DELETE cascade,
+    start_time timestamp with time zone NOT NULL,
+    finish_time timestamp with time zone NOT NULL,
+    status text NOT NULL,
+    started_by text NOT NULL,
     target text NOT NULL
 );
 
 CREATE TABLE checks (
-    job__id uuid PRIMARY KEY,
-    job__description text NOT NULL,
-    job__revision__id text REFERENCES revisions (id),
-    job__start_time timestamp with time zone NOT NULL,
-    job__finish_time timestamp with time zone NOT NULL,
-    job__status text NOT NULL,
-    job__started_by text NOT NULL,
+    id uuid PRIMARY KEY,
+    revision__id text REFERENCES revisions (id) ON DELETE cascade,
+    start_time timestamp with time zone NOT NULL,
+    finish_time timestamp with time zone NOT NULL,
+    status text NOT NULL,
+    started_by text NOT NULL,
+    application text NOT NULL,
     examples integer NOT NULL,
     failed integer NOT NULL,
     pending integer NOT NULL,
@@ -40,7 +38,7 @@ CREATE TABLE checks (
 
 CREATE TABLE check_examples (
     id serial PRIMARY KEY,
-    check__job__id uuid REFERENCES checks (job__id),
+    check__id uuid REFERENCES checks (id) ON DELETE cascade,
     description text NOT NULL,
     full_description text NOT NULL,
     status text NOT NULL,

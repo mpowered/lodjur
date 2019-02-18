@@ -2,6 +2,7 @@
 {-# LANGUAGE DeriveGeneric     #-}
 {-# LANGUAGE OverloadedStrings #-}
 {-# LANGUAGE RecordWildCards   #-}
+{-# LANGUAGE TypeApplications  #-}
 module Lodjur.Deployment where
 
 import           Data.Aeson
@@ -10,49 +11,80 @@ import           Data.Hashable   (Hashable)
 import           Data.String
 import           Data.Text       (Text)
 import           Data.Time.Clock (UTCTime)
+import           Database.PostgreSQL.Simple.FromField
+import           Database.PostgreSQL.Simple.ToField
 import           GHC.Generics    (Generic)
 
 import           Lodjur.Git
 import           Lodjur.User
 
-newtype DeploymentName =
-  DeploymentName { unDeploymentName :: Text }
+newtype Target =
+  Target { unTarget :: Text }
   deriving (Eq, Show, Generic, Hashable, FromJSON)
 
-instance IsString DeploymentName where
-  fromString = DeploymentName . fromString
+instance IsString Target where
+  fromString = Target . fromString
 
 data Deployment =
-  Deployment { deploymentName :: DeploymentName
-             , deploymentWarn :: Bool
+  Deployment { deploymentTarget :: Target
+             , deploymentWarn   :: Bool
              }
   deriving (Eq, Show, Generic)
 
 type JobId = Text
-type CheckId = Text
+type RevisionId = Text
 
-data DeploymentJob = DeploymentJob
-  { jobId                  :: JobId
-  , deploymentJobName      :: DeploymentName
-  , deploymentRevision     :: Revision
-  , deploymentTime         :: UTCTime
-  , deploymentType         :: DeploymentType
-  , deploymentJobStartedBy :: UserId
-  } deriving (Show, Eq)
+data Job
+  = Job
+    { jobId             :: JobId
+    , jobRevisionId     :: RevisionId
+    , jobStartTime      :: UTCTime
+    , jobFinishTime     :: UTCTime
+    , jobStatus         :: JobStatus
+    , jobStartedBy      :: UserId
+    }
+  deriving (Show, Eq)
 
-data DeploymentType
-  = BuildDeploy
-  | BuildOnly
-  | BuildCheck
-  deriving (Eq, Ord, Enum, Show)
+data Build
+  = Build
+    { buildJobId          :: JobId
+    }
+  deriving (Show, Eq)
 
-data JobResult
-  = JobSuccessful
-  | JobFailed Text
+data Deploy
+  = Deploy
+    { deployJobId         :: JobId
+    , deployTarget        :: Target
+    }
+  deriving (Show, Eq)
+
+data Check
+  = Check
+    { checkJobId          :: JobId
+    }
+  deriving (Show, Eq)
+
+data JobStatus
+  = JobRunning
+  | JobSuccessful
+  | JobFailed
   deriving (Show, Eq, Generic)
 
-instance ToJSON JobResult
-instance FromJSON JobResult
+instance ToJSON JobStatus
+instance FromJSON JobStatus
+
+instance FromField JobStatus where
+  fromField f mdata = do
+    txt <- fromField @Text f mdata
+    case txt of
+      "running" -> return JobRunning
+      "successful" -> return JobSuccessful
+      "failed" -> return JobFailed
+
+instance ToField JobStatus where
+  toField JobRunning = toField @Text "running"
+  toField JobSuccessful = toField @Text "successful"
+  toField JobFailed = toField @Text "failed"
 
 type AppName = Text
 
