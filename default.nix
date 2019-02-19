@@ -10,7 +10,10 @@ let
 
   haskellPackages = pkgs.haskell.packages."${compiler}".override {
     overrides = self: super: {
-      github = pkgs.haskell.lib.doJailbreak (self.callPackage ./github {});
+      github = pkgs.haskell.lib.doJailbreak (
+               pkgs.haskell.lib.dontHaddock (
+                 self.callPackage ./github {}
+               ));
       jwt = self.callPackage ./jwt.nix {};
       hoauth2 = pkgs.haskell.lib.doJailbreak super.hoauth2;
       stm-containers = pkgs.haskell.lib.dontCheck super.stm-containers;
