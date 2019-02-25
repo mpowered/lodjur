@@ -51,9 +51,11 @@ executable          lodjur
                   , Lodjur.Web
                   , Lodjur.Web.Auth.GitHub
                   , Lodjur.Web.Base
+                  , Lodjur.Jobs
                   , Paths_lodjur
     build-depends:  base                  >= 4.11 && < 5
                   , aeson                 >= 1.3.1 && < 1.4
+                  , async                 >= 2.2 && < 2.3
                   , base16-bytestring     >= 0.1.1 && < 0.2
                   , beam-core             >= 0.7.2.2 && <0.8
                   , beam-postgres         >= 0.3.2.2 && <0.4
@@ -186,3 +188,16 @@ executable          lodjur-cli
 --                   , uuid                  >= 1.3.13 && < 1.4
 --                   , wai                   >= 3.2.1 && < 3.3
 --                   , wai-middleware-static >= 0.8.2 && < 0.9
+
+executable          gittest
+    hs-source-dirs: .
+    main-is:        GitTest.hs
+    ghc-options:    -Wall -threaded -O2 -rtsopts -with-rtsopts=-N -I0
+    other-modules:  Lodjur.Git
+    build-depends:  base                  >= 4.11 && < 5
+                  , async                 >= 2.2 && < 2.3
+                  , directory             >= 1.3 && < 1.4
+                  , filepath              >= 1.4 && < 1.5
+                  , process               >= 1.6.3 && < 1.7
+                  , text                  >= 1.2.3 && < 1.3
+                  , time                  >= 1.8.0 && < 1.9

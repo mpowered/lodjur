@@ -11,9 +11,25 @@ import GitHub.Data.URL           (URL)
 import GitHub.Internal.Prelude
 import Prelude ()
 
+newtype Sha = Sha { getSha :: Text }
+  deriving (Show, Data, Typeable, Eq, Ord, Generic)
+
+instance NFData Sha where rnf = genericRnf
+instance Binary Sha
+instance Hashable Sha where
+    hashWithSalt salt (Sha l) = hashWithSalt salt l
+instance IsString Sha where
+    fromString = Sha . fromString
+
+instance FromJSON Sha where
+    parseJSON = withText "Sha" (pure . Sha)
+
+instance ToJSON Sha where
+    toJSON = toJSON . getSha
+
 data CheckRun = CheckRun
     { checkRunId                :: !(Id CheckRun)
-    , checkRunHeadSha           :: !Text
+    , checkRunHeadSha           :: !Sha
     , checkRunStatus            :: !Text
     , checkRunDetailsUrl        :: !(Maybe URL)
     , checkRunExternalId        :: !(Maybe Text)
@@ -41,7 +57,7 @@ instance FromJSON CheckRun where
 
 data NewCheckRun = NewCheckRun
     { newCheckRunName           :: !(Name CheckRun)
-    , newCheckRunHeadSha        :: !Text
+    , newCheckRunHeadSha        :: !Sha
     , newCheckRunDetailsUrl     :: !(Maybe URL)
     , newCheckRunExternalId     :: !(Maybe Text)
     , newCheckRunStatus         :: !(Maybe Text)

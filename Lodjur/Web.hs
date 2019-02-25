@@ -532,7 +532,7 @@ data GithubCheckSuite = GithubCheckSuite
   { checkSuiteId            :: !Int
   , checkSuiteApp           :: !GithubApp
   , checkSuiteStatus        :: !Text
-  , checkSuiteHeadSha       :: !Text
+  , checkSuiteHeadSha       :: !GH.Sha
   , checkSuiteHeadBranch    :: !Text
   } deriving (Eq, Show)
 
@@ -718,7 +718,7 @@ checkSuiteEvent now GithubCheckSuiteEvent {..} = do
             [ DB.CheckSuite { DB.checksuiteId = checkSuiteId suite
                             , DB.checksuiteRepositoryOwner = ownerLogin owner
                             , DB.checksuiteRepositoryName = repositoryName repo
-                            , DB.checksuiteHeadSha = checkSuiteHeadSha suite
+                            , DB.checksuiteHeadSha = GH.getSha (checkSuiteHeadSha suite)
                             , DB.checksuiteStatus = checkSuiteStatus suite
                             , DB.checksuiteStartedAt = Just now
                             , DB.checksuiteCompletedAt = Nothing
