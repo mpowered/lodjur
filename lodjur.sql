@@ -1,44 +1,43 @@
-CREATE TABLE revisions (
-    id text PRIMARY KEY,
-    "time" timestamp with time zone NOT NULL
+CREATE TABLE events (
+    id serial8 PRIMARY KEY,
+    source text NOT NULL,
+    delivery text NULL,
+    "type" text NOT NULL,
+    created_at timestamp with time zone NOT NULL,
+    data jsonb NOT NULL
 );
 
-CREATE TABLE builds (
-    id uuid PRIMARY KEY,
-    revision__id text REFERENCES revisions (id) ON DELETE cascade,
-    start_time timestamp with time zone NOT NULL,
-    finish_time timestamp with time zone NOT NULL,
+CREATE TABLE check_suites (
+    id int8 PRIMARY KEY,
+    repository_owner text NOT NULL,
+    repository_name text NOT NULL,
+    head_sha text NOT NULL,
     status text NOT NULL,
-    started_by text NOT NULL
+    started_at timestamp with time zone NULL,
+    completed_at timestamp with time zone NULL
 );
 
-CREATE TABLE deploys (
-    id uuid PRIMARY KEY,
-    revision__id text REFERENCES revisions (id) ON DELETE cascade,
-    start_time timestamp with time zone NOT NULL,
-    finish_time timestamp with time zone NOT NULL,
+CREATE TABLE check_runs (
+    id int8 PRIMARY KEY,
+    check_suite__id int8 REFERENCES check_suites (id) ON DELETE cascade,
+    name text NOT NULL,
     status text NOT NULL,
-    started_by text NOT NULL,
-    target text NOT NULL
+    conclusion text NULL,
+    started_at timestamp with time zone NULL,
+    completed_at timestamp with time zone NULL
 );
 
-CREATE TABLE checks (
-    id uuid PRIMARY KEY,
-    revision__id text REFERENCES revisions (id) ON DELETE cascade,
-    start_time timestamp with time zone NOT NULL,
-    finish_time timestamp with time zone NOT NULL,
-    status text NOT NULL,
-    started_by text NOT NULL,
-    application text NOT NULL,
+CREATE TABLE rspec_summary (
+    id serial8 PRIMARY KEY,
     examples integer NOT NULL,
     failed integer NOT NULL,
     pending integer NOT NULL,
     duration double precision NOT NULL
 );
 
-CREATE TABLE check_examples (
-    id serial PRIMARY KEY,
-    check__id uuid REFERENCES checks (id) ON DELETE cascade,
+CREATE TABLE rspec_examples (
+    id serial8 PRIMARY KEY,
+    rspec_summary__id int8 REFERENCES rspec_summary (id) ON DELETE cascade,
     description text NOT NULL,
     full_description text NOT NULL,
     status text NOT NULL,

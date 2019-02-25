@@ -1,11 +1,8 @@
-{-# LANGUAGE DeriveAnyClass    #-}
-{-# LANGUAGE DeriveGeneric     #-}
 {-# LANGUAGE FlexibleContexts  #-}
 {-# LANGUAGE LambdaCase        #-}
 {-# LANGUAGE NamedFieldPuns    #-}
 {-# LANGUAGE OverloadedStrings #-}
 {-# LANGUAGE RecordWildCards   #-}
-{-# LANGUAGE TupleSections     #-}
 {-# LANGUAGE TypeFamilies      #-}
 module Lodjur.Web
   ( Port
@@ -49,8 +46,16 @@ import           URI.ByteString                (URIRef (..))
 import           Web.Spock                     hiding (static)
 import           Web.Spock.Config
 import           Web.Spock.Lucid
+import qualified Web.JWT                       as JWT
+
+import           Database.Beam
+import           Database.Beam.Backend.SQL
 
 import           Lodjur.Auth
+import qualified Lodjur.Database               as DB
+import qualified Lodjur.Database.CheckRun      as DB
+import qualified Lodjur.Database.CheckSuite    as DB
+import qualified Lodjur.Database.Event         as DB
 -- import           Lodjur.Deployment
 -- import           Lodjur.Deployment.Deployer
 -- import           Lodjur.Events.EventLogger
@@ -65,6 +70,13 @@ import           Lodjur.Auth
 
 import           Lodjur.Web.Auth.GitHub
 import           Lodjur.Web.Base
+
+import qualified GitHub                       as GH
+import qualified GitHub.Data.Id               as GH
+import qualified GitHub.Data.Name             as GH
+import qualified GitHub.Extra                 as GH
+import qualified GitHub.Endpoints.Apps        as GH
+import qualified GitHub.Endpoints.Checks      as GH
 
 import           Paths_lodjur
 
@@ -476,10 +488,23 @@ getResultAction jobId appName = do
   json appResult
 -}
 
+data GithubOwner = GithubOwner
+  { ownerId     :: !Int
+  , ownerLogin  :: !Text
+  } deriving (Eq, Show)
+
+instance FromJSON GithubOwner where
+  parseJSON (Object o) = do
+    ownerId     <- o .: "id"
+    ownerLogin  <- o .: "login"
+    return GithubOwner {..}
+  parseJSON invalid = typeMismatch "GithubOwner" invalid
+
 data GithubRepository = GithubRepository
-  { repositoryId       :: Integer
-  , repositoryName     :: Text
-  , repositoryFullName :: Text
+  { repositoryId       :: !Int
+  , repositoryName     :: !Text
+  , repositoryFullName :: !Text
+  , repositoryOwner    :: !GithubOwner
   } deriving (Eq, Show)
 
 instance FromJSON GithubRepository where
@@ -487,12 +512,65 @@ instance FromJSON GithubRepository where
     repositoryId        <- o .: "id"
     repositoryName      <- o .: "name"
     repositoryFullName  <- o .: "full_name"
+    repositoryOwner     <- o .: "owner"
     return GithubRepository {..}
   parseJSON invalid = typeMismatch "GithubRepository" invalid
 
+data GithubApp = GithubApp
+  { appId       :: !Int
+  , appName     :: !Text
+  } deriving (Eq, Show)
+
+instance FromJSON GithubApp where
+  parseJSON (Object o) = do
+    appId       <- o .: "id"
+    appName     <- o .: "name"
+    return GithubApp {..}
+  parseJSON invalid = typeMismatch "GithubApp" invalid
+
+data GithubCheckSuite = GithubCheckSuite
+  { checkSuiteId            :: !Int
+  , checkSuiteApp           :: !GithubApp
+  , checkSuiteStatus        :: !Text
+  , checkSuiteHeadSha       :: !Text
+  , checkSuiteHeadBranch    :: !Text
+  } deriving (Eq, Show)
+
+instance FromJSON GithubCheckSuite where
+  parseJSON (Object o) = do
+    checkSuiteId            <- o .: "id"
+    checkSuiteApp           <- o .: "app"
+    checkSuiteStatus        <- o .: "status"
+    checkSuiteHeadSha       <- o .: "head_sha"
+    checkSuiteHeadBranch    <- o .: "head_branch"
+    return GithubCheckSuite {..}
+  parseJSON invalid = typeMismatch "GithubCheckSuite" invalid
+
+data GithubCheckRun = GithubCheckRun
+  { checkRunId              :: !Int
+  , checkRunCheckSuite      :: !GithubCheckSuite
+  , checkRunName            :: !Text
+  , checkRunStatus          :: !Text
+  , checkRunConclusion      :: !(Maybe Text)
+  , checkRunStartedAt       :: !(Maybe UTCTime)
+  , checkRunCompletedAt     :: !(Maybe UTCTime)
+  } deriving (Eq, Show)
+
+instance FromJSON GithubCheckRun where
+  parseJSON (Object o) = do
+    checkRunId              <- o .: "id"
+    checkRunCheckSuite      <- o .: "check_suite"
+    checkRunName            <- o .: "name"
+    checkRunStatus          <- o .: "status"
+    checkRunConclusion      <- o .:?"conclusion"
+    checkRunStartedAt       <- o .:?"started_at"
+    checkRunCompletedAt     <- o .:?"completed_at"
+    return GithubCheckRun {..}
+  parseJSON invalid = typeMismatch "GithubCheckRun" invalid
+
 data GithubPushEvent = GithubPushEvent
-  { pushRef        :: Text
-  , pushRepository :: GithubRepository
+  { pushRef        :: !Text
+  , pushRepository :: !GithubRepository
   } deriving (Eq, Show)
 
 instance FromJSON GithubPushEvent where
@@ -503,8 +581,8 @@ instance FromJSON GithubPushEvent where
   parseJSON invalid = typeMismatch "GithubPushEvent" invalid
 
 data GithubCreateEvent = GithubCreateEvent
-  { createRef        :: Text
-  , createRepository :: GithubRepository
+  { createRef        :: !Text
+  , createRepository :: !GithubRepository
   } deriving (Eq, Show)
 
 instance FromJSON GithubCreateEvent where
@@ -515,8 +593,8 @@ instance FromJSON GithubCreateEvent where
   parseJSON invalid = typeMismatch "GithubCreateEvent" invalid
 
 data GithubDeleteEvent = GithubDeleteEvent
-  { deleteRef        :: Text
-  , deleteRepository :: GithubRepository
+  { deleteRef        :: !Text
+  , deleteRepository :: !GithubRepository
   } deriving (Eq, Show)
 
 instance FromJSON GithubDeleteEvent where
@@ -526,11 +604,39 @@ instance FromJSON GithubDeleteEvent where
     return GithubDeleteEvent {..}
   parseJSON invalid = typeMismatch "GithubDeleteEvent" invalid
 
+data GithubCheckSuiteEvent = GithubCheckSuiteEvent
+  { checkSuiteEventAction       :: !Text
+  , checkSuiteEventRepository   :: !GithubRepository
+  , checkSuiteEventCheckSuite   :: !GithubCheckSuite
+  } deriving (Eq, Show)
+
+instance FromJSON GithubCheckSuiteEvent where
+  parseJSON (Object o) = do
+    checkSuiteEventAction       <- o .: "action"
+    checkSuiteEventRepository   <- o .: "repository"
+    checkSuiteEventCheckSuite   <- o .: "check_suite"
+    return GithubCheckSuiteEvent {..}
+  parseJSON invalid = typeMismatch "GithubCheckSuiteEvent" invalid
+
+data GithubCheckRunEvent = GithubCheckRunEvent
+  { checkRunEventAction       :: !Text
+  , checkRunEventCheckRun     :: !GithubCheckRun
+  , checkRunEventRepository   :: !GithubRepository
+  } deriving (Eq, Show)
+
+instance FromJSON GithubCheckRunEvent where
+  parseJSON (Object o) = do
+    checkRunEventAction       <- o .: "action"
+    checkRunEventCheckRun     <- o .: "check_run"
+    checkRunEventRepository   <- o .: "repository"
+    return GithubCheckRunEvent {..}
+  parseJSON invalid = typeMismatch "GithubCheckRunEvent" invalid
+
 secureJsonData :: FromJSON a => Action a
 secureJsonData = do
   key     <- envGithubSecretToken <$> getState
   message <- body
-  liftIO $ C8.putStrLn message
+  -- liftIO $ C8.putStrLn message
   xhubsig <-
     header "X-HUB-SIGNATURE"
       >>= maybe (raise "Github didn't send a valid X-HUB-SIGNATURE") return
@@ -559,33 +665,115 @@ matchRepo :: [Text] -> Text -> Bool
 matchRepo [] _ = True
 matchRepo rs r = r `elem` rs
 
+requiredHeader :: MonadIO m => Text -> ActionCtxT ctx m Text
+requiredHeader hdr =
+  header hdr >>= \case
+    Just bs -> return bs
+    Nothing -> raise $ "Missing required header " <> hdr
+
 webhookAction :: Action ()
 webhookAction = do
-  event <- header "X-GitHub-Event"
-  payload <- secureJsonData
-  liftIO $ do
-    print event
-    print (payload :: Value)
-  -- case event of
-  --   Just "push" -> do
-  --     payload <- secureJsonData
-  --     refresh (repositoryFullName $ pushRepository payload)
-  --   Just "create" -> do
-  --     payload <- secureJsonData
-  --     refresh (repositoryFullName $ createRepository payload)
-  --   Just "delete" -> do
-  --     payload <- secureJsonData
-  --     refresh (repositoryFullName $ deleteRepository payload)
-  --   _ -> raise "Unsupported event"
- -- where
- --  refresh repo = do
- --    repos <- envGithubRepos <$> getState
- --    if matchRepo repos repo
- --      then do
- --        -- gitAgent <- envGitAgent <$> getState
- --        -- liftIO (gitAgent ! FetchRemote)
- --        text "Queued FetchRemote"
- --      else text "Ignored refresh request for uninteresting repository"
+  pool        <- envDbPool <$> getState
+  delivery    <- header "X-GitHub-Delivery"
+  githubEvent <- requiredHeader "X-GitHub-Event"
+  now         <- liftIO getCurrentTime
+  event       <- secureJsonData
+  DB.withConn pool $ \conn -> DB.insertEventsE conn
+    [ DB.Event  { DB.eventId = default_
+                , DB.eventSource = val_ "GitHub"
+                , DB.eventDelivery = val_ delivery
+                , DB.eventType = val_ githubEvent
+                , DB.eventCreatedAt = val_ now
+                , DB.eventData = val_ event
+                }
+    ]
+  case githubEvent of
+    "check_suite" -> checkSuiteEvent now =<< parseEvent event
+    "check_run"   -> checkRunEvent =<< parseEvent event
+    _             -> raise "Unknown event received"
+  text "Event received"
+  where
+    parseEvent e =
+      case fromJSON e of
+        Success a -> return a
+        Error err -> raise $ "event - no parse: " <> Text.pack err
+
+checkSuiteEvent :: UTCTime -> GithubCheckSuiteEvent -> Action ()
+checkSuiteEvent now GithubCheckSuiteEvent {..} = do
+  let action = checkSuiteEventAction
+      repo   = checkSuiteEventRepository
+      owner  = repositoryOwner repo
+      suite  = checkSuiteEventCheckSuite
+      app    = checkSuiteApp suite
+  ourAppId <- envGithubAppId <$> getState
+  if ourAppId == appId app
+    then
+    case action of
+      "requested" -> do
+        pool <- envDbPool <$> getState
+        mgr <- envManager <$> getState
+        auth <- getInstallationAccessToken
+        r <- liftIO $ do
+          DB.withConn pool $ \conn -> DB.insertCheckSuites conn
+            [ DB.CheckSuite { DB.checksuiteId = checkSuiteId suite
+                            , DB.checksuiteRepositoryOwner = ownerLogin owner
+                            , DB.checksuiteRepositoryName = repositoryName repo
+                            , DB.checksuiteHeadSha = checkSuiteHeadSha suite
+                            , DB.checksuiteStatus = checkSuiteStatus suite
+                            , DB.checksuiteStartedAt = Just now
+                            , DB.checksuiteCompletedAt = Nothing
+                            }
+            ]
+          GH.executeRequestWithMgr mgr auth $
+            GH.createCheckRunR
+            (GH.N $ ownerLogin owner)
+            (GH.N $ repositoryName repo)
+            GH.NewCheckRun
+              { newCheckRunName         = "nix build"
+              , newCheckRunHeadSha      = checkSuiteHeadSha suite
+              , newCheckRunDetailsUrl   = Nothing
+              , newCheckRunExternalId   = Nothing
+              , newCheckRunStatus       = Nothing
+              , newCheckRunStartedAt    = Nothing
+              , newCheckRunConclusion   = Nothing
+              , newCheckRunCompletedAt  = Nothing
+              , newCheckRunOutput       = Nothing
+              , newCheckRunActions      = Nothing
+              }
+        liftIO $ print r
+        return ()
+      _ ->
+        raise "Unknown check_suite action received"
+    else
+      text "Event ignore, different AppId"
+
+checkRunEvent :: GithubCheckRunEvent -> Action ()
+checkRunEvent GithubCheckRunEvent {..} = do
+  let action = checkRunEventAction
+      run    = checkRunEventCheckRun
+      suite  = checkRunCheckSuite run
+      app    = checkSuiteApp suite
+  ourAppId <- envGithubAppId <$> getState
+  if ourAppId == appId app
+    then
+    case action of
+      "created" -> do
+        pool <- envDbPool <$> getState
+        liftIO $
+          DB.withConn pool $ \conn -> DB.insertCheckRuns conn
+            [ DB.CheckRun   { DB.checkrunId = checkRunId run
+                            , DB.checkrunCheckSuite = DB.CheckSuiteKey (checkSuiteId suite)
+                            , DB.checkrunName = checkRunName run
+                            , DB.checkrunStatus = checkRunStatus run
+                            , DB.checkrunConclusion = checkRunConclusion run
+                            , DB.checkrunStartedAt = checkRunStartedAt run
+                            , DB.checkrunCompletedAt = checkRunCompletedAt run
+                            }
+            ]
+      _ ->
+        raise "Unknown check_run action received"
+    else
+      text "Event ignore, different AppId"
 
 raise :: MonadIO m => Text -> ActionCtxT ctx m b
 raise msg = do
@@ -669,3 +857,47 @@ runServer port staticBase env githubOauth teamAuth = do
 
     -- Fallback
     -- hookAnyAll (const notFoundAction)
+
+createInstallationJWT :: Action GH.Token
+createInstallationJWT = do
+  Env {..} <- getState
+  now <- liftIO getPOSIXTime
+  let claims = mempty { JWT.iss = JWT.stringOrURI (Text.pack $ show envGithubAppId)
+                      , JWT.iat = JWT.numericDate now
+                      , JWT.exp = JWT.numericDate (now + 600)
+                      }
+      jwt = JWT.encodeSigned envGithubAppSigner claims
+  return $ Text.encodeUtf8 jwt
+
+newInstallationAccessToken :: Action GH.AccessToken
+newInstallationAccessToken = do
+  Env {..} <- getState
+  tok <- createInstallationJWT
+  result <- liftIO $
+    GH.executeRequestWithMgr envManager (GH.Bearer tok) $
+      GH.createInstallationTokenR (GH.Id envGithubInstallationId)
+  case result of
+    Left err ->
+      raise $ "Unable to fetch installation access token: " <> Text.pack (show err)
+    Right token ->
+      return token
+
+getInstallationAccessToken :: Action GH.Auth
+getInstallationAccessToken = do
+  now <- liftIO getCurrentTime
+  Env {..} <- getState
+  let renew = do
+        at <- newInstallationAccessToken
+        liftIO $ putMVar envGithubInstallationAccessToken (Just at)
+        return (asAuth at)
+  tok <- liftIO $ takeMVar envGithubInstallationAccessToken
+  case tok of
+    Just at ->
+      case GH.accessTokenExpiresAt at of
+        Just e ->
+          if now >= e then renew else return (asAuth at)
+        Nothing ->
+          return (asAuth at)
+    Nothing -> renew
+  where
+    asAuth = GH.OAuth . GH.accessToken

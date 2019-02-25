@@ -7,10 +7,14 @@ library                 github-extra
     hs-source-dirs:     github-extra/src
     ghc-options:        -Wall -threaded -O2
     exposed-modules:    GitHub.Extra
+                      , GitHub.Data.Apps
+                      , GitHub.Data.CheckRuns
                       , GitHub.Data.Installations
                       , GitHub.Endpoints.Apps
+                      , GitHub.Endpoints.Apps.Installations
+                      , GitHub.Endpoints.Checks
     build-depends:      base                  >= 4.11 && < 5
-                      , github                >= 0.19 && < 0.21
+                      , github                >= 0.21 && < 0.22
                       , http-types            >= 0.12.1 && < 0.13
                       , text                  >= 1.2.3 && < 1.3
 
@@ -20,8 +24,11 @@ executable          lodjur
     ghc-options:    -Wall -threaded -O2 -rtsopts -with-rtsopts=-N -I0
     other-modules:  Config
                   , Lodjur.Auth
-                  -- , Lodjur.Database
-                  -- , Lodjur.Database.Internal
+                  , Lodjur.Database
+                  , Lodjur.Database.CheckRun
+                  , Lodjur.Database.CheckSuite
+                  , Lodjur.Database.Event
+                  , Lodjur.Database.Internal
                   -- , Lodjur.Database.Job
                   -- , Lodjur.Database.Revision
                   -- , Lodjur.Deployment
@@ -30,7 +37,7 @@ executable          lodjur
                   -- , Lodjur.Events
                   -- , Lodjur.Events.EventLogger
                   -- , Lodjur.Events.Database
-                  -- , Lodjur.Git
+                  , Lodjur.Git
                   -- , Lodjur.Git.Command
                   -- , Lodjur.Git.GitAgent
                   -- , Lodjur.Git.GitReader
@@ -55,7 +62,8 @@ executable          lodjur
                   , cryptonite            >= 0.25 && < 0.26
                   , directory             >= 1.3 && < 1.4
                   , filepath              >= 1.4 && < 1.5
-                  , github                >= 0.19 && < 0.21
+                  , github                >= 0.21 && < 0.22
+                  , github-extra
                   , hashable              >= 1.2.7 && < 1.3
                   , hoauth2
                   , htoml                 >= 1.0.0 && < 1.1
@@ -81,7 +89,6 @@ executable          lodjur
                   , uuid                  >= 1.3.13 && < 1.4
                   , wai                   >= 3.2.1 && < 3.3
                   , wai-middleware-static >= 0.8.2 && < 0.9
-                  , github-extra
 
 executable          lodjur-cli
     hs-source-dirs: .
@@ -89,6 +96,12 @@ executable          lodjur-cli
     ghc-options:    -Wall -threaded -O2 -rtsopts -with-rtsopts=-N -I0
     other-modules:  Config
                   , Lodjur.Auth
+                  , Lodjur.Database
+                  , Lodjur.Database.CheckRun
+                  , Lodjur.Database.CheckSuite
+                  , Lodjur.Database.Event
+                  , Lodjur.Database.Internal
+                  , Lodjur.Git
                   , Lodjur.User
                   , Lodjur.Web
                   , Lodjur.Web.Auth.GitHub
@@ -104,7 +117,7 @@ executable          lodjur-cli
                   , cryptonite            >= 0.25 && < 0.26
                   , directory             >= 1.3 && < 1.4
                   , filepath              >= 1.4 && < 1.5
-                  , github                >= 0.19 && < 0.21
+                  , github                >= 0.21 && < 0.22
                   , github-extra
                   , hashable              >= 1.2.7 && < 1.3
                   , hoauth2
@@ -147,7 +160,7 @@ executable          lodjur-cli
 --                   , cryptonite            >= 0.25 && < 0.26
 --                   , directory             >= 1.3 && < 1.4
 --                   , filepath              >= 1.4 && < 1.5
---                   , github                >= 0.19 && < 0.20
+--                   , github                >= 0.21 && < 0.22
 --                   , hashable              >= 1.2.7 && < 1.3
 --                   , hoauth2
 --                   , htoml                 >= 1.0.0 && < 1.1

@@ -9,3 +9,5 @@ cabal.sandbox.config
 /dist
 /dist-*
 /lodjur.toml
+tags
+result

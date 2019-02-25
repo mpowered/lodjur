@@ -6,12 +6,15 @@ module Lodjur.Database
   , destroyPool
   , withConn
   , withConnNoTran
+  , module Lodjur.Database.Internal
   )
 where
 
+import           Control.Monad.IO.Class
 import           Data.Pool
-import           Data.Time.Clock            (NominalDiffTime)
+import           Data.Time.Clock               (NominalDiffTime)
 import           Database.PostgreSQL.Simple
+import           Lodjur.Database.Internal
 
 type DbPool = Pool Connection
 
@@ -21,8 +24,8 @@ newPool ci = createPool (connect ci) close
 destroyPool :: DbPool -> IO ()
 destroyPool = destroyAllResources
 
-withConn :: DbPool -> (Connection -> IO a) -> IO a
-withConn pool a = withResource pool $ \conn -> withTransaction conn $ a conn
+withConn :: MonadIO m => DbPool -> (Connection -> IO a) -> m a
+withConn pool a = liftIO $ withResource pool $ \conn -> withTransaction conn $ a conn
 
-withConnNoTran :: DbPool -> (Connection -> IO a) -> IO a
-withConnNoTran = withResource
+withConnNoTran :: MonadIO m => DbPool -> (Connection -> IO a) -> m a
+withConnNoTran pool a = liftIO $ withResource pool a

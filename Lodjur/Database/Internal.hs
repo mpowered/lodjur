@@ -5,7 +5,6 @@
 {-# LANGUAGE GADTs                 #-}
 {-# LANGUAGE LambdaCase            #-}
 {-# LANGUAGE MultiParamTypeClasses #-}
-{-# LANGUAGE OverloadedStrings     #-}
 {-# LANGUAGE StandaloneDeriving    #-}
 {-# LANGUAGE TypeFamilies          #-}
 {-# LANGUAGE UndecidableInstances  #-}
@@ -13,16 +12,20 @@
 module Lodjur.Database.Internal where
 
 import           Data.Aeson                             (Value)
-import           Data.Int                               (Int32)
+import           Data.Int                               (Int64)
 import           Data.Text                              (Text)
 import qualified Data.Text                              as Text
 import           Data.Time.Clock                        (UTCTime)
-import           Data.UUID                              (UUID)
 import           Database.Beam
-import           Database.Beam.Backend.SQL
+import qualified Database.Beam.Postgres                 as Pg
+import           Database.PostgreSQL.Simple
 import           Database.PostgreSQL.Simple.FromField
 import           Database.PostgreSQL.Simple.ToField
-import           Lodjur.Git                             (Hash)
+
+
+beam :: Connection -> Pg.Pg a -> IO a
+beam = Pg.runBeamPostgres
+--runBeamPostgres = runBeamPostgresDebug putStrLn
 
 class DbEnum a where
   enumToText :: a -> Text
@@ -38,11 +41,9 @@ fromDbEnumField f mdata =
     Right ok -> return ok
 
 data DB f = DB
-  { dbRevisions     :: f (TableEntity RevisionT)
-  , dbBuilds        :: f (TableEntity BuildT)
-  , dbDeploys       :: f (TableEntity DeployT)
-  , dbChecks        :: f (TableEntity CheckT)
-  , dbCheckExamples :: f (TableEntity CheckExampleT)
+  { dbEvents        :: f (TableEntity EventT)
+  , dbCheckRuns     :: f (TableEntity CheckRunT)
+  , dbCheckSuites   :: f (TableEntity CheckSuiteT)
   } deriving Generic
 
 instance Database be DB
@@ -50,105 +51,71 @@ instance Database be DB
 db :: DatabaseSettings be DB
 db = defaultDbSettings
 
--- Revisions
+-- Events
 
-data RevisionT f = Revision
-  { revId           :: C f Hash
-  , revTime         :: C f UTCTime
+data EventT f = Event
+  { eventId         :: C f Int64
+  , eventSource     :: C f Text
+  , eventDelivery   :: C f (Maybe Text)
+  , eventType       :: C f Text
+  , eventCreatedAt  :: C f UTCTime
+  , eventData       :: C f Value
   } deriving (Generic, Beamable)
 
-instance Table RevisionT where
-  data PrimaryKey RevisionT f = RevisionKey (C f Hash) deriving (Generic, Beamable)
-  primaryKey = RevisionKey <$> revId
+instance Table EventT where
+  data PrimaryKey EventT f = EventKey (C f Int64) deriving (Generic, Beamable)
+  primaryKey = EventKey <$> eventId
 
-type Revision = RevisionT Identity
-deriving instance Show Revision
-deriving instance Show (PrimaryKey RevisionT Identity)
+type Event = EventT Identity
+deriving instance Show Event
+deriving instance Show (PrimaryKey EventT Identity)
 
--- Jobs
+-- Check Suites
 
-data JobStatus
-  = JobRunning
-  | JobSuccess
-  | JobFailure
-  deriving (Show, Read, Eq, Ord, Enum)
-
-instance DbEnum JobStatus where
-  enumFromText "running" = Right JobRunning
-  enumFromText "success" = Right JobSuccess
-  enumFromText "fail"    = Right JobFailure
-  enumFromText bad       = Left bad
-
-  enumToText JobRunning  = "running"
-  enumToText JobSuccess  = "success"
-  enumToText JobFailure  = "fail"
-
-instance FromField JobStatus where
-  fromField = fromDbEnumField
-
-instance ToField JobStatus where
-  toField = toDbEnumField
-
-instance HasSqlValueSyntax be Text => HasSqlValueSyntax be JobStatus where
-  sqlValueSyntax = sqlValueSyntax . enumToText
-
-instance (BackendFromField be JobStatus, BeamBackend be) => FromBackendRow be JobStatus
-
-data BuildT f = Build
-  { buildId             :: C f UUID
-  , buildRevision       :: PrimaryKey RevisionT f
-  , buildStartTime      :: C f UTCTime
-  , buildFinishTime     :: C f UTCTime
-  , buildStatus         :: C f JobStatus
-  , buildStartedBy      :: C f Text
+data CheckSuiteT f = CheckSuite
+  { checksuiteId                :: C f Int
+  , checksuiteRepositoryOwner   :: C f Text
+  , checksuiteRepositoryName    :: C f Text
+  , checksuiteHeadSha           :: C f Text
+  , checksuiteStatus            :: C f Text
+  , checksuiteStartedAt         :: C f (Maybe UTCTime)
+  , checksuiteCompletedAt       :: C f (Maybe UTCTime)
   } deriving (Generic, Beamable)
 
-instance Table BuildT where
-  data PrimaryKey BuildT f = BuildKey (C f UUID) deriving (Generic, Beamable)
-  primaryKey = BuildKey <$> buildId
+instance Table CheckSuiteT where
+  data PrimaryKey CheckSuiteT f = CheckSuiteKey (C f Int) deriving (Generic, Beamable)
+  primaryKey = CheckSuiteKey <$> checksuiteId
 
-type Build = BuildT Identity
-deriving instance Show Build
+type CheckSuite = CheckSuiteT Identity
+deriving instance Show CheckSuite
+deriving instance Show (PrimaryKey CheckSuiteT Identity)
 
-data DeployT f = Deploy
-  { deployId            :: C f UUID
-  , deployRevision      :: PrimaryKey RevisionT f
-  , deployStartTime     :: C f UTCTime
-  , deployFinishTime    :: C f UTCTime
-  , deployStatus        :: C f JobStatus
-  , deployStartedBy     :: C f Text
-  , deployTarget        :: C f Text
+-- Check Runs
+
+data CheckRunT f = CheckRun
+  { checkrunId                :: C f Int
+  , checkrunCheckSuite        :: PrimaryKey CheckSuiteT f
+  , checkrunName              :: C f Text
+  , checkrunStatus            :: C f Text
+  , checkrunConclusion        :: C f (Maybe Text)
+  , checkrunStartedAt         :: C f (Maybe UTCTime)
+  , checkrunCompletedAt       :: C f (Maybe UTCTime)
   } deriving (Generic, Beamable)
 
-instance Table DeployT where
-  data PrimaryKey DeployT f = DeployKey (C f UUID) deriving (Generic, Beamable)
-  primaryKey = DeployKey <$> deployId
+instance Table CheckRunT where
+  data PrimaryKey CheckRunT f = CheckRunKey (C f Int) deriving (Generic, Beamable)
+  primaryKey = CheckRunKey <$> checkrunId
 
-type Deploy = DeployT Identity
-deriving instance Show Deploy
+type CheckRun = CheckRunT Identity
+deriving instance Show CheckRun
+deriving instance Show (PrimaryKey CheckRunT Identity)
 
-data CheckT f = Check
-  { checkId             :: C f UUID
-  , checkRevision       :: PrimaryKey RevisionT f
-  , checkStartTime      :: C f UTCTime
-  , checkFinishTime     :: C f UTCTime
-  , checkStatus         :: C f JobStatus
-  , checkStartedBy      :: C f Text
-  , checkApplication    :: C f Text
-  , checkExamples       :: C f Int32
-  , checkFailed         :: C f Int32
-  , checkPending        :: C f Int32
-  , checkDuration       :: C f Double
-  } deriving (Generic, Beamable)
-
-instance Table CheckT where
-  data PrimaryKey CheckT f = CheckKey (C f UUID) deriving (Generic, Beamable)
-  primaryKey = CheckKey <$> checkId
-
-type Check = CheckT Identity
-deriving instance Show Check
-deriving instance Show (PrimaryKey CheckT Identity)
-
+{-
+  , checkSuiteApplication    :: C f Text
+  , checkSuiteExamples       :: C f Int32
+  , checkSuiteFailed         :: C f Int32
+  , checkSuitePending        :: C f Int32
+  , checkSuiteDuration       :: C f Double
 data CheckExampleT f = CheckExample
   { egId                :: C f Int32
   , egCheck             :: PrimaryKey CheckT f
@@ -166,3 +133,4 @@ instance Table CheckExampleT where
 
 type CheckExample = CheckExampleT Identity
 deriving instance Show CheckExample
+-}
