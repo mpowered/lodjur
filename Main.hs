@@ -46,6 +46,8 @@ start LodjurOptions {..} = do
     , githubAppId = envGithubAppId
     , githubAppSigner = envGithubAppSigner
     , githubInstallationId = envGithubInstallationId
+    , gitEnv = envGitEnv
+    , buildEnv = envBuildEnv
     , ..
     } <- readConfiguration configFile
 

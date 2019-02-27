@@ -5,8 +5,7 @@
 {-# LANGUAGE RecordWildCards   #-}
 {-# LANGUAGE TypeFamilies      #-}
 module Lodjur.Web
-  ( Port
-  , runServer
+  ( runServer
   )
 where
 
@@ -56,6 +55,8 @@ import qualified Lodjur.Database               as DB
 import qualified Lodjur.Database.CheckRun      as DB
 import qualified Lodjur.Database.CheckSuite    as DB
 import qualified Lodjur.Database.Event         as DB
+import qualified Lodjur.Jobs                   as Jobs
+import qualified Lodjur.Git                    as Git
 -- import           Lodjur.Deployment
 -- import           Lodjur.Deployment.Deployer
 -- import           Lodjur.Events.EventLogger
@@ -79,8 +80,6 @@ import qualified GitHub.Endpoints.Apps        as GH
 import qualified GitHub.Endpoints.Checks      as GH
 
 import           Paths_lodjur
-
-type Port = Int
 
 {-
 readState :: Action DeployState
@@ -714,16 +713,15 @@ checkSuiteEvent now GithubCheckSuiteEvent {..} = do
         mgr <- envManager <$> getState
         auth <- getInstallationAccessToken
         r <- liftIO $ do
-          DB.withConn pool $ \conn -> DB.insertCheckSuites conn
-            [ DB.CheckSuite { DB.checksuiteId = checkSuiteId suite
-                            , DB.checksuiteRepositoryOwner = ownerLogin owner
-                            , DB.checksuiteRepositoryName = repositoryName repo
-                            , DB.checksuiteHeadSha = GH.getSha (checkSuiteHeadSha suite)
-                            , DB.checksuiteStatus = checkSuiteStatus suite
-                            , DB.checksuiteStartedAt = Just now
-                            , DB.checksuiteCompletedAt = Nothing
-                            }
-            ]
+          DB.withConn pool $ \conn -> DB.upsertCheckSuite conn $
+            DB.CheckSuite { DB.checksuiteId = checkSuiteId suite
+                          , DB.checksuiteRepositoryOwner = ownerLogin owner
+                          , DB.checksuiteRepositoryName = repositoryName repo
+                          , DB.checksuiteHeadSha = GH.getSha (checkSuiteHeadSha suite)
+                          , DB.checksuiteStatus = checkSuiteStatus suite
+                          , DB.checksuiteStartedAt = Just now
+                          , DB.checksuiteCompletedAt = Nothing
+                          }
           GH.executeRequestWithMgr mgr auth $
             GH.createCheckRunR
             (GH.N $ ownerLogin owner)
@@ -753,23 +751,27 @@ checkRunEvent GithubCheckRunEvent {..} = do
       run    = checkRunEventCheckRun
       suite  = checkRunCheckSuite run
       app    = checkSuiteApp suite
-  ourAppId <- envGithubAppId <$> getState
-  if ourAppId == appId app
+      repo   = checkRunEventRepository
+      owner  = repositoryOwner repo
+  Env {..} <- getState
+  if envGithubAppId == appId app
     then
     case action of
-      "created" -> do
-        pool <- envDbPool <$> getState
-        liftIO $
-          DB.withConn pool $ \conn -> DB.insertCheckRuns conn
-            [ DB.CheckRun   { DB.checkrunId = checkRunId run
-                            , DB.checkrunCheckSuite = DB.CheckSuiteKey (checkSuiteId suite)
-                            , DB.checkrunName = checkRunName run
-                            , DB.checkrunStatus = checkRunStatus run
-                            , DB.checkrunConclusion = checkRunConclusion run
-                            , DB.checkrunStartedAt = checkRunStartedAt run
-                            , DB.checkrunCompletedAt = checkRunCompletedAt run
-                            }
-            ]
+      "created" ->
+        liftIO $ do
+          DB.withConn envDbPool $ \conn -> DB.upsertCheckRun conn $
+            DB.CheckRun   { DB.checkrunId = checkRunId run
+                          , DB.checkrunCheckSuite = DB.CheckSuiteKey (checkSuiteId suite)
+                          , DB.checkrunName = checkRunName run
+                          , DB.checkrunStatus = checkRunStatus run
+                          , DB.checkrunConclusion = checkRunConclusion run
+                          , DB.checkrunStartedAt = checkRunStartedAt run
+                          , DB.checkrunCompletedAt = checkRunCompletedAt run
+                          }
+          let repo' = Git.Repo (Text.unpack $ ownerLogin owner) (Text.unpack $ repositoryName repo)
+          sem <- newQSem 10
+          Jobs.runJob (const sem) $
+            Jobs.build envGitEnv envBuildEnv repo' (Text.unpack $ GH.getSha $ checkSuiteHeadSha suite)
       _ ->
         raise "Unknown check_run action received"
     else
@@ -828,7 +830,7 @@ ifLoggedIn thenRoute elseRoute =
     _ -> elseRoute
 
 runServer
-  :: Port
+  :: Int
   -> String
   -> Env
   -> OAuth2

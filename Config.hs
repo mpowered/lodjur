@@ -13,11 +13,13 @@ import           Data.Text.Encoding           as Text
 import           Database.PostgreSQL.Simple
 import           Network.OAuth.OAuth2
 import           Text.Toml
-import           URI.ByteString hiding (Port)
+import           URI.ByteString
 import           URI.ByteString.QQ
 import qualified Web.JWT                      as JWT
 
 import           Lodjur.Auth
+import qualified Lodjur.Build                 as Build
+import qualified Lodjur.Git                   as Git
 -- import qualified Lodjur.Database              as Database
 -- import           Lodjur.Deployment
 -- import qualified Lodjur.Deployment.Deployer   as Deployer
@@ -27,12 +29,11 @@ import           Lodjur.Auth
 -- import qualified Lodjur.Output.OutputLoggers  as OutputLoggers
 -- import qualified Lodjur.Output.OutputStreamer as OutputStreamer
 -- import           Lodjur.Process
-import           Lodjur.Web (Port)
 -- import           Lodjur.Web.Base
 
 data Config = Config
   { workDir                 :: FilePath
-  , httpPort                :: Port
+  , httpPort                :: Int
   , databaseConnectInfo     :: ConnectInfo
   , githubSecretToken       :: ByteString
   , githubRepos             :: [Text]
@@ -42,6 +43,8 @@ data Config = Config
   , githubAppSigner         :: JWT.Signer
   , githubInstallationId    :: Int
   , staticDirectory         :: FilePath
+  , gitEnv                  :: Git.Env
+  , buildEnv                :: Build.Env
   }
 
 instance FromJSON Config where
@@ -55,6 +58,8 @@ instance FromJSON Config where
     githubAppSigner <- o .: "github-app-private-key" >>= parsePrivateKey
     githubInstallationId <- o .: "github-installation-id"
     staticDirectory <- o .: "static-directory"
+    gitEnv <- o .: "git"
+    buildEnv <- o .: "nix-build"
 
     oauthClientId <- o .: "github-oauth-client-id"
     oauthClientSecret <- o .: "github-oauth-client-secret"

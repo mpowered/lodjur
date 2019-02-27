@@ -10,6 +10,8 @@ import qualified Web.JWT                      as JWT
 import           Web.Spock
 
 import           Lodjur.Database
+import qualified Lodjur.Build                 as Build
+import qualified Lodjur.Git                   as Git
 -- import           Lodjur.Deployment.Deployer
 -- import           Lodjur.Events.EventLogger
 -- import           Lodjur.Git.GitAgent
@@ -34,6 +36,8 @@ data Env = Env
   , envGithubInstallationAccessToken    :: !(MVar (Maybe GH.AccessToken))
   , envManager                          :: !Manager
   , envDbPool                           :: !DbPool
+  , envGitEnv                           :: !Git.Env
+  , envBuildEnv                         :: !Build.Env
   }
 
 data Session = Session
