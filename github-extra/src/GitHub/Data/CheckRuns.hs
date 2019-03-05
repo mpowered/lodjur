@@ -5,27 +5,14 @@
 
 module GitHub.Data.CheckRuns where
 
+import GitHub.Data.Apps          (AppRef)
+import GitHub.Data.CheckSuite    (EventCheckSuite)
 import GitHub.Data.Id            (Id)
 import GitHub.Data.Name          (Name)
+import GitHub.Data.Sha           (Sha)
 import GitHub.Data.URL           (URL)
 import GitHub.Internal.Prelude
 import Prelude ()
-
-newtype Sha = Sha { getSha :: Text }
-  deriving (Show, Data, Typeable, Eq, Ord, Generic)
-
-instance NFData Sha where rnf = genericRnf
-instance Binary Sha
-instance Hashable Sha where
-    hashWithSalt salt (Sha l) = hashWithSalt salt l
-instance IsString Sha where
-    fromString = Sha . fromString
-
-instance FromJSON Sha where
-    parseJSON = withText "Sha" (pure . Sha)
-
-instance ToJSON Sha where
-    toJSON = toJSON . getSha
 
 data CheckRun = CheckRun
     { checkRunId                :: !(Id CheckRun)
@@ -89,6 +76,38 @@ instance ToJSON NewCheckRun where
         notNull (_, Null) = False
         notNull (_, _)    = True
 
+data UpdateCheckRun = UpdateCheckRun
+    { updateCheckRunName        :: !(Name CheckRun)
+    , updateCheckRunDetailsUrl  :: !(Maybe URL)
+    , updateCheckRunExternalId  :: !(Maybe Text)
+    , updateCheckRunStatus      :: !(Maybe Text)
+    , updateCheckRunStartedAt   :: !(Maybe UTCTime)
+    , updateCheckRunConclusion  :: !(Maybe Text)
+    , updateCheckRunCompletedAt :: !(Maybe UTCTime)
+    , updateCheckRunOutput      :: !(Maybe CheckRunOutput)
+    , updateCheckRunActions     :: !(Maybe [CheckRunAction])
+    }
+  deriving (Show, Data, Typeable, Eq, Ord, Generic)
+
+instance NFData UpdateCheckRun where rnf = genericRnf
+instance Binary UpdateCheckRun
+
+instance ToJSON UpdateCheckRun where
+    toJSON UpdateCheckRun {..} = object $ filter notNull
+        [ "name"            .= updateCheckRunName
+        , "details_url"     .= updateCheckRunDetailsUrl
+        , "external_id"     .= updateCheckRunExternalId
+        , "status"          .= updateCheckRunStatus
+        , "started_at"      .= updateCheckRunStartedAt
+        , "conclusion"      .= updateCheckRunConclusion
+        , "completed_at"    .= updateCheckRunCompletedAt
+        , "output"          .= updateCheckRunOutput
+        , "actions"         .= updateCheckRunActions
+        ]
+      where
+        notNull (_, Null) = False
+        notNull (_, _)    = True
+
 data CheckRunOutput = CheckRunOutput
     { checkRunOutputTitle   :: !Text
     , checkRunOutputSummary :: !Text
@@ -133,3 +152,37 @@ instance ToJSON CheckRunAction where
       where
         notNull (_, Null) = False
         notNull (_, _)    = True
+
+data EventCheckRun = EventCheckRun
+    { eventCheckRunId               :: !(Id CheckRun)
+    , eventCheckRunName             :: !(Name CheckRun)
+    , eventCheckRunApp              :: !AppRef
+    , eventCheckRunCheckSuite       :: !EventCheckSuite
+    , eventCheckRunHeadSha          :: !Sha
+    , eventCheckRunStatus           :: !Text
+    , eventCheckRunDetailsUrl       :: !(Maybe URL)
+    , eventCheckRunExternalId       :: !(Maybe Text)
+    , eventCheckRunStartedAt        :: !(Maybe UTCTime)
+    , eventCheckRunConclusion       :: !(Maybe Text)
+    , eventCheckRunCompletedAt      :: !(Maybe UTCTime)
+    , eventCheckRunOutput           :: !(Maybe CheckRunOutput)
+    }
+  deriving (Show, Data, Typeable, Eq, Ord, Generic)
+
+instance NFData EventCheckRun where rnf = genericRnf
+instance Binary EventCheckRun
+
+instance FromJSON EventCheckRun where
+    parseJSON = withObject "EventCheckRun" $ \o -> EventCheckRun
+        <$> o .: "id"
+        <*> o .: "name"
+        <*> o .: "app"
+        <*> o .: "check_suite"
+        <*> o .: "head_sha"
+        <*> o .: "status"
+        <*> o .:?"details_url"
+        <*> o .:?"external_id"
+        <*> o .:?"started_at"
+        <*> o .:?"conclusion"
+        <*> o .:?"completed_at"
+        <*> o .:?"output"

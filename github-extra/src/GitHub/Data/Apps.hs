@@ -39,6 +39,20 @@ instance FromJSON App where
         <*> o .:?"created_at"
         <*> o .:?"updated_at"
 
+data AppRef = AppRef
+    { appRefId    :: !(Id App)
+    , appRefName  :: !(Name App)
+    }
+  deriving (Show, Data, Typeable, Eq, Ord, Generic)
+
+instance NFData AppRef where rnf = genericRnf
+instance Binary AppRef
+
+instance FromJSON AppRef where
+    parseJSON = withObject "AppRef" $ \o -> AppRef
+        <$> o .: "id"
+        <*> o .: "name"
+
 data AccessToken = AccessToken
     { accessToken          :: !Token
     , accessTokenExpiresAt :: !(Maybe UTCTime)

@@ -9,6 +9,8 @@ import           Data.Aeson
 import           System.Process
 import           System.Exit
 
+import qualified Lodjur.Git as Git
+
 newtype BuildError = BuildError Int
 
 instance Show BuildError where
@@ -51,3 +53,9 @@ build env cwd file attr args =
     $ withCwd cwd
     $ nixBuild env
     $ [file, "-A", attr] ++ concat [ ["--argstr", arg, str] | (arg, str) <- args ]
+
+-- build' :: Git.Env -> Build.Env -> Git.Repo -> String -> IO ()
+build' :: Git.Env -> Env -> Git.Repo -> String -> IO ()
+build' gitEnv buildEnv repo sha = do
+  workdir <- Git.checkout gitEnv repo sha
+  build buildEnv workdir "release.nix" "mpowered-services" [("railsEnv", "production")]

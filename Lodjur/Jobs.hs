@@ -1,5 +1,3 @@
-{-# LANGUAGE RecordWildCards #-}
-
 module Lodjur.Jobs where
 
 import           Control.Concurrent
