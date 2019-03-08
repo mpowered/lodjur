@@ -3,6 +3,7 @@ module Lodjur.Web.Base where
 import           Control.Concurrent
 import           Data.ByteString              (ByteString)
 import           Data.Text                    (Text)
+import qualified Database.Redis               as Redis
 import qualified GitHub.Extra                 as GH
 import           Network.HTTP.Client
 import           URI.ByteString
@@ -10,8 +11,6 @@ import qualified Web.JWT                      as JWT
 import           Web.Spock
 
 import           Lodjur.Database
-import qualified Lodjur.Build                 as Build
-import qualified Lodjur.Git                   as Git
 -- import           Lodjur.Deployment.Deployer
 -- import           Lodjur.Events.EventLogger
 -- import           Lodjur.Git.GitAgent
@@ -36,8 +35,7 @@ data Env = Env
   , envGithubInstallationAccessToken    :: !(MVar (Maybe GH.AccessToken))
   , envManager                          :: !Manager
   , envDbPool                           :: !DbPool
-  , envGitEnv                           :: !Git.Env
-  , envBuildEnv                         :: !Build.Env
+  , envRedisConn                        :: !Redis.Connection
   }
 
 data Session = Session

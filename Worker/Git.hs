@@ -1,7 +1,7 @@
 {-# LANGUAGE OverloadedStrings #-}
 {-# LANGUAGE RecordWildCards #-}
 
-module Lodjur.Git where
+module Worker.Git where
 
 import           Control.Exception
 import           Control.Monad

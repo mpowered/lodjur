@@ -33,7 +33,7 @@ import qualified Lodjur.Database.CheckRun      as DB
 import qualified Lodjur.Database.CheckSuite    as DB
 import qualified Lodjur.Database.Event         as DB
 import qualified Lodjur.Jobs                   as Jobs
-import qualified Lodjur.Git                    as Git
+import qualified Lodjur.JobQueue               as Jobs
 
 import           Lodjur.Web.Base
 import           Lodjur.Web.WebHook.Events
@@ -86,42 +86,10 @@ checkSuiteEvent now CheckSuiteEvent {..} = do
     text "Event ignored, different AppId"
 
   case action of
-    "requested" -> queueCheck now suite owner repo
-    _           -> raise "Unknown check_suite action received"
-
-queueCheck :: UTCTime -> EventCheckSuite -> SimpleOwner -> RepoRef -> Action ()
-queueCheck now suite owner repo = do
-  Env {..} <- getState
-
-  auth <- getInstallationAccessToken
-  r <- liftIO $ do
-    DB.withConn envDbPool $ \conn -> DB.upsertCheckSuite conn $
-      DB.CheckSuite { DB.checksuiteId = untagId (eventCheckSuiteId suite)
-                    , DB.checksuiteRepositoryOwner = untagName (simpleOwnerLogin owner)
-                    , DB.checksuiteRepositoryName = untagName (repoRefRepo repo)
-                    , DB.checksuiteHeadSha = untagSha (eventCheckSuiteHeadSha suite)
-                    , DB.checksuiteStatus = eventCheckSuiteStatus suite
-                    , DB.checksuiteStartedAt = Just now
-                    , DB.checksuiteCompletedAt = Nothing
-                    }
-    executeRequestWithMgr envManager auth $
-      createCheckRunR
-      (simpleOwnerLogin owner)
-      (repoRefRepo repo)
-      NewCheckRun
-        { newCheckRunName         = "nix build"
-        , newCheckRunHeadSha      = eventCheckSuiteHeadSha suite
-        , newCheckRunDetailsUrl   = Nothing
-        , newCheckRunExternalId   = Nothing
-        , newCheckRunStatus       = Nothing
-        , newCheckRunStartedAt    = Nothing
-        , newCheckRunConclusion   = Nothing
-        , newCheckRunCompletedAt  = Nothing
-        , newCheckRunOutput       = Nothing
-        , newCheckRunActions      = Nothing
-        }
-  liftIO $ print r
-  return ()
+    "requested"     -> checkRequested now suite owner repo
+    "rerequested"   -> checkRequested now suite owner repo
+    "completed"     -> return ()
+    _               -> raise "Unknown check_suite action received"
 
 checkRunEvent :: CheckRunEvent -> Action ()
 checkRunEvent CheckRunEvent {..} = do
@@ -131,49 +99,32 @@ checkRunEvent CheckRunEvent {..} = do
       app    = eventCheckSuiteApp suite
       repo   = checkRunEventRepository
       owner  = repoRefOwner repo
+
   Env {..} <- getState
 
   unless (envGithubAppId == untagId (appRefId app)) $
     text "Event ignored, different AppId"
 
   case action of
-    "created" -> do
-      liftIO $ do
-        DB.withConn envDbPool $ \conn -> DB.upsertCheckRun conn $
-          DB.CheckRun   { DB.checkrunId = untagId (eventCheckRunId run)
-                        , DB.checkrunCheckSuite = DB.CheckSuiteKey (untagId (eventCheckSuiteId suite))
-                        , DB.checkrunName = untagName (eventCheckRunName run)
-                        , DB.checkrunStatus = eventCheckRunStatus run
-                        , DB.checkrunConclusion = eventCheckRunConclusion run
-                        , DB.checkrunStartedAt = eventCheckRunStartedAt run
-                        , DB.checkrunCompletedAt = eventCheckRunCompletedAt run
-                        }
-        let repo' = Git.Repo (Text.unpack $ untagName (simpleOwnerLogin owner)) (Text.unpack $ untagName $ repoRefRepo repo)
-        sem <- newQSem 10
-        Jobs.runJob (const sem) $
-          Jobs.build envGitEnv envBuildEnv repo' (Text.unpack $ untagSha $ eventCheckSuiteHeadSha suite)
-      now <- liftIO getCurrentTime
-      auth <- getInstallationAccessToken
-      r <- liftIO $
-        executeRequestWithMgr envManager auth $
-          updateCheckRunR
-          (simpleOwnerLogin owner)
-          (repoRefRepo repo)
-          (eventCheckRunId run)
-          UpdateCheckRun
-            { updateCheckRunName         = "nix build"
-            , updateCheckRunDetailsUrl   = Nothing
-            , updateCheckRunExternalId   = Nothing
-            , updateCheckRunStatus       = Just "completed"
-            , updateCheckRunStartedAt    = Nothing
-            , updateCheckRunConclusion   = Just "success"
-            , updateCheckRunCompletedAt  = Just now
-            , updateCheckRunOutput       = Nothing
-            , updateCheckRunActions      = Nothing
-            }
-      liftIO $ print r
-    _ ->
-      raise "Unknown check_run action received"
+    "created"           -> return ()
+    "rerequested"       -> return ()
+    "requested_action"  -> return ()
+    _                   -> raise "Unknown check_run action received"
+
+checkRequested :: UTCTime -> EventCheckSuite -> SimpleOwner -> RepoRef -> Action ()
+checkRequested now suite owner repo = do
+  Env {..} <- getState
+
+  liftIO $ do
+    jobids <-
+      Jobs.enqueue envRedisConn "requested" (1*60*60)
+        [ Jobs.CheckRequested
+          { checkRepo = Jobs.Repo (untagName $ simpleOwnerLogin owner) (untagName $ repoRefRepo repo)
+          , checkHeadSha = eventCheckSuiteHeadSha suite
+          , checkSuiteId = untagId (eventCheckSuiteId suite)
+          }
+        ]
+    mapM_ (\jobid -> Jobs.status envRedisConn jobid Jobs.Queued) jobids
 
 raise :: MonadIO m => Text -> ActionCtxT ctx m b
 raise msg = do

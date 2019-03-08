@@ -77,7 +77,7 @@ instance ToJSON NewCheckRun where
         notNull (_, _)    = True
 
 data UpdateCheckRun = UpdateCheckRun
-    { updateCheckRunName        :: !(Name CheckRun)
+    { updateCheckRunName        :: !(Maybe (Name CheckRun))
     , updateCheckRunDetailsUrl  :: !(Maybe URL)
     , updateCheckRunExternalId  :: !(Maybe Text)
     , updateCheckRunStatus      :: !(Maybe Text)

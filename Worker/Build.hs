@@ -1,7 +1,7 @@
 {-# LANGUAGE OverloadedStrings #-}
 {-# LANGUAGE RecordWildCards #-}
 
-module Lodjur.Build where
+module Worker.Build where
 
 import           Control.Exception
 import           Control.Monad
@@ -9,7 +9,7 @@ import           Data.Aeson
 import           System.Process
 import           System.Exit
 
-import qualified Lodjur.Git as Git
+import qualified Worker.Git as Git
 
 newtype BuildError = BuildError Int
 

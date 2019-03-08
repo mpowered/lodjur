@@ -56,7 +56,6 @@ import qualified Lodjur.Database.CheckRun      as DB
 import qualified Lodjur.Database.CheckSuite    as DB
 import qualified Lodjur.Database.Event         as DB
 import qualified Lodjur.Jobs                   as Jobs
-import qualified Lodjur.Git                    as Git
 -- import           Lodjur.Deployment
 -- import           Lodjur.Deployment.Deployer
 -- import           Lodjur.Events.EventLogger
