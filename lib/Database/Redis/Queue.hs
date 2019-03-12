@@ -4,16 +4,29 @@
 {-# LANGUAGE OverloadedStrings     #-}
 {-# LANGUAGE RecordWildCards       #-}
 
-module Database.Redis.Queue where
+module Database.Redis.Queue
+  ( Queue
+  , MsgId
+  , RedisError (..)
+  , randomId
+  , push
+  , pop
+  , poppush
+  , move
+  , remove
+  , lookupEither
+  , lookup
+  , setTtl
+  )
+where
 
 import           Control.Exception
 import           Control.Monad
 import           Control.Monad.IO.Class
-import           Database.Redis                as Redis
+import           Database.Redis                as Redis hiding (move)
 import           Data.Aeson                    as Aeson
 import           Data.ByteString               (ByteString)
 import           Data.ByteString.Lazy          (toStrict)
-import           Data.Char                     (isLower)
 import           Data.Text                     (Text)
 import qualified Data.Text.Encoding            as Text
 import           Data.UUID                     (UUID)
@@ -32,15 +45,6 @@ instance ToJSON MsgId where
 
 instance FromJSON MsgId where
   parseJSON v = msgIdFromText <$> parseJSON v
-
-jsonOptions :: Options
-jsonOptions =
-  defaultOptions
-    { constructorTagModifier = camelTo2 '_'
-    , fieldLabelModifier = camelTo2 '_' . dropPrefix
-    }
-  where
-    dropPrefix = dropWhile isLower
 
 data RedisError
   = RedisError Reply
@@ -83,8 +87,8 @@ instance RedisCheck Redis TxResult where
       TxAborted -> liftIO $ throwIO RedisTxAborted
       TxError err -> liftIO $ throwIO $ RedisTxError err
 
-push :: ToJSON a => Queue -> Integer -> [a] -> Redis [MsgId]
-push name expiry msgs = do
+push :: ToJSON a => Queue -> [a] -> Redis [MsgId]
+push name msgs = do
   ids <- liftIO $ mapM (const randomId) msgs
   let keys' = map msgIdBS ids
   (Ok, _added) <-
@@ -92,7 +96,6 @@ push name expiry msgs = do
       status <- mset (zip keys' (map encode' msgs))
       added <- lpush name keys'
       return $ (,) <$> status <*> added
-  setTtl ids expiry
   return ids
 
 setTtl :: [MsgId] -> Integer -> Redis ()

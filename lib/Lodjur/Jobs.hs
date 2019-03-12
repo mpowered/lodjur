@@ -15,19 +15,22 @@ data Job
     , jobSuiteId        :: !Int
     }
   | CreateCheckRun
-    { jobSuiteId        :: !Int
+    { jobRepo           :: !Repo
+    , jobHeadSha        :: !Sha
+    , jobSuiteId        :: !Int
     , jobName           :: !Text
     }
   | CheckRun
-    { jobRunId          :: !Int
-    , jobName           :: !Text
-    , jobRepo           :: !Repo
+    { jobRepo           :: !Repo
     , jobHeadSha        :: !Sha
     , jobSuiteId        :: !Int
+    , jobName           :: !Text
+    , jobRunId          :: !Int
     }
   | CompleteCheckRun
-    { jobRunId          :: !Int
-    , jobConclusion     :: !RunStatus
+    { jobRepo           :: !Repo
+    , jobRunId          :: !Int
+    , jobConclusion     :: !Conclusion
     }
   deriving (Show, Eq, Ord, Generic)
 

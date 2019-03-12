@@ -4,6 +4,7 @@
 module Main where
 
 import           Control.Concurrent
+import           Control.Concurrent.Async
 import           Data.Semigroup               ((<>))
 import           Data.Text                    (Text)
 import qualified Data.Text                    as Text
@@ -17,10 +18,12 @@ import           Options.Applicative
 
 import           Config
 import qualified Lodjur.Database              as Database
+import qualified Lodjur.GitHub                as GH
 import qualified Lodjur.Jobs                  as Jobs
 import qualified Lodjur.JobQueue              as Jobs
 import           Lodjur.Web
 import           Lodjur.Web.Base
+import           Lodjur.Web.Messenger
 
 import           GitHub
 import           GitHub.Data.Id
@@ -76,10 +79,20 @@ start LodjurOptions {..} = do
 
   let env = Env{..}
 
-  subscribeStatuses envRedisConn (statusWatcher env)
+  -- subscribeStatuses envRedisConn (statusWatcher env)
 
-  runServer httpPort staticDirectory env githubOauth githubTeamAuth
+  githubToken <-
+    GH.installationToken
+      envManager
+      (Id envGithubAppId)
+      envGithubAppSigner
+      (Id envGithubInstallationId)
 
+  withAsync (messenger envRedisConn githubToken) $ \ma -> do
+    runServer httpPort staticDirectory env githubOauth githubTeamAuth
+    wait ma
+
+{-
 statusWatcher :: Env -> Jobs.StatusChanged -> IO Bool
 statusWatcher env@Env{..} Jobs.StatusChanged{..} = do
   l <- Jobs.lookup envRedisConn changedJobId
@@ -158,3 +171,4 @@ getInstallationAccessToken env@Env{..} = do
     Nothing -> renew
   where
     asAuth = OAuth . accessToken
+-}

@@ -16,6 +16,7 @@ import Prelude ()
 
 data CheckRun = CheckRun
     { checkRunId                :: !(Id CheckRun)
+    , checkRunName              :: !(Name CheckRun)
     , checkRunHeadSha           :: !Sha
     , checkRunStatus            :: !Text
     , checkRunDetailsUrl        :: !(Maybe URL)
@@ -33,6 +34,7 @@ instance Binary CheckRun
 instance FromJSON CheckRun where
     parseJSON = withObject "CheckRun" $ \o -> CheckRun
         <$> o .: "id"
+        <*> o .: "name"
         <*> o .: "head_sha"
         <*> o .: "status"
         <*> o .:?"details_url"

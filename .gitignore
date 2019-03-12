@@ -11,3 +11,5 @@ cabal.sandbox.config
 /lodjur.toml
 tags
 result
+gitcache
+workdirs

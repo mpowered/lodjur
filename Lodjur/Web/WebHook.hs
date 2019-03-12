@@ -24,25 +24,29 @@ import           Data.Time.Clock               (UTCTime, getCurrentTime)
 import           Data.Time.Clock.POSIX
 import           Network.HTTP.Types.Status
 import           Web.Spock
-import qualified Web.JWT                       as JWT
 
 import           Database.Beam
+import qualified Database.Redis                as Redis
+import qualified Database.Redis.Queue          as Q
 
 import qualified Lodjur.Database               as DB
 import qualified Lodjur.Database.CheckRun      as DB
 import qualified Lodjur.Database.CheckSuite    as DB
 import qualified Lodjur.Database.Event         as DB
 import qualified Lodjur.Jobs                   as Jobs
-import qualified Lodjur.JobQueue               as Jobs
 
 import           Lodjur.Web.Base
 import           Lodjur.Web.WebHook.Events
 
 import           GitHub
 import           GitHub.Data.Id
+import           GitHub.Data.Name
 import           GitHub.Extra
 import           GitHub.Endpoints.Apps        hiding (app)
 import           GitHub.Endpoints.Checks
+
+ignoreEvent :: Action ()
+ignoreEvent = text "Event ignored"
 
 webhookAction :: Action ()
 webhookAction = do
@@ -62,9 +66,9 @@ webhookAction = do
                 }
     ]
   case githubEvent of
-    "check_suite" -> checkSuiteEvent now =<< parseEvent event
+    "check_suite" -> checkSuiteEvent =<< parseEvent event
     "check_run"   -> checkRunEvent =<< parseEvent event
-    _             -> raise "Unknown event received"
+    _             -> ignoreEvent
   text "Event received"
   where
     parseEvent e =
@@ -72,8 +76,8 @@ webhookAction = do
         Success a -> return a
         Error err -> raise $ "event - no parse: " <> Text.pack err
 
-checkSuiteEvent :: UTCTime -> CheckSuiteEvent -> Action ()
-checkSuiteEvent now CheckSuiteEvent {..} = do
+checkSuiteEvent :: CheckSuiteEvent -> Action ()
+checkSuiteEvent CheckSuiteEvent {..} = do
   let action = checkSuiteEventAction
       repo   = checkSuiteEventRepository
       owner  = repoRefOwner repo
@@ -86,9 +90,9 @@ checkSuiteEvent now CheckSuiteEvent {..} = do
     text "Event ignored, different AppId"
 
   case action of
-    "requested"     -> checkRequested now suite owner repo
-    "rerequested"   -> checkRequested now suite owner repo
-    "completed"     -> return ()
+    "requested"     -> checkRequested suite owner repo
+    "rerequested"   -> checkRequested suite owner repo
+    "completed"     -> ignoreEvent
     _               -> raise "Unknown check_suite action received"
 
 checkRunEvent :: CheckRunEvent -> Action ()
@@ -106,25 +110,45 @@ checkRunEvent CheckRunEvent {..} = do
     text "Event ignored, different AppId"
 
   case action of
-    "created"           -> return ()
-    "rerequested"       -> return ()
-    "requested_action"  -> return ()
+    "created"           -> checkRun run owner repo
+    "rerequested"       -> checkRun run owner repo
+    "requested_action"  -> ignoreEvent
     _                   -> raise "Unknown check_run action received"
 
-checkRequested :: UTCTime -> EventCheckSuite -> SimpleOwner -> RepoRef -> Action ()
-checkRequested now suite owner repo = do
+checkRequested :: EventCheckSuite -> SimpleOwner -> RepoRef -> Action ()
+checkRequested suite owner repo = do
   Env {..} <- getState
 
-  liftIO $ do
+  liftIO $ Redis.runRedis envRedisConn $ do
     jobids <-
-      Jobs.enqueue envRedisConn "requested" (1*60*60)
+      Q.push "worker"
         [ Jobs.CheckRequested
-          { checkRepo = Jobs.Repo (untagName $ simpleOwnerLogin owner) (untagName $ repoRefRepo repo)
-          , checkHeadSha = eventCheckSuiteHeadSha suite
-          , checkSuiteId = untagId (eventCheckSuiteId suite)
+          { jobRepo = Jobs.Repo (untagName $ simpleOwnerLogin owner) (untagName $ repoRefRepo repo)
+          , jobHeadSha = eventCheckSuiteHeadSha suite
+          , jobSuiteId = untagId (eventCheckSuiteId suite)
           }
         ]
-    mapM_ (\jobid -> Jobs.status envRedisConn jobid Jobs.Queued) jobids
+    Q.setTtl jobids (1*60*60)
+
+checkRun :: EventCheckRun -> SimpleOwner -> RepoRef -> Action ()
+checkRun run owner repo = return ()
+-- checkRun run owner repo = do
+--   let suite = eventCheckRunCheckSuite run
+
+--   Env {..} <- getState
+
+--   liftIO $ Redis.runRedis envRedisConn $ do
+--     jobids <-
+--       Q.push "checkruns"
+--         [ Jobs.CheckRun
+--           { jobRunId = untagId (eventCheckRunId run)
+--           , jobName = untagName (eventCheckRunName run)
+--           , jobRepo = Jobs.Repo (untagName $ simpleOwnerLogin owner) (untagName $ repoRefRepo repo)
+--           , jobHeadSha = eventCheckRunHeadSha run
+--           , jobSuiteId = untagId (eventCheckSuiteId suite)
+--           }
+--         ]
+--     Q.setTtl jobids (1*60*60)
 
 raise :: MonadIO m => Text -> ActionCtxT ctx m b
 raise msg = do
@@ -158,47 +182,3 @@ requiredHeader hdr =
   header hdr >>= \case
     Just bs -> return bs
     Nothing -> raise $ "Missing required header " <> hdr
-
-createInstallationJWT :: Action Token
-createInstallationJWT = do
-  Env {..} <- getState
-  now <- liftIO getPOSIXTime
-  let claims = mempty { JWT.iss = JWT.stringOrURI (Text.pack $ show envGithubAppId)
-                      , JWT.iat = JWT.numericDate now
-                      , JWT.exp = JWT.numericDate (now + 600)
-                      }
-      jwt = JWT.encodeSigned envGithubAppSigner claims
-  return $ Text.encodeUtf8 jwt
-
-newInstallationAccessToken :: Action AccessToken
-newInstallationAccessToken = do
-  Env {..} <- getState
-  tok <- createInstallationJWT
-  result <- liftIO $
-    executeRequestWithMgr envManager (Bearer tok) $
-      createInstallationTokenR (Id envGithubInstallationId)
-  case result of
-    Left err ->
-      raise $ "Unable to fetch installation access token: " <> Text.pack (show err)
-    Right token ->
-      return token
-
-getInstallationAccessToken :: Action Auth
-getInstallationAccessToken = do
-  now <- liftIO getCurrentTime
-  Env {..} <- getState
-  let renew = do
-        at <- newInstallationAccessToken
-        liftIO $ putMVar envGithubInstallationAccessToken (Just at)
-        return (asAuth at)
-  tok <- liftIO $ takeMVar envGithubInstallationAccessToken
-  case tok of
-    Just at ->
-      case accessTokenExpiresAt at of
-        Just e ->
-          if now >= e then renew else return (asAuth at)
-        Nothing ->
-          return (asAuth at)
-    Nothing -> renew
-  where
-    asAuth = OAuth . accessToken

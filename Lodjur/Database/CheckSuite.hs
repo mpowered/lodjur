@@ -32,3 +32,9 @@ upsertCheckSuite conn s =
     $ runInsert
     $ Pg.insert (dbCheckSuites db) (insertValues [s])
     $ Pg.onConflict (Pg.conflictingFields primaryKey) Pg.onConflictSetAll
+
+lookupCheckSuite :: Pg.Connection -> Int -> IO (Maybe CheckSuite)
+lookupCheckSuite conn sid =
+  beam conn
+    $ runSelectReturningOne
+    $ lookup_ (dbCheckSuites db) (CheckSuiteKey sid)

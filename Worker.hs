@@ -3,13 +3,10 @@
 
 module Main where
 
-import           Control.Concurrent
 import           Control.Monad
 import qualified Database.Redis               as Redis
-import           Lodjur.Jobs
-import           Lodjur.JobQueue
-import           Network.HTTP.Client
-import           Network.HTTP.Client.TLS
+import qualified Database.Redis.Queue         as Q
+import qualified Lodjur.Jobs                  as Jobs
 import           Options.Applicative
 import           Worker.Config
 import           Prelude                      hiding (lookup)
@@ -38,30 +35,51 @@ main = start =<< execParser opts
     )
 
 start :: Options -> IO ()
-start Options {..} = do
-  Config {..} <- readConfiguration configFile
+start Options{..} = do
+  Config{..} <- readConfiguration configFile
 
-  mgr <- newManager tlsManagerSettings
   conn <- Redis.checkedConnect redisConnectInfo
-  githubInstallationAccessToken <- newMVar Nothing
 
   forever $ do
-    x <- poppush conn "requested" "checking" 10
+    x <- Redis.runRedis conn $ Q.pop "worker" 30
     case x of
       Nothing -> return ()  -- Timeout
       Just jobid -> do
-        a <- lookup conn jobid
+        a <- Redis.runRedis conn $ Q.lookupEither jobid
         case a of
           Nothing ->
             putStrLn $ "Warning: stale job " ++ show jobid
-          Just (Left err) -> do
+          Just (Left err) ->
             putStrLn $ "Warning: unable to decode job: " ++ err
-            move conn "checking" "failed" jobid
           Just (Right job) -> do
             putStrLn $ show jobid ++ ": " ++ show job
             handler conn jobid job
 
-handler :: Redis.Connection -> JobId -> Job -> IO ()
-handler conn jobid (CheckJob repo sha suiteid) = do
-  setTtl conn jobid (4*60*60)
-  status conn jobid InProgress
+handler :: Redis.Connection -> Q.MsgId -> Jobs.Job -> IO ()
+handler conn _jobid (Jobs.CheckRequested repo sha suiteid) = do
+  putStrLn "Check Suite"
+  Redis.runRedis conn $ do
+    jobids <-
+      Q.push "messenger"
+        [ Jobs.CreateCheckRun
+          { jobRepo = repo
+          , jobHeadSha = sha
+          , jobSuiteId = suiteid
+          , jobName = "nix build"
+          }
+        ]
+    Q.setTtl jobids (1*60*60)
+  -- status conn jobid InProgress
+  --
+handler conn _jobid (Jobs.CheckRun repo _sha _suiteid _name runid) = do
+  putStrLn "Check Run"
+  Redis.runRedis conn $ do
+    jobids <-
+      Q.push "messenger"
+        [ Jobs.CompleteCheckRun
+          { jobRepo = repo
+          , jobRunId = runid
+          , jobConclusion = Jobs.Success
+          }
+        ]
+    Q.setTtl jobids (1*60*60)
