@@ -1,9 +1,9 @@
-{ compiler ? "ghc844" }:
+{ channel ? "nixos-18.09", compiler ? "ghc844" }:
 
 let
   nixpkgs = import (builtins.fetchGit {
     url = https://github.com/NixOS/nixpkgs-channels;
-    ref = "nixos-18.09";
+    ref = channel;
   }) {};
 
   inherit (nixpkgs) pkgs;

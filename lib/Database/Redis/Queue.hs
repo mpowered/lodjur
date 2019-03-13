@@ -1,12 +1,10 @@
 {-# LANGUAGE DeriveGeneric         #-}
 {-# LANGUAGE FlexibleInstances     #-}
 {-# LANGUAGE MultiParamTypeClasses #-}
-{-# LANGUAGE OverloadedStrings     #-}
-{-# LANGUAGE RecordWildCards       #-}
 
 module Database.Redis.Queue
-  ( Queue
-  , MsgId
+  ( Queue (..)
+  , MsgId (..)
   , RedisError (..)
   , randomId
   , push
@@ -35,16 +33,17 @@ import qualified Data.UUID.V4                  as UUID
 import           GHC.Generics
 import           Prelude                       hiding (lookup)
 
-type Queue = ByteString
+newtype Queue = Queue { unQueue :: Text }
+  deriving (Show, Eq, Ord, Generic)
 
-data MsgId = MsgId { msgIdText :: Text, msgIdBS :: ByteString }
+newtype MsgId = MsgId { unMsgId :: Text }
   deriving (Show, Eq, Ord, Generic)
 
 instance ToJSON MsgId where
-  toJSON = toJSON . msgIdText
+  toJSON = toJSON . unMsgId
 
 instance FromJSON MsgId where
-  parseJSON v = msgIdFromText <$> parseJSON v
+  parseJSON v = MsgId <$> parseJSON v
 
 data RedisError
   = RedisError Reply
@@ -54,16 +53,17 @@ data RedisError
 
 instance Exception RedisError
 
-msgIdFromBS :: ByteString -> MsgId
-msgIdFromBS msgIdBS =
-  MsgId { msgIdText = Text.decodeUtf8 msgIdBS, .. }
+queueKey :: Queue -> ByteString
+queueKey = Text.encodeUtf8 . unQueue
 
-msgIdFromText :: Text -> MsgId
-msgIdFromText msgIdText =
-  MsgId { msgIdBS   = Text.encodeUtf8 msgIdText, .. }
+msgIdKey :: MsgId -> ByteString
+msgIdKey = Text.encodeUtf8 . unMsgId
+
+msgIdFromBS :: ByteString -> MsgId
+msgIdFromBS = MsgId . Text.decodeUtf8
 
 toMsgId :: UUID -> MsgId
-toMsgId a = msgIdFromText ("msg-" <> UUID.toText a)
+toMsgId a = MsgId (UUID.toText a)
 
 randomId :: IO MsgId
 randomId = toMsgId <$> UUID.nextRandom
@@ -90,44 +90,44 @@ instance RedisCheck Redis TxResult where
 push :: ToJSON a => Queue -> [a] -> Redis [MsgId]
 push name msgs = do
   ids <- liftIO $ mapM (const randomId) msgs
-  let keys' = map msgIdBS ids
+  let keys' = map msgIdKey ids
   (Ok, _added) <-
     check $ multiExec $ do
       status <- mset (zip keys' (map encode' msgs))
-      added <- lpush name keys'
+      added <- lpush (queueKey name) keys'
       return $ (,) <$> status <*> added
   return ids
 
 setTtl :: [MsgId] -> Integer -> Redis ()
 setTtl msgids expiry = do
-  let keys' = map msgIdBS msgids
+  let keys' = map msgIdKey msgids
   mapM_ (\k -> check $ expire k expiry) keys'
 
 pop :: Queue -> Integer -> Redis (Maybe MsgId)
 pop name timeout =
-  fmap (msgIdFromBS . snd) <$> check (brpop [name] timeout)
+  fmap (msgIdFromBS . snd) <$> check (brpop [queueKey name] timeout)
 
 poppush :: Queue -> Queue -> Integer -> Redis (Maybe MsgId)
 poppush src dst timeout =
-  fmap msgIdFromBS <$> check (brpoplpush src dst timeout)
+  fmap msgIdFromBS <$> check (brpoplpush (queueKey src) (queueKey dst) timeout)
 
 move :: Queue -> Queue -> MsgId -> Redis ()
 move src dst msgid = do
-  let key = msgIdBS msgid
-  matched <- check $ lrem src 0 key
-  void $ check $ lpush dst (replicate (fromInteger matched) key)
+  let key = msgIdKey msgid
+  matched <- check $ lrem (queueKey src) 0 key
+  void $ check $ lpush (queueKey dst) (replicate (fromInteger matched) key)
 
 remove :: Queue -> MsgId -> Redis ()
 remove name msgid = do
-  let key = msgIdBS msgid
+  let key = msgIdKey msgid
   void $ check $
     multiExec $ do
       void $ del [key]
-      lrem name 0 key
+      lrem (queueKey name) 0 key
 
 lookupEither :: FromJSON a => MsgId -> Redis (Maybe (Either String a))
 lookupEither msgid = do
-  let key = msgIdBS msgid
+  let key = msgIdKey msgid
   fmap eitherDecodeStrict' <$> check (get key)
 
 lookup :: FromJSON a => MsgId -> Redis (Maybe a)

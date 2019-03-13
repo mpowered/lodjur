@@ -23,8 +23,7 @@ library                 github-extra
 library                 lodjur-lib
     hs-source-dirs:     lib
     ghc-options:        -Wall -threaded -O2
-    exposed-modules:    Lodjur.Jobs
-                      , Lodjur.JobQueue
+    exposed-modules:    Lodjur.Messages
                       , Lodjur.GitHub
                       , Database.Redis.Queue
     build-depends:      base                  >= 4.11 && < 5

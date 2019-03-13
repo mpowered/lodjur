@@ -6,8 +6,8 @@ module Main where
 import           Control.Monad
 import qualified Database.Redis               as Redis
 import qualified Database.Redis.Queue         as Q
-import qualified Lodjur.Jobs                  as Jobs
-import           Options.Applicative
+import           Lodjur.Messages
+import           Options.Applicative          hiding (Success)
 import           Worker.Config
 import           Prelude                      hiding (lookup)
 
@@ -41,7 +41,7 @@ start Options{..} = do
   conn <- Redis.checkedConnect redisConnectInfo
 
   forever $ do
-    x <- Redis.runRedis conn $ Q.pop "worker" 30
+    x <- Redis.runRedis conn $ Q.pop workersQueue 30
     case x of
       Nothing -> return ()  -- Timeout
       Just jobid -> do
@@ -55,31 +55,31 @@ start Options{..} = do
             putStrLn $ show jobid ++ ": " ++ show job
             handler conn jobid job
 
-handler :: Redis.Connection -> Q.MsgId -> Jobs.Job -> IO ()
-handler conn _jobid (Jobs.CheckRequested repo sha suiteid) = do
+handler :: Redis.Connection -> Q.MsgId -> WorkerMsg -> IO ()
+handler conn _jobid (CheckRequested repo sha suiteid) = do
   putStrLn "Check Suite"
   Redis.runRedis conn $ do
     jobids <-
-      Q.push "messenger"
-        [ Jobs.CreateCheckRun
-          { jobRepo = repo
-          , jobHeadSha = sha
-          , jobSuiteId = suiteid
-          , jobName = "nix build"
+      Q.push lodjurQueue
+        [ CreateCheckRun
+          { repo = repo
+          , headSha = sha
+          , checkSuiteId = suiteid
+          , checkRunName = "nix build"
           }
         ]
     Q.setTtl jobids (1*60*60)
   -- status conn jobid InProgress
   --
-handler conn _jobid (Jobs.CheckRun repo _sha _suiteid _name runid) = do
+handler conn _jobid (RunCheck repo _sha _suiteid _name runid) = do
   putStrLn "Check Run"
   Redis.runRedis conn $ do
     jobids <-
-      Q.push "messenger"
-        [ Jobs.CompleteCheckRun
-          { jobRepo = repo
-          , jobRunId = runid
-          , jobConclusion = Jobs.Success
+      Q.push lodjurQueue
+        [ CheckRunCompleted
+          { repo = repo
+          , checkRunId = runid
+          , conclusion = Success
           }
         ]
     Q.setTtl jobids (1*60*60)

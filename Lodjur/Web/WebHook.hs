@@ -9,7 +9,6 @@ module Lodjur.Web.WebHook
   )
 where
 
-import           Control.Concurrent
 import           Control.Monad
 import           Control.Monad.IO.Class        (liftIO)
 import           Control.Monad.Reader
@@ -20,8 +19,7 @@ import qualified Data.ByteString.Base16        as Base16
 import           Data.Text                     (Text)
 import qualified Data.Text                     as Text
 import qualified Data.Text.Encoding            as Text
-import           Data.Time.Clock               (UTCTime, getCurrentTime)
-import           Data.Time.Clock.POSIX
+import           Data.Time.Clock               (getCurrentTime)
 import           Network.HTTP.Types.Status
 import           Web.Spock
 
@@ -30,20 +28,20 @@ import qualified Database.Redis                as Redis
 import qualified Database.Redis.Queue          as Q
 
 import qualified Lodjur.Database               as DB
-import qualified Lodjur.Database.CheckRun      as DB
-import qualified Lodjur.Database.CheckSuite    as DB
+-- import qualified Lodjur.Database.CheckRun      as DB
+-- import qualified Lodjur.Database.CheckSuite    as DB
 import qualified Lodjur.Database.Event         as DB
-import qualified Lodjur.Jobs                   as Jobs
+import qualified Lodjur.Messages               as Msg
 
 import           Lodjur.Web.Base
 import           Lodjur.Web.WebHook.Events
 
 import           GitHub
-import           GitHub.Data.Id
-import           GitHub.Data.Name
+-- import           GitHub.Data.Id
+-- import           GitHub.Data.Name
 import           GitHub.Extra
-import           GitHub.Endpoints.Apps        hiding (app)
-import           GitHub.Endpoints.Checks
+-- import           GitHub.Endpoints.Apps        hiding (app)
+-- import           GitHub.Endpoints.Checks
 
 ignoreEvent :: Action ()
 ignoreEvent = text "Event ignored"
@@ -121,17 +119,17 @@ checkRequested suite owner repo = do
 
   liftIO $ Redis.runRedis envRedisConn $ do
     jobids <-
-      Q.push "worker"
-        [ Jobs.CheckRequested
-          { jobRepo = Jobs.Repo (untagName $ simpleOwnerLogin owner) (untagName $ repoRefRepo repo)
-          , jobHeadSha = eventCheckSuiteHeadSha suite
-          , jobSuiteId = untagId (eventCheckSuiteId suite)
+      Q.push Msg.workersQueue
+        [ Msg.CheckRequested
+          { repo = Msg.Repo (untagName $ simpleOwnerLogin owner) (untagName $ repoRefRepo repo)
+          , headSha = eventCheckSuiteHeadSha suite
+          , checkSuiteId = untagId (eventCheckSuiteId suite)
           }
         ]
     Q.setTtl jobids (1*60*60)
 
 checkRun :: EventCheckRun -> SimpleOwner -> RepoRef -> Action ()
-checkRun run owner repo = return ()
+checkRun _run _owner _repo = return ()
 -- checkRun run owner repo = do
 --   let suite = eventCheckRunCheckSuite run
 
