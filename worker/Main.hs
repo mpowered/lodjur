@@ -4,14 +4,14 @@
 module Main where
 
 import           Control.Monad
-import qualified Data.Text                    as Text
 import qualified Database.Redis               as Redis
 import qualified Database.Redis.Queue         as Q
 import           Lodjur.Messages
 import           Options.Applicative          hiding (Success)
 import           Prelude                      hiding (lookup)
 
-import           GitHub.Data.Sha              (Sha(..))
+import           GitHub
+import           GitHub.Extra
 
 import           Config
 import qualified Build
@@ -89,11 +89,7 @@ handler conn gitEnv buildEnv _jobid (RunCheck repo sha _suiteid _name runid) = d
         ]
     Q.setTtl jobids (1*60)
 
-  check
-    gitEnv
-    buildEnv
-    (Git.Repo { repoOwner = Text.unpack (owner repo), repoName = Text.unpack (name repo) })
-    (Text.unpack $ untagSha sha)
+  check gitEnv buildEnv repo sha
 
   Redis.runRedis conn $ do
     jobids <-
@@ -106,7 +102,7 @@ handler conn gitEnv buildEnv _jobid (RunCheck repo sha _suiteid _name runid) = d
         ]
     Q.setTtl jobids (1*60*60)
 
-check :: Git.Env -> Build.Env -> Git.Repo -> String -> IO ()
+check :: Git.Env -> Build.Env -> RepoRef -> Sha -> IO ()
 check gitEnv buildEnv repo sha = do
   workdir <- Git.checkout gitEnv repo sha
   Build.build buildEnv workdir "release.nix" "mpowered-services" [("railsEnv", "production")]

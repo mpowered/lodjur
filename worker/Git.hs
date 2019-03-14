@@ -7,12 +7,16 @@ import           Control.Exception
 import           Control.Monad
 import           Data.Aeson
 import           Data.Text                  (Text)
+import qualified Data.Text                  as Text
 import           Data.Time.Clock            (UTCTime)
 import           System.Directory
 import           System.Directory.Internal.Prelude (isAlreadyExistsError, isDoesNotExistError)
 import           System.FilePath
 import           System.Process
 import           System.Exit
+
+import qualified GitHub                     as GH
+import qualified GitHub.Extra               as GH
 
 type Hash = Text
 
@@ -37,9 +41,6 @@ refRevision (Branch _ rev) = rev
 type Logger = String -> IO ()
 
 ------------------------------------------------------------------------------
-
--- Specifically a GitHub repo
-data Repo = Repo { repoOwner :: String, repoName :: String }
 
 newtype GitError = GitError Int
 
@@ -81,24 +82,33 @@ git Env{..} = proc gitCmd
 withCwd :: FilePath -> CreateProcess -> CreateProcess
 withCwd d p = p { cwd = Just d }
 
-githubUrlFor :: Env -> Repo -> String
-githubUrlFor _ Repo{..} = "https://github.com/" <> repoOwner <> "/" <> repoName <> ".git"
+login :: GH.RepoRef -> String
+login = Text.unpack . GH.untagName . GH.simpleOwnerLogin . GH.repoRefOwner
 
-cachePathFor :: Env -> Repo -> FilePath
-cachePathFor Env{..} Repo{..} = gitCache </> repoOwner </> repoName
+name :: GH.RepoRef -> String
+name = Text.unpack . GH.untagName . GH.repoRefRepo
 
-cacheClone :: Env -> Repo -> IO ()
-cacheClone env@Env{..} repo@Repo{..} =
+shaStr :: GH.Sha -> String
+shaStr = Text.unpack .GH.untagSha
+
+githubUrlFor :: Env -> GH.RepoRef -> String
+githubUrlFor _ repo = "https://github.com/" <> (login repo) <> "/" <> (name repo) <> ".git"
+
+cachePathFor :: Env -> GH.RepoRef -> FilePath
+cachePathFor Env{..} repo = gitCache </> (login repo) </> (name repo)
+
+cacheClone :: Env -> GH.RepoRef -> IO ()
+cacheClone env@Env{..} repo =
   runGit env
     $ git env ["clone", githubUrlFor env repo, "--mirror", cachePathFor env repo]
 
-cacheUpdate :: Env -> Repo -> IO ()
+cacheUpdate :: Env -> GH.RepoRef -> IO ()
 cacheUpdate env repo =
   runGit env
     $ withCwd (cachePathFor env repo)
     $ git env ["remote", "update", "--prune"]
 
-cacheGetRepo :: Env -> Repo -> IO FilePath
+cacheGetRepo :: Env -> GH.RepoRef -> IO FilePath
 cacheGetRepo env repo = do
   let repoPath = cachePathFor env repo
   exists <- doesPathExist repoPath
@@ -107,15 +117,15 @@ cacheGetRepo env repo = do
     else cacheClone env repo
   return repoPath
 
-checkout :: Env -> Repo -> String -> IO FilePath
+checkout :: Env -> GH.RepoRef -> GH.Sha -> IO FilePath
 checkout env repo sha = do
-  workdir <- createNewWorkDir env sha
+  workdir <- createNewWorkDir env (shaStr sha)
   repoPath <- cacheGetRepo env repo
   runGit env
     $ git env ["clone", repoPath, workdir]
   runGit env
     $ withCwd workdir
-    $ git env ["checkout", "--detach", sha]
+    $ git env ["checkout", "--detach", shaStr sha]
   return workdir
 
 createNewWorkDir :: Env -> String -> IO FilePath

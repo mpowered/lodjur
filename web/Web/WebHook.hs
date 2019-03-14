@@ -23,7 +23,7 @@ import           Data.Time.Clock               (getCurrentTime)
 import           Network.HTTP.Types.Status
 import           Web.Spock
 
-import           Database.Beam
+-- import           Database.Beam
 import qualified Database.Redis                as Redis
 import qualified Database.Redis.Queue          as Q
 
@@ -36,10 +36,8 @@ import qualified Lodjur.Messages               as Msg
 import           Web.Base
 import           Web.WebHook.Events
 
-import           GitHub
--- import           GitHub.Data.Id
--- import           GitHub.Data.Name
-import           GitHub.Extra
+import qualified GitHub                        as GH
+import qualified GitHub.Extra                  as GH
 -- import           GitHub.Endpoints.Apps        hiding (app)
 -- import           GitHub.Endpoints.Checks
 
@@ -78,13 +76,13 @@ checkSuiteEvent :: CheckSuiteEvent -> Action ()
 checkSuiteEvent CheckSuiteEvent {..} = do
   let action = checkSuiteEventAction
       repo   = checkSuiteEventRepository
-      owner  = repoRefOwner repo
+      owner  = GH.repoRefOwner repo
       suite  = checkSuiteEventCheckSuite
-      app    = eventCheckSuiteApp suite
+      app    = GH.eventCheckSuiteApp suite
 
   Env {..} <- getState
 
-  unless (envGithubAppId == untagId (appRefId app)) $
+  unless (envGithubAppId == GH.untagId (GH.appRefId app)) $
     text "Event ignored, different AppId"
 
   case action of
@@ -97,14 +95,14 @@ checkRunEvent :: CheckRunEvent -> Action ()
 checkRunEvent CheckRunEvent {..} = do
   let action = checkRunEventAction
       run    = checkRunEventCheckRun
-      suite  = eventCheckRunCheckSuite run
-      app    = eventCheckSuiteApp suite
+      suite  = GH.eventCheckRunCheckSuite run
+      app    = GH.eventCheckSuiteApp suite
       repo   = checkRunEventRepository
-      owner  = repoRefOwner repo
+      owner  = GH.repoRefOwner repo
 
   Env {..} <- getState
 
-  unless (envGithubAppId == untagId (appRefId app)) $
+  unless (envGithubAppId == GH.untagId (GH.appRefId app)) $
     text "Event ignored, different AppId"
 
   case action of
@@ -113,7 +111,7 @@ checkRunEvent CheckRunEvent {..} = do
     "requested_action"  -> ignoreEvent
     _                   -> raise "Unknown check_run action received"
 
-checkRequested :: EventCheckSuite -> SimpleOwner -> RepoRef -> Action ()
+checkRequested :: GH.EventCheckSuite -> GH.SimpleOwner -> GH.RepoRef -> Action ()
 checkRequested suite owner repo = do
   Env {..} <- getState
 
@@ -121,14 +119,14 @@ checkRequested suite owner repo = do
     jobids <-
       Q.push Msg.workersQueue
         [ Msg.CheckRequested
-          { repo = Msg.Repo (untagName $ simpleOwnerLogin owner) (untagName $ repoRefRepo repo)
-          , headSha = eventCheckSuiteHeadSha suite
-          , checkSuiteId = untagId (eventCheckSuiteId suite)
+          { repo = repo
+          , headSha = GH.eventCheckSuiteHeadSha suite
+          , checkSuiteId = GH.eventCheckSuiteId suite
           }
         ]
     Q.setTtl jobids (1*60*60)
 
-checkRun :: EventCheckRun -> SimpleOwner -> RepoRef -> Action ()
+checkRun :: GH.EventCheckRun -> GH.SimpleOwner -> GH.RepoRef -> Action ()
 checkRun _run _owner _repo = return ()
 -- checkRun run owner repo = do
 --   let suite = eventCheckRunCheckSuite run

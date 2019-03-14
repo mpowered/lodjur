@@ -13,8 +13,6 @@ import qualified Database.Redis                as Redis
 import qualified Database.Redis.Queue          as Q
 
 import           GitHub
-import           GitHub.Data.Id
-import           GitHub.Data.Name
 import           GitHub.Extra
 import           GitHub.Endpoints.Checks
 
@@ -36,20 +34,14 @@ messenger redis auth = forever $ do
     Just t -> handleMsg redis t msg
     Nothing -> error "failed to refresh github token"
 
+owner :: RepoRef -> Name Owner
+owner = simpleOwnerLogin . repoRefOwner
+
 handleMsg :: Redis.Connection -> Token -> LodjurMsg -> IO ()
 handleMsg redis tok (CreateCheckRun repo sha suiteid runname) = do
-  r <- createCheckRun (OAuth tok) (N $ owner repo) (N $ name repo) $
-    NewCheckRun
-      { newCheckRunName         = N runname
-      , newCheckRunHeadSha      = sha
-      , newCheckRunDetailsUrl   = Nothing
-      , newCheckRunExternalId   = Nothing
-      , newCheckRunStatus       = Just "queued"
-      , newCheckRunStartedAt    = Nothing
-      , newCheckRunConclusion   = Nothing
-      , newCheckRunCompletedAt  = Nothing
-      , newCheckRunOutput       = Nothing
-      , newCheckRunActions      = Nothing
+  r <- createCheckRun (OAuth tok) (owner repo) (repoRefRepo repo) $
+    (newCheckRun runname sha)
+      { newCheckRunStatus       = Just Queued
       }
   case r of
     Left _ -> return ()
@@ -58,7 +50,7 @@ handleMsg redis tok (CreateCheckRun repo sha suiteid runname) = do
         jobids <-
           Q.push workersQueue
             [ RunCheck
-              { checkRunId = untagId checkRunId
+              { checkRunId = checkRunId
               , checkRunName = runname
               , repo = repo
               , headSha = sha
@@ -68,18 +60,9 @@ handleMsg redis tok (CreateCheckRun repo sha suiteid runname) = do
         Q.setTtl jobids (1*60*60)
 
 handleMsg _redis tok (CheckRunInProgress repo runid) = do
-  now <- getCurrentTime
-  r <- updateCheckRun (OAuth tok) (N $ owner repo) (N $ name repo) (Id runid) $
-    UpdateCheckRun
-      { updateCheckRunName         = Nothing
-      , updateCheckRunDetailsUrl   = Nothing
-      , updateCheckRunExternalId   = Nothing
-      , updateCheckRunStatus       = Just "in_progress"
-      , updateCheckRunStartedAt    = Nothing
-      , updateCheckRunConclusion   = Nothing
-      , updateCheckRunCompletedAt  = Nothing
-      , updateCheckRunOutput       = Nothing
-      , updateCheckRunActions      = Nothing
+  r <- updateCheckRun (OAuth tok) (owner repo) (repoRefRepo repo) runid $
+    emptyUpdateCheckRun
+      { updateCheckRunStatus       = Just InProgress
       }
   case r of
     Left _ -> return ()
@@ -87,23 +70,11 @@ handleMsg _redis tok (CheckRunInProgress repo runid) = do
 
 handleMsg _redis tok (CheckRunCompleted repo runid conclusion) = do
   now <- getCurrentTime
-  let c = case conclusion of
-            Cancelled -> "cancelled"
-            TimedOut -> "timed_out"
-            Failed -> "failed"
-            Neutral -> "neutral"
-            Success -> "success"
-  r <- updateCheckRun (OAuth tok) (N $ owner repo) (N $ name repo) (Id runid) $
-    UpdateCheckRun
-      { updateCheckRunName         = Nothing
-      , updateCheckRunDetailsUrl   = Nothing
-      , updateCheckRunExternalId   = Nothing
-      , updateCheckRunStatus       = Just "completed"
-      , updateCheckRunStartedAt    = Nothing
-      , updateCheckRunConclusion   = Just c
+  r <- updateCheckRun (OAuth tok) (owner repo) (repoRefRepo repo) runid $
+    emptyUpdateCheckRun
+      { updateCheckRunStatus       = Just Completed
+      , updateCheckRunConclusion   = Just conclusion
       , updateCheckRunCompletedAt  = Just now
-      , updateCheckRunOutput       = Nothing
-      , updateCheckRunActions      = Nothing
       }
   case r of
     Left _ -> return ()

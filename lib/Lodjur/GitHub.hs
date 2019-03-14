@@ -1,3 +1,4 @@
+
 module Lodjur.GitHub where
 
 import           Control.Concurrent
@@ -13,7 +14,7 @@ import qualified Web.JWT                       as JWT
 import           GitHub
 import           GitHub.Data.Apps
 import           GitHub.Data.Installations
-import           GitHub.Endpoints.Apps
+import           GitHub.Endpoints.Apps         hiding (Repo(..))
 
 data GitHubToken
   = StaticToken Token

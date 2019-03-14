@@ -5,24 +5,24 @@
 module Lodjur.Messages where
 
 import           Data.Aeson
-import           Data.Text                     (Text)
 import           GHC.Generics
-import           GitHub.Data.Sha
+import           GitHub
+import           GitHub.Extra
 
 import           Database.Redis.Queue          (Queue(..))
 
 data WorkerMsg
   = CheckRequested
-    { repo              :: !Repo
+    { repo              :: !RepoRef
     , headSha           :: !Sha
-    , checkSuiteId      :: !Int
+    , checkSuiteId      :: !(Id CheckSuite)
     }
   | RunCheck
-    { repo              :: !Repo
+    { repo              :: !RepoRef
     , headSha           :: !Sha
-    , checkSuiteId      :: !Int
-    , checkRunName      :: !Text
-    , checkRunId        :: !Int
+    , checkSuiteId      :: !(Id CheckSuite)
+    , checkRunName      :: !(Name CheckRun)
+    , checkRunId        :: !(Id CheckRun)
     }
   deriving (Show, Eq, Ord, Generic)
 
@@ -34,18 +34,18 @@ instance FromJSON WorkerMsg where
 
 data LodjurMsg
   = CreateCheckRun
-    { repo              :: !Repo
+    { repo              :: !RepoRef
     , headSha           :: !Sha
-    , checkSuiteId      :: !Int
-    , checkRunName      :: !Text
+    , checkSuiteId      :: !(Id CheckSuite)
+    , checkRunName      :: !(Name CheckRun)
     }
   | CheckRunInProgress
-    { repo              :: !Repo
-    , checkRunId        :: !Int
+    { repo              :: !RepoRef
+    , checkRunId        :: !(Id CheckRun)
     }
   | CheckRunCompleted
-    { repo              :: !Repo
-    , checkRunId        :: !Int
+    { repo              :: !RepoRef
+    , checkRunId        :: !(Id CheckRun)
     , conclusion        :: !Conclusion
     }
   deriving (Show, Eq, Ord, Generic)
@@ -54,36 +54,6 @@ instance ToJSON LodjurMsg where
   toJSON = genericToJSON jsonOptions
 
 instance FromJSON LodjurMsg where
-  parseJSON = genericParseJSON jsonOptions
-
-data Repo
-  = Repo
-  { owner   :: !Text
-  , name    :: !Text
-  } deriving (Show, Eq, Ord, Generic)
-
-instance ToJSON Repo where
-  toJSON = genericToJSON jsonOptions
-
-instance FromJSON Repo where
-  parseJSON = genericParseJSON jsonOptions
-
-data Conclusion = Cancelled | TimedOut | Failed | Neutral | Success
-  deriving (Show, Eq, Ord, Generic)
-
-instance ToJSON Conclusion where
-  toJSON = genericToJSON jsonOptions
-
-instance FromJSON Conclusion where
-  parseJSON = genericParseJSON jsonOptions
-
-data RunStatus = Queued | InProgress | Completed Conclusion
-  deriving (Show, Eq, Ord, Generic)
-
-instance ToJSON RunStatus where
-  toJSON = genericToJSON jsonOptions
-
-instance FromJSON RunStatus where
   parseJSON = genericParseJSON jsonOptions
 
 jsonOptions :: Options
