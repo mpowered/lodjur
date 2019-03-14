@@ -40,16 +40,16 @@ library                 lodjur-lib
                       , uuid                  >= 1.3.13 && < 1.4
 
 executable          lodjur
-    hs-source-dirs: .
+    hs-source-dirs: web
     main-is:        Main.hs
     ghc-options:    -Wall -threaded -O2 -rtsopts -with-rtsopts=-N -I0
     other-modules:  Config
-                  , Lodjur.Auth
-                  , Lodjur.Database
-                  , Lodjur.Database.CheckRun
-                  , Lodjur.Database.CheckSuite
-                  , Lodjur.Database.Event
-                  , Lodjur.Database.Internal
+                  -- , Lodjur.Auth
+                  -- , Lodjur.Database
+                  -- , Lodjur.Database.CheckRun
+                  -- , Lodjur.Database.CheckSuite
+                  -- , Lodjur.Database.Event
+                  -- , Lodjur.Database.Internal
                   -- , Lodjur.Database.Job
                   -- , Lodjur.Database.Revision
                   -- , Lodjur.Deployment
@@ -67,13 +67,13 @@ executable          lodjur
                   -- , Lodjur.Output.OutputLoggers
                   -- , Lodjur.Output.OutputStreamer
                   -- , Lodjur.Process
-                  , Lodjur.User
-                  , Lodjur.Web
-                  , Lodjur.Web.Auth.GitHub
-                  , Lodjur.Web.Base
-                  , Lodjur.Web.Messenger
-                  , Lodjur.Web.WebHook
-                  , Lodjur.Web.WebHook.Events
+                  -- , Lodjur.User
+                  , Web
+                  , Web.Auth.GitHub
+                  , Web.Base
+                  , Web.Messenger
+                  , Web.WebHook
+                  , Web.WebHook.Events
                   , Paths_lodjur
     build-depends:  base                  >= 4.11 && < 5
                   , lodjur-lib
@@ -118,12 +118,12 @@ executable          lodjur
                   , wai-middleware-static >= 0.8.2 && < 0.9
 
 executable          lodjur-worker
-    hs-source-dirs: .
-    main-is:        Worker.hs
+    hs-source-dirs: worker
+    main-is:        Main.hs
     ghc-options:    -Wall -threaded -O2 -rtsopts -with-rtsopts=-N -I0
-    other-modules:  Worker.Build
-                  , Worker.Config
-                  , Worker.Git
+    other-modules:  Build
+                  , Config
+                  , Git
                   , Paths_lodjur
     build-depends:  base                  >= 4.11 && < 5
                   , lodjur-lib

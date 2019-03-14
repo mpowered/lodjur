@@ -18,7 +18,7 @@ import           URI.ByteString
 import           URI.ByteString.QQ
 import qualified Web.JWT                      as JWT
 
-import           Lodjur.Auth
+-- import           Lodjur.Auth
 -- import qualified Lodjur.Database              as Database
 -- import           Lodjur.Deployment
 -- import qualified Lodjur.Deployment.Deployer   as Deployer
@@ -33,12 +33,12 @@ import           Lodjur.Auth
 data Config = Config
   { workDir                 :: FilePath
   , httpPort                :: Int
-  , databaseConnectInfo     :: Pg.ConnectInfo
+  -- , databaseConnectInfo     :: Pg.ConnectInfo
   , redisConnectInfo        :: Redis.ConnectInfo
   , githubSecretToken       :: ByteString
   , githubRepos             :: [Text]
   , githubOauth             :: OAuth2
-  , githubTeamAuth          :: TeamAuthConfig
+  -- , githubTeamAuth          :: TeamAuthConfig
   , githubAppId             :: Int
   , githubAppSigner         :: JWT.Signer
   , githubInstallationId    :: Int
@@ -49,7 +49,7 @@ instance FromJSON Config where
   parseJSON = withObject "Configuration" $ \o -> do
     workDir <- o .: "work-dir"
     httpPort <- o .: "http-port"
-    databaseConnectInfo <- o .: "database" >>= parseDatabaseConnectInfo
+    -- databaseConnectInfo <- o .: "database" >>= parseDatabaseConnectInfo
     redisConnectInfo <- o .: "redis" >>= parseRedisConnectInfo
     githubSecretToken <- Char8.pack <$> (o .: "github-secret-token")
     githubRepos <- o .: "github-repos"
@@ -67,9 +67,9 @@ instance FromJSON Config where
           , oauthAccessTokenEndpoint = [uri|https://github.com/login/oauth/access_token|]
           , ..
           }
-    githubAuthTeam <- o .: "github-authorized-team"
-    githubAuthOrg <- o .: "github-authorized-organization"
-    let githubTeamAuth = TeamAuthConfig{..}
+    -- githubAuthTeam <- o .: "github-authorized-team"
+    -- githubAuthOrg <- o .: "github-authorized-organization"
+    -- let githubTeamAuth = TeamAuthConfig{..}
 
     return Config{..}
     where

@@ -1,7 +1,7 @@
 {-# LANGUAGE OverloadedStrings #-}
 {-# LANGUAGE RecordWildCards #-}
 
-module Worker.Git where
+module Git where
 
 import           Control.Exception
 import           Control.Monad

@@ -8,8 +8,9 @@ import qualified Database.Redis               as Redis
 import qualified Database.Redis.Queue         as Q
 import           Lodjur.Messages
 import           Options.Applicative          hiding (Success)
-import           Worker.Config
 import           Prelude                      hiding (lookup)
+
+import           Config
 
 newtype Options = Options
   { configFile :: FilePath

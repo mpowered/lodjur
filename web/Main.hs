@@ -17,13 +17,11 @@ import           Network.HTTP.Client.TLS
 import           Options.Applicative
 
 import           Config
-import qualified Lodjur.Database              as Database
+-- import qualified Lodjur.Database              as Database
 import qualified Lodjur.GitHub                as GH
-import qualified Lodjur.Jobs                  as Jobs
-import qualified Lodjur.JobQueue              as Jobs
-import           Lodjur.Web
-import           Lodjur.Web.Base
-import           Lodjur.Web.Messenger
+import           Web
+import           Web.Base
+import           Web.Messenger
 
 import           GitHub
 import           GitHub.Data.Id
@@ -72,7 +70,7 @@ start LodjurOptions {..} = do
       ttl            = 5
       connsPerStripe = 4
 
-  envDbPool <- Database.newPool databaseConnectInfo stripes ttl connsPerStripe
+  -- envDbPool <- Database.newPool databaseConnectInfo stripes ttl connsPerStripe
   envRedisConn <- Redis.checkedConnect redisConnectInfo
 
   envGithubInstallationAccessToken <- newMVar Nothing
@@ -89,7 +87,7 @@ start LodjurOptions {..} = do
       (Id envGithubInstallationId)
 
   withAsync (messenger envRedisConn githubToken) $ \ma -> do
-    runServer httpPort staticDirectory env githubOauth githubTeamAuth
+    runServer httpPort staticDirectory env githubOauth
     wait ma
 
 {-

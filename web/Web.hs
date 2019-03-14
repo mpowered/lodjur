@@ -4,7 +4,7 @@
 {-# LANGUAGE OverloadedStrings #-}
 {-# LANGUAGE RecordWildCards   #-}
 {-# LANGUAGE TypeFamilies      #-}
-module Lodjur.Web
+module Web
   ( runServer
   )
 where
@@ -50,11 +50,11 @@ import qualified Web.JWT                       as JWT
 import           Database.Beam
 import           Database.Beam.Backend.SQL
 
-import           Lodjur.Auth
-import qualified Lodjur.Database               as DB
-import qualified Lodjur.Database.CheckRun      as DB
-import qualified Lodjur.Database.CheckSuite    as DB
-import qualified Lodjur.Database.Event         as DB
+-- import           Lodjur.Auth
+-- import qualified Lodjur.Database               as DB
+-- import qualified Lodjur.Database.CheckRun      as DB
+-- import qualified Lodjur.Database.CheckSuite    as DB
+-- import qualified Lodjur.Database.Event         as DB
 import qualified Lodjur.Messages               as Msg
 -- import           Lodjur.Deployment
 -- import           Lodjur.Deployment.Deployer
@@ -68,9 +68,9 @@ import qualified Lodjur.Messages               as Msg
 -- import           Lodjur.Process
 -- import           Lodjur.User
 
-import           Lodjur.Web.Auth.GitHub
-import           Lodjur.Web.Base
-import           Lodjur.Web.WebHook
+import           Web.Auth.GitHub
+import           Web.Base
+import           Web.WebHook
 
 import qualified GitHub                       as GH
 import qualified GitHub.Data.Id               as GH
@@ -544,9 +544,8 @@ runServer
   -> String
   -> Env
   -> OAuth2
-  -> TeamAuthConfig
   -> IO ()
-runServer port staticBase env githubOauth teamAuth = do
+runServer port staticBase env githubOauth = do
     cfg <- defaultSpockCfg emptySession PCNoDatabase env
     runSpock port (spock cfg app)
  where
@@ -555,7 +554,7 @@ runServer port staticBase env githubOauth teamAuth = do
     -- middleware (staticPolicy (redirectStatic staticBase))
 
     -- Auth
-    authRoutes githubOauth teamAuth
+    authRoutes githubOauth
 
     -- Routes
     get "/"     (ifLoggedIn homeAction welcomeAction)

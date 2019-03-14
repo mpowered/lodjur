@@ -1,6 +1,6 @@
 {-# LANGUAGE DeriveAnyClass #-}
 {-# LANGUAGE DeriveGeneric  #-}
-module Lodjur.User where
+module User where
 
 import           Data.Hashable
 import           Data.Text     (Text)

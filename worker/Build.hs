@@ -1,7 +1,7 @@
 {-# LANGUAGE OverloadedStrings #-}
 {-# LANGUAGE RecordWildCards #-}
 
-module Worker.Build where
+module Build where
 
 import           Control.Exception
 import           Control.Monad
@@ -9,7 +9,7 @@ import           Data.Aeson
 import           System.Process
 import           System.Exit
 
-import qualified Worker.Git as Git
+import qualified Git as Git
 
 newtype BuildError = BuildError Int
 

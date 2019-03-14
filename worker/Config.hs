@@ -1,7 +1,7 @@
 {-# LANGUAGE OverloadedStrings #-}
 {-# LANGUAGE RecordWildCards   #-}
 
-module Worker.Config where
+module Config where
 
 import           Data.Aeson                   as JSON
 import qualified Data.ByteString.Char8        as Char8
@@ -9,8 +9,8 @@ import           Data.Text.IO                 as Text
 import qualified Database.Redis               as Redis
 import           Text.Toml
 
-import qualified Worker.Build                 as Build
-import qualified Worker.Git                   as Git
+import qualified Build                        as Build
+import qualified Git                          as Git
 
 data Config = Config
   { workDir                 :: FilePath
