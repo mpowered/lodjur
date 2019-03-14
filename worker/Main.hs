@@ -4,13 +4,18 @@
 module Main where
 
 import           Control.Monad
+import qualified Data.Text                    as Text
 import qualified Database.Redis               as Redis
 import qualified Database.Redis.Queue         as Q
 import           Lodjur.Messages
 import           Options.Applicative          hiding (Success)
 import           Prelude                      hiding (lookup)
 
+import           GitHub.Data.Sha              (Sha(..))
+
 import           Config
+import qualified Build
+import qualified Git
 
 newtype Options = Options
   { configFile :: FilePath
@@ -54,10 +59,10 @@ start Options{..} = do
             putStrLn $ "Warning: unable to decode job: " ++ err
           Just (Right job) -> do
             putStrLn $ show jobid ++ ": " ++ show job
-            handler conn jobid job
+            handler conn gitEnv buildEnv jobid job
 
-handler :: Redis.Connection -> Q.MsgId -> WorkerMsg -> IO ()
-handler conn _jobid (CheckRequested repo sha suiteid) = do
+handler :: Redis.Connection -> Git.Env -> Build.Env -> Q.MsgId -> WorkerMsg -> IO ()
+handler conn _ _ _jobid (CheckRequested repo sha suiteid) = do
   putStrLn "Check Suite"
   Redis.runRedis conn $ do
     jobids <-
@@ -70,10 +75,26 @@ handler conn _jobid (CheckRequested repo sha suiteid) = do
           }
         ]
     Q.setTtl jobids (1*60*60)
-  -- status conn jobid InProgress
-  --
-handler conn _jobid (RunCheck repo _sha _suiteid _name runid) = do
+
+handler conn gitEnv buildEnv _jobid (RunCheck repo sha _suiteid _name runid) = do
   putStrLn "Check Run"
+
+  Redis.runRedis conn $ do
+    jobids <-
+      Q.push lodjurQueue
+        [ CheckRunInProgress
+          { repo = repo
+          , checkRunId = runid
+          }
+        ]
+    Q.setTtl jobids (1*60)
+
+  check
+    gitEnv
+    buildEnv
+    (Git.Repo { repoOwner = Text.unpack (owner repo), repoName = Text.unpack (name repo) })
+    (Text.unpack $ untagSha sha)
+
   Redis.runRedis conn $ do
     jobids <-
       Q.push lodjurQueue
@@ -84,3 +105,9 @@ handler conn _jobid (RunCheck repo _sha _suiteid _name runid) = do
           }
         ]
     Q.setTtl jobids (1*60*60)
+
+check :: Git.Env -> Build.Env -> Git.Repo -> String -> IO ()
+check gitEnv buildEnv repo sha = do
+  workdir <- Git.checkout gitEnv repo sha
+  Build.build buildEnv workdir "release.nix" "mpowered-services" [("railsEnv", "production")]
+

@@ -39,6 +39,10 @@ data LodjurMsg
     , checkSuiteId      :: !Int
     , checkRunName      :: !Text
     }
+  | CheckRunInProgress
+    { repo              :: !Repo
+    , checkRunId        :: !Int
+    }
   | CheckRunCompleted
     { repo              :: !Repo
     , checkRunId        :: !Int

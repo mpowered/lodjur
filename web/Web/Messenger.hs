@@ -30,6 +30,7 @@ nextMsg conn name = do
 messenger :: Redis.Connection -> GitHubToken -> IO ()
 messenger redis auth = forever $ do
   msg <- nextMsg redis lodjurQueue
+  print msg
   tok <- getToken auth
   case tok of
     Just t -> handleMsg redis t msg
@@ -43,7 +44,7 @@ handleMsg redis tok (CreateCheckRun repo sha suiteid runname) = do
       , newCheckRunHeadSha      = sha
       , newCheckRunDetailsUrl   = Nothing
       , newCheckRunExternalId   = Nothing
-      , newCheckRunStatus       = Nothing
+      , newCheckRunStatus       = Just "queued"
       , newCheckRunStartedAt    = Nothing
       , newCheckRunConclusion   = Nothing
       , newCheckRunCompletedAt  = Nothing
@@ -65,6 +66,24 @@ handleMsg redis tok (CreateCheckRun repo sha suiteid runname) = do
               }
             ]
         Q.setTtl jobids (1*60*60)
+
+handleMsg _redis tok (CheckRunInProgress repo runid) = do
+  now <- getCurrentTime
+  r <- updateCheckRun (OAuth tok) (N $ owner repo) (N $ name repo) (Id runid) $
+    UpdateCheckRun
+      { updateCheckRunName         = Nothing
+      , updateCheckRunDetailsUrl   = Nothing
+      , updateCheckRunExternalId   = Nothing
+      , updateCheckRunStatus       = Just "in_progress"
+      , updateCheckRunStartedAt    = Nothing
+      , updateCheckRunConclusion   = Nothing
+      , updateCheckRunCompletedAt  = Nothing
+      , updateCheckRunOutput       = Nothing
+      , updateCheckRunActions      = Nothing
+      }
+  case r of
+    Left _ -> return ()
+    Right a -> putStrLn $ "updated run: " ++ show a
 
 handleMsg _redis tok (CheckRunCompleted repo runid conclusion) = do
   now <- getCurrentTime
