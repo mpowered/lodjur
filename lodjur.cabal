@@ -8,6 +8,7 @@ library                 github-extra
     ghc-options:        -Wall -threaded -O2
     exposed-modules:    GitHub.Extra
                       , GitHub.Data.Apps
+                      , GitHub.Data.Checks
                       , GitHub.Data.CheckRuns
                       , GitHub.Data.CheckSuite
                       , GitHub.Data.Installations
@@ -25,18 +26,24 @@ library                 lodjur-lib
     ghc-options:        -Wall -threaded -O2
     exposed-modules:    Lodjur.Messages
                       , Lodjur.GitHub
+                      , Lodjur.Database
+                      , Lodjur.Database.Checks
+                      , Lodjur.Database.Types
+                      , Database.Redis.Exception
                       , Database.Redis.Queue
     build-depends:      base                  >= 4.11 && < 5
                       , aeson                 >= 1.3.1 && < 1.4
                       , bytestring            >= 0.10.8 && < 0.11
                       , github                >= 0.21 && < 0.22
                       , github-extra
+                      , hashable              >= 1.2.7.0 && < 1.3
                       , hedis                 >= 0.10.4 && < 0.11
                       , http-client
                       , jwt                   >= 0.9.0 && < 0.10
                       , text                  >= 1.2.3 && < 1.3
                       , time                  >= 1.8.0 && < 1.9
                       , transformers          >= 0.5.5 && < 0.6
+                      , unordered-containers  >= 0.2.9 && < 0.3
                       , uuid                  >= 1.3.13 && < 1.4
 
 executable          lodjur

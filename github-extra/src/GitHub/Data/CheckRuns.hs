@@ -1,14 +1,13 @@
 {-# LANGUAGE DeriveDataTypeable #-}
 {-# LANGUAGE DeriveGeneric      #-}
-{-# LANGUAGE LambdaCase         #-}
 {-# LANGUAGE OverloadedStrings  #-}
 {-# LANGUAGE RecordWildCards    #-}
-{-# LANGUAGE TypeApplications   #-}
 
 module GitHub.Data.CheckRuns where
 
 import GitHub.Data.Apps          (AppRef)
-import GitHub.Data.CheckSuite    (EventCheckSuite)
+import GitHub.Data.Checks        (Conclusion, CheckStatus)
+import GitHub.Data.CheckSuite    (CheckSuite, EventCheckSuite)
 import GitHub.Data.Id            (Id)
 import GitHub.Data.Name          (Name)
 import GitHub.Data.Sha           (Sha)
@@ -16,19 +15,18 @@ import GitHub.Data.URL           (URL)
 import GitHub.Internal.Prelude
 import Prelude ()
 
-import qualified Data.Text as Text
-
 data CheckRun = CheckRun
     { checkRunId                :: !(Id CheckRun)
     , checkRunName              :: !(Name CheckRun)
     , checkRunHeadSha           :: !Sha
-    , checkRunStatus            :: !RunStatus
+    , checkRunStatus            :: !CheckStatus
     , checkRunDetailsUrl        :: !(Maybe URL)
     , checkRunExternalId        :: !(Maybe Text)
     , checkRunStartedAt         :: !(Maybe UTCTime)
     , checkRunConclusion        :: !(Maybe Conclusion)
     , checkRunCompletedAt       :: !(Maybe UTCTime)
     , checkRunOutput            :: !(Maybe CheckRunOutput)
+    , checkRunCheckSuiteId      :: !(Id CheckSuite)
     }
   deriving (Show, Data, Typeable, Eq, Ord, Generic)
 
@@ -47,13 +45,14 @@ instance FromJSON CheckRun where
         <*> o .:?"conclusion"
         <*> o .:?"completed_at"
         <*> o .:?"output"
+        <*> (o .: "check_suite" >>= withObject "CheckSuite" (.: "id"))
 
 data NewCheckRun = NewCheckRun
     { newCheckRunName           :: !(Name CheckRun)
     , newCheckRunHeadSha        :: !Sha
     , newCheckRunDetailsUrl     :: !(Maybe URL)
     , newCheckRunExternalId     :: !(Maybe Text)
-    , newCheckRunStatus         :: !(Maybe RunStatus)
+    , newCheckRunStatus         :: !(Maybe CheckStatus)
     , newCheckRunStartedAt      :: !(Maybe UTCTime)
     , newCheckRunConclusion     :: !(Maybe Conclusion)
     , newCheckRunCompletedAt    :: !(Maybe UTCTime)
@@ -100,7 +99,7 @@ data UpdateCheckRun = UpdateCheckRun
     { updateCheckRunName        :: !(Maybe (Name CheckRun))
     , updateCheckRunDetailsUrl  :: !(Maybe URL)
     , updateCheckRunExternalId  :: !(Maybe Text)
-    , updateCheckRunStatus      :: !(Maybe RunStatus)
+    , updateCheckRunStatus      :: !(Maybe CheckStatus)
     , updateCheckRunStartedAt   :: !(Maybe UTCTime)
     , updateCheckRunConclusion  :: !(Maybe Conclusion)
     , updateCheckRunCompletedAt :: !(Maybe UTCTime)
@@ -192,7 +191,7 @@ data EventCheckRun = EventCheckRun
     , eventCheckRunApp              :: !AppRef
     , eventCheckRunCheckSuite       :: !EventCheckSuite
     , eventCheckRunHeadSha          :: !Sha
-    , eventCheckRunStatus           :: !RunStatus
+    , eventCheckRunStatus           :: !CheckStatus
     , eventCheckRunDetailsUrl       :: !(Maybe URL)
     , eventCheckRunExternalId       :: !(Maybe Text)
     , eventCheckRunStartedAt        :: !(Maybe UTCTime)
@@ -219,45 +218,3 @@ instance FromJSON EventCheckRun where
         <*> o .:?"conclusion"
         <*> o .:?"completed_at"
         <*> o .:?"output"
-
-data Conclusion = Success | Failure | Neutral | Cancelled | TimedOut | ActionRequired
-  deriving (Show, Data, Typeable, Eq, Ord, Generic)
-
-instance NFData Conclusion where rnf = genericRnf
-instance Binary Conclusion
-
-instance ToJSON Conclusion where
-  toJSON Success        = toJSON @Text "success"
-  toJSON Failure        = toJSON @Text "failure"
-  toJSON Neutral        = toJSON @Text "neutral"
-  toJSON Cancelled      = toJSON @Text "cancelled"
-  toJSON TimedOut       = toJSON @Text "timed_out"
-  toJSON ActionRequired = toJSON @Text "action_required"
-
-instance FromJSON Conclusion where
-  parseJSON = withText "Conclusion" $ \case
-    "success"         -> return Success
-    "failure"         -> return Failure
-    "neutral"         -> return Neutral
-    "cancelled"       -> return Cancelled
-    "timed_out"       -> return TimedOut
-    "action_required" -> return ActionRequired
-    x                 -> fail $ Text.unpack x ++ " is not a valid Conclusion"
-
-data RunStatus = Queued | InProgress | Completed
-  deriving (Show, Data, Typeable, Eq, Ord, Generic)
-
-instance NFData RunStatus where rnf = genericRnf
-instance Binary RunStatus
-
-instance ToJSON RunStatus where
-  toJSON Queued         = toJSON @Text "queued"
-  toJSON InProgress     = toJSON @Text "in_progress"
-  toJSON Completed      = toJSON @Text "completed"
-
-instance FromJSON RunStatus where
-  parseJSON = withText "RunStatus" $ \case
-    "queued"          -> return Queued
-    "in_progress"     -> return InProgress
-    "completed"       -> return Completed
-    x                 -> fail $ Text.unpack x ++ " is not a valid RunStatus"

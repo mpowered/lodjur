@@ -1,6 +1,7 @@
 {-# LANGUAGE DeriveDataTypeable #-}
 {-# LANGUAGE DeriveGeneric      #-}
 {-# LANGUAGE OverloadedStrings  #-}
+{-# LANGUAGE RecordWildCards    #-}
 
 module GitHub.Data.Apps where
 
@@ -28,6 +29,24 @@ data App = App
 instance NFData App where rnf = genericRnf
 instance Binary App
 
+data AppRef = AppRef
+    { appRefId    :: !(Id App)
+    , appRefName  :: !(Name App)
+    }
+  deriving (Show, Data, Typeable, Eq, Ord, Generic)
+
+instance NFData AppRef where rnf = genericRnf
+instance Binary AppRef
+
+data AccessToken = AccessToken
+    { accessToken          :: !Token
+    , accessTokenExpiresAt :: !(Maybe UTCTime)
+    }
+  deriving (Show, Data, Typeable, Eq, Ord, Generic)
+
+instance NFData AccessToken where rnf = genericRnf
+instance Binary AccessToken
+
 instance FromJSON App where
     parseJSON = withObject "App" $ \o -> App
         <$> o .: "id"
@@ -39,28 +58,22 @@ instance FromJSON App where
         <*> o .:?"created_at"
         <*> o .:?"updated_at"
 
-data AppRef = AppRef
-    { appRefId    :: !(Id App)
-    , appRefName  :: !(Name App)
-    }
-  deriving (Show, Data, Typeable, Eq, Ord, Generic)
-
-instance NFData AppRef where rnf = genericRnf
-instance Binary AppRef
+instance ToJSON App where
+    toJSON App {..} = object
+        [ "id"            .= appId
+        , "owner"         .= appOwner
+        , "name"          .= appName
+        , "description"   .= appDescription
+        , "external_url"  .= appExternalUrl
+        , "html_url"      .= appHtmlUrl
+        , "created_at"    .= appCreatedAt
+        , "updated_at"    .= appUpdatedAt
+        ]
 
 instance FromJSON AppRef where
     parseJSON = withObject "AppRef" $ \o -> AppRef
         <$> o .: "id"
         <*> o .: "name"
-
-data AccessToken = AccessToken
-    { accessToken          :: !Token
-    , accessTokenExpiresAt :: !(Maybe UTCTime)
-    }
-  deriving (Show, Data, Typeable, Eq, Ord, Generic)
-
-instance NFData AccessToken where rnf = genericRnf
-instance Binary AccessToken
 
 instance FromJSON AccessToken where
     parseJSON = withObject "AccessToken" $ \o -> AccessToken

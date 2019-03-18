@@ -5,7 +5,6 @@
 module Database.Redis.Queue
   ( Queue (..)
   , MsgId (..)
-  , RedisError (..)
   , randomId
   , push
   , pop
@@ -18,10 +17,10 @@ module Database.Redis.Queue
   )
 where
 
-import           Control.Exception
 import           Control.Monad
 import           Control.Monad.IO.Class
-import           Database.Redis                as Redis hiding (move)
+import           Database.Redis                hiding (move)
+import           Database.Redis.Exception
 import           Data.Aeson                    as Aeson
 import           Data.ByteString               (ByteString)
 import           Data.ByteString.Lazy          (toStrict)
@@ -45,14 +44,6 @@ instance ToJSON MsgId where
 instance FromJSON MsgId where
   parseJSON v = MsgId <$> parseJSON v
 
-data RedisError
-  = RedisError Reply
-  | RedisTxError String
-  | RedisTxAborted
-  deriving (Show, Eq)
-
-instance Exception RedisError
-
 queueKey :: Queue -> ByteString
 queueKey = Text.encodeUtf8 . unQueue
 
@@ -70,22 +61,6 @@ randomId = toMsgId <$> UUID.nextRandom
 
 encode' :: ToJSON a => a -> ByteString
 encode' = toStrict . encode
-
-class RedisCheck m f where
-  check :: MonadIO m => m (f a) -> m a
-
-instance RedisCheck Redis (Either Reply) where
-  check x = do
-    r <- x
-    either (liftIO . throwIO . RedisError) return r
-
-instance RedisCheck Redis TxResult where
-  check x = do
-    r <- x
-    case r of
-      TxSuccess a -> return a
-      TxAborted -> liftIO $ throwIO RedisTxAborted
-      TxError err -> liftIO $ throwIO $ RedisTxError err
 
 push :: ToJSON a => Queue -> [a] -> Redis [MsgId]
 push name msgs = do

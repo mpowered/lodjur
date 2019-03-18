@@ -1,5 +1,6 @@
 module GitHub.Extra (
     module GitHub.Data.Apps,
+    module GitHub.Data.Checks,
     module GitHub.Data.CheckRuns,
     module GitHub.Data.CheckSuite,
     module GitHub.Data.Installations,
@@ -7,6 +8,7 @@ module GitHub.Extra (
     ) where
 
 import GitHub.Data.Apps
+import GitHub.Data.Checks
 import GitHub.Data.CheckRuns
 import GitHub.Data.CheckSuite
 import GitHub.Data.Installations

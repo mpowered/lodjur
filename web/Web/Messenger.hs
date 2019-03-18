@@ -43,6 +43,7 @@ handleMsg redis tok (CreateCheckRun repo sha suiteid runname) = do
     (newCheckRun runname sha)
       { newCheckRunStatus       = Just Queued
       }
+  putStrLn $ "create run: " ++ show r
   case r of
     Left _ -> return ()
     Right CheckRun{..} ->
@@ -64,9 +65,10 @@ handleMsg _redis tok (CheckRunInProgress repo runid) = do
     emptyUpdateCheckRun
       { updateCheckRunStatus       = Just InProgress
       }
+  putStrLn $ "update run: " ++ show r
   case r of
     Left _ -> return ()
-    Right a -> putStrLn $ "updated run: " ++ show a
+    Right _a -> return ()
 
 handleMsg _redis tok (CheckRunCompleted repo runid conclusion) = do
   now <- getCurrentTime
@@ -76,6 +78,7 @@ handleMsg _redis tok (CheckRunCompleted repo runid conclusion) = do
       , updateCheckRunConclusion   = Just conclusion
       , updateCheckRunCompletedAt  = Just now
       }
+  putStrLn $ "update run: " ++ show r
   case r of
     Left _ -> return ()
-    Right a -> putStrLn $ "updated run: " ++ show a
+    Right _a -> return ()

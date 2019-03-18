@@ -23,14 +23,11 @@ import           Data.Time.Clock               (getCurrentTime)
 import           Network.HTTP.Types.Status
 import           Web.Spock
 
--- import           Database.Beam
 import qualified Database.Redis                as Redis
 import qualified Database.Redis.Queue          as Q
 
--- import qualified Lodjur.Database               as DB
--- import qualified Lodjur.Database.CheckRun      as DB
--- import qualified Lodjur.Database.CheckSuite    as DB
--- import qualified Lodjur.Database.Event         as DB
+import qualified Lodjur.Database               as Db
+import qualified Lodjur.Database.Checks        as Db
 import qualified Lodjur.Messages               as Msg
 
 import           Web.Base
@@ -38,8 +35,6 @@ import           Web.WebHook.Events
 
 import qualified GitHub                        as GH
 import qualified GitHub.Extra                  as GH
--- import           GitHub.Endpoints.Apps        hiding (app)
--- import           GitHub.Endpoints.Checks
 
 ignoreEvent :: Action ()
 ignoreEvent = text "Event ignored"
@@ -48,19 +43,10 @@ webhookAction :: Action ()
 webhookAction = do
   Env {..} <- getState
 
-  delivery    <- header "X-GitHub-Delivery"
+  _delivery   <- header "X-GitHub-Delivery"
   githubEvent <- requiredHeader "X-GitHub-Event"
-  now         <- liftIO getCurrentTime
+  _now        <- liftIO getCurrentTime
   event       <- secureJsonData
-  -- DB.withConn envDbPool $ \conn -> DB.insertEventsE conn
-  --   [ DB.Event  { DB.eventId = default_
-  --               , DB.eventSource = val_ "GitHub"
-  --               , DB.eventDelivery = val_ delivery
-  --               , DB.eventType = val_ githubEvent
-  --               , DB.eventCreatedAt = val_ now
-  --               , DB.eventData = val_ event
-  --               }
-  --   ]
   case githubEvent of
     "check_suite" -> checkSuiteEvent =<< parseEvent event
     "check_run"   -> checkRunEvent =<< parseEvent event
@@ -76,18 +62,17 @@ checkSuiteEvent :: CheckSuiteEvent -> Action ()
 checkSuiteEvent CheckSuiteEvent {..} = do
   let action = checkSuiteEventAction
       repo   = checkSuiteEventRepository
-      owner  = GH.repoRefOwner repo
       suite  = checkSuiteEventCheckSuite
       app    = GH.eventCheckSuiteApp suite
 
   Env {..} <- getState
 
-  unless (envGithubAppId == GH.untagId (GH.appRefId app)) $
+  unless (envGithubAppId == GH.untagId (GH.appId app)) $
     text "Event ignored, different AppId"
 
   case action of
-    "requested"     -> checkRequested suite owner repo
-    "rerequested"   -> checkRequested suite owner repo
+    "requested"     -> checkRequested suite repo
+    "rerequested"   -> checkRequested suite repo
     "completed"     -> ignoreEvent
     _               -> raise "Unknown check_suite action received"
 
@@ -97,54 +82,65 @@ checkRunEvent CheckRunEvent {..} = do
       run    = checkRunEventCheckRun
       suite  = GH.eventCheckRunCheckSuite run
       app    = GH.eventCheckSuiteApp suite
-      repo   = checkRunEventRepository
-      owner  = GH.repoRefOwner repo
 
   Env {..} <- getState
 
-  unless (envGithubAppId == GH.untagId (GH.appRefId app)) $
+  unless (envGithubAppId == GH.untagId (GH.appId app)) $
     text "Event ignored, different AppId"
 
   case action of
-    "created"           -> checkRun run owner repo
-    "rerequested"       -> checkRun run owner repo
+    "created"           -> checkRun run
+    "rerequested"       -> checkRun run
     "requested_action"  -> ignoreEvent
+    "completed"         -> ignoreEvent
     _                   -> raise "Unknown check_run action received"
 
-checkRequested :: GH.EventCheckSuite -> GH.SimpleOwner -> GH.RepoRef -> Action ()
-checkRequested suite owner repo = do
+repoToRef :: GH.Repo -> GH.RepoRef
+repoToRef repo = GH.RepoRef { repoRefOwner = GH.repoOwner repo, repoRefRepo = GH.repoName repo }
+
+checkRequested :: GH.EventCheckSuite -> GH.Repo -> Action ()
+checkRequested suite repo = do
   Env {..} <- getState
 
   liftIO $ Redis.runRedis envRedisConn $ do
+    Db.put_ (Db.checkSuiteKeyFromId $ GH.eventCheckSuiteId suite)
+      Db.CheckSuite
+        { headBranch = GH.eventCheckSuiteHeadBranch suite
+        , headSha    = GH.eventCheckSuiteHeadSha suite
+        , status     = GH.eventCheckSuiteStatus suite
+        , conclusion = GH.eventCheckSuiteConclusion suite
+        , repository = repo
+        , checkRuns  = mempty
+        }
+
     jobids <-
       Q.push Msg.workersQueue
         [ Msg.CheckRequested
-          { repo = repo
+          { repo = repoToRef repo
           , headSha = GH.eventCheckSuiteHeadSha suite
           , checkSuiteId = GH.eventCheckSuiteId suite
           }
         ]
     Q.setTtl jobids (1*60*60)
 
-checkRun :: GH.EventCheckRun -> GH.SimpleOwner -> GH.RepoRef -> Action ()
-checkRun _run _owner _repo = return ()
--- checkRun run owner repo = do
---   let suite = eventCheckRunCheckSuite run
+checkRun :: GH.EventCheckRun -> Action ()
+checkRun run = do
+  let suite  = GH.eventCheckRunCheckSuite run
 
---   Env {..} <- getState
+  Env {..} <- getState
 
---   liftIO $ Redis.runRedis envRedisConn $ do
---     jobids <-
---       Q.push "checkruns"
---         [ Jobs.CheckRun
---           { jobRunId = untagId (eventCheckRunId run)
---           , jobName = untagName (eventCheckRunName run)
---           , jobRepo = Jobs.Repo (untagName $ simpleOwnerLogin owner) (untagName $ repoRefRepo repo)
---           , jobHeadSha = eventCheckRunHeadSha run
---           , jobSuiteId = untagId (eventCheckSuiteId suite)
---           }
---         ]
---     Q.setTtl jobids (1*60*60)
+  liftIO $ Redis.runRedis envRedisConn $ do
+    Db.put_ (Db.checkRunKeyFromId $ GH.eventCheckRunId run)
+      Db.CheckRun
+        { checkSuiteId = GH.eventCheckSuiteId suite
+        , name         = GH.eventCheckRunName run
+        , headSha      = GH.eventCheckRunHeadSha run
+        , status       = GH.eventCheckRunStatus run
+        , conclusion   = GH.eventCheckRunConclusion run
+        , startedAt    = GH.eventCheckRunStartedAt run
+        , completedAt  = GH.eventCheckRunCompletedAt run
+        , output       = GH.eventCheckRunOutput run
+        }
 
 raise :: MonadIO m => Text -> ActionCtxT ctx m b
 raise msg = do
