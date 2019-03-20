@@ -1,6 +1,6 @@
 {-# LANGUAGE OverloadedStrings #-}
 {-# LANGUAGE RecordWildCards   #-}
-module Lodjur.Web.Auth.GitHub where
+module Auth.GitHub where
 
 import           Control.Monad.Except
 import           Control.Monad.IO.Class               (liftIO)
@@ -15,9 +15,8 @@ import           Network.OAuth.OAuth2
 import           URI.ByteString
 import           Web.Spock
 
-import           Lodjur.Auth
-import           Lodjur.User
-import           Lodjur.Web.Base
+import           Base
+import           User
 
 -- For GitHub apps scopes aren't needed
 startGithubAuthentication :: OAuth2 -> Action ()
@@ -64,19 +63,6 @@ exchangeCode oauth2 = do
     Right OAuth2Token {..} ->
       return accessToken
 
-getUserAndTeams :: AccessToken -> Action (GitHub.User, [GitHub.Team])
-getUserAndTeams accessToken = do
-  githubResult <- runExceptT $ do
-    user <- ExceptT (getUser accessToken)
-    teams <- ExceptT (getTeams accessToken)
-    return (user, teams)
-  case githubResult of
-    Left err -> do
-      setStatus status400
-      text ("Failed: " <> Text.pack (show err))
-    Right userAndTeams ->
-      return userAndTeams
-
 getUser' :: AccessToken -> Action GitHub.User
 getUser' accessToken = do
   githubResult <- getUser accessToken
@@ -96,27 +82,12 @@ loginAndRedirect githubUser = do
     Just relRef -> redirect (Text.decodeUtf8 (serializeURIRef' relRef))
     Nothing -> redirect "/"
 
-authorizeAndLogin :: OAuth2 -> TeamAuthConfig -> Action ()
-authorizeAndLogin oauth2 teamAuth = do
+authorizeAndLogin :: OAuth2 -> Action ()
+authorizeAndLogin oauth2 = do
   checkError
   accessToken <- exchangeCode oauth2
   githubUser <- getUser' accessToken
   loginAndRedirect githubUser
-  -- if isAuthorized teamAuth teams
-  --   then loginAndRedirect githubUser
-  --   else do setStatus status403
-  --           text (mconcat [ "You are not authorized, "
-  --                         , "because you don't have read/write permissions in the "
-  --                         , githubAuthOrg teamAuth <> "/" <> githubAuthTeam teamAuth
-  --                         , " team."
-  --                         ])
-
-isAuthorized :: TeamAuthConfig -> [GitHub.Team] -> Bool
-isAuthorized TeamAuthConfig{..} = any authorizedInTeam
-  where
-    authorizedInTeam t = team t == githubAuthTeam && org t == githubAuthOrg
-    team = GitHub.untagName . GitHub.teamSlug
-    org  = GitHub.untagName . GitHub.simpleOrganizationLogin . GitHub.teamOrganization
 
 toOAuth :: AccessToken -> GitHub.Auth
 toOAuth (AccessToken accessToken) =
@@ -131,23 +102,14 @@ getUser at = do
       (toOAuth at)
       GitHub.userInfoCurrentR
 
-getTeams :: AccessToken -> Action (Either GitHub.Error [GitHub.Team])
-getTeams at = do
-  Env {..} <- getState
-  liftIO . fmap (fmap toList) $
-    GitHub.executeRequestWithMgr
-      envManager
-      (toOAuth at)
-      (GitHub.listTeamsCurrentR GitHub.FetchAll)
-
 clearSession :: Action ()
 clearSession = do
   writeSession emptySession
   redirect "/"
 
-authRoutes :: OAuth2 -> TeamAuthConfig -> App ()
-authRoutes oauth2 teamAuthCfg = do
+authRoutes :: OAuth2 -> App ()
+authRoutes oauth2 = do
   -- Auth
   get ("github" <//> "login")    (startGithubAuthentication oauth2)
-  get ("github" <//> "callback") (authorizeAndLogin oauth2 teamAuthCfg)
+  get ("github" <//> "callback") (authorizeAndLogin oauth2)
   get ("github" <//> "logout")   clearSession

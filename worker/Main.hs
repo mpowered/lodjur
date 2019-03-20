@@ -3,9 +3,12 @@
 
 module Main where
 
+import           Control.Concurrent.Async
 import           Control.Monad
 import qualified Database.Redis               as Redis
 import qualified Database.Redis.Queue         as Q
+import qualified Lodjur.Database              as Db
+import qualified Lodjur.Database.Checks       as Db
 import           Lodjur.Messages
 import           Options.Applicative          hiding (Success)
 import           Prelude                      hiding (lookup)
@@ -42,68 +45,76 @@ main = start =<< execParser opts
 
 start :: Options -> IO ()
 start Options{..} = do
-  Config{..} <- readConfiguration configFile
+  cfg@Config{..} <- readConfiguration configFile
 
   conn <- Redis.checkedConnect redisConnectInfo
 
-  forever $ do
-    x <- Redis.runRedis conn $ Q.pop workersQueue 30
-    case x of
-      Nothing -> return ()  -- Timeout
-      Just jobid -> do
-        a <- Redis.runRedis conn $ Q.lookupEither jobid
-        case a of
-          Nothing ->
-            putStrLn $ "Warning: stale job " ++ show jobid
-          Just (Left err) ->
-            putStrLn $ "Warning: unable to decode job: " ++ err
-          Just (Right job) -> do
-            putStrLn $ show jobid ++ ": " ++ show job
-            handler conn gitEnv buildEnv jobid job
+  concurrently_ (handleCheckRequests cfg conn) (handleCheckRuns cfg conn)
 
-handler :: Redis.Connection -> Git.Env -> Build.Env -> Q.MsgId -> WorkerMsg -> IO ()
-handler conn _ _ _jobid (CheckRequested repo sha suiteid) = do
+  where
+    handleCheckRequests Config{..} conn =
+      forever $ do
+        x <- Redis.runRedis conn $ Q.poppush' checkRequestedQueue checkInProgressQueue 30
+        case x of
+          Nothing -> return ()  -- Timeout
+          Just a ->
+            case a of
+              Left err ->
+                putStrLn $ "Warning: unable to decode check request: " ++ err
+              Right suite ->
+                checkRequested conn gitEnv buildEnv suite
+
+    handleCheckRuns Config{..} conn =
+      forever $ do
+        x <- Redis.runRedis conn $ Q.poppush' runRequestedQueue runInProgressQueue 30
+        case x of
+          Nothing -> return ()  -- Timeout
+          Just a ->
+            case a of
+              Left err ->
+                putStrLn $ "Warning: unable to decode check request: " ++ err
+              Right run ->
+                checkRun conn gitEnv buildEnv run
+
+checkRequested :: Redis.Connection -> Git.Env -> Build.Env -> Id CheckSuite -> IO ()
+checkRequested conn _ _ suiteid = do
   putStrLn "Check Suite"
-  Redis.runRedis conn $ do
-    jobids <-
-      Q.push lodjurQueue
-        [ CreateCheckRun
-          { repo = repo
-          , headSha = sha
-          , checkSuiteId = suiteid
-          , checkRunName = "nix build"
-          }
-        ]
-    Q.setTtl jobids (1*60*60)
+  Redis.runRedis conn $
+    Q.push workerQueue
+      [ CreateCheckRun
+        { checkSuiteId = suiteid
+        , checkRunName = "nix build"
+        }
+      ]
 
-handler conn gitEnv buildEnv _jobid (RunCheck repo sha _suiteid _name runid) = do
-  putStrLn "Check Run"
+checkRun :: Redis.Connection -> Git.Env -> Build.Env -> Id CheckRun -> IO ()
+checkRun conn gitEnv buildEnv runid = do
+  r <- Redis.runRedis conn $ Db.lookup (Db.checkRunKeyFromId runid)
+  case r of
+    Nothing ->
+      putStrLn $ "missing check run details for " ++ show runid
+    Just Db.CheckRun{..} -> do
+      s <- Redis.runRedis conn $ Db.lookup (Db.checkSuiteKeyFromId checkSuiteId)
+      case s of
+        Nothing ->
+          putStrLn $ "missing check suite details for " ++ show checkSuiteId
+        Just Db.CheckSuite{..} -> do
+          Redis.runRedis conn $
+            Q.push workerQueue
+              [ CheckRunInProgress
+                { checkRunId = runid
+                }
+              ]
 
-  Redis.runRedis conn $ do
-    jobids <-
-      Q.push lodjurQueue
-        [ CheckRunInProgress
-          { repo = repo
-          , checkRunId = runid
-          }
-        ]
-    Q.setTtl jobids (1*60)
+          let reporef = RepoRef (repoOwner repository) (repoName repository)
+          workdir <- Git.checkout gitEnv reporef headSha
+          Build.build buildEnv workdir "release.nix" "mpowered-services" [("railsEnv", "production")]
 
-  check gitEnv buildEnv repo sha
-
-  Redis.runRedis conn $ do
-    jobids <-
-      Q.push lodjurQueue
-        [ CheckRunCompleted
-          { repo = repo
-          , checkRunId = runid
-          , conclusion = Success
-          }
-        ]
-    Q.setTtl jobids (1*60*60)
-
-check :: Git.Env -> Build.Env -> RepoRef -> Sha -> IO ()
-check gitEnv buildEnv repo sha = do
-  workdir <- Git.checkout gitEnv repo sha
-  Build.build buildEnv workdir "release.nix" "mpowered-services" [("railsEnv", "production")]
-
+          Redis.runRedis conn $ do
+            Q.push workerQueue
+              [ CheckRunCompleted
+                { checkRunId = runid
+                , conclusion = Success
+                }
+              ]
+            void $ Q.remove runInProgressQueue runid

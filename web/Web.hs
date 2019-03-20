@@ -13,9 +13,9 @@ import           Network.OAuth.OAuth2
 import           Web.Spock                     hiding (static)
 import           Web.Spock.Config
 
-import           Web.Auth.GitHub
-import           Web.Base
-import           Web.WebHook
+import           Auth.GitHub
+import           Base
+import           WebHook
 
 homeAction :: Action ()
 homeAction = do

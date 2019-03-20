@@ -1,10 +1,11 @@
-{-# LANGUAGE FlexibleContexts  #-}
-{-# LANGUAGE LambdaCase        #-}
-{-# LANGUAGE NamedFieldPuns    #-}
-{-# LANGUAGE OverloadedStrings #-}
-{-# LANGUAGE RecordWildCards   #-}
-{-# LANGUAGE TypeFamilies      #-}
-module Web.WebHook
+{-# LANGUAGE DuplicateRecordFields #-}
+{-# LANGUAGE FlexibleContexts      #-}
+{-# LANGUAGE LambdaCase            #-}
+{-# LANGUAGE NamedFieldPuns        #-}
+{-# LANGUAGE OverloadedStrings     #-}
+{-# LANGUAGE RecordWildCards       #-}
+{-# LANGUAGE TypeFamilies          #-}
+module WebHook
   ( webhookAction
   )
 where
@@ -16,6 +17,7 @@ import           Crypto.Hash
 import           Crypto.MAC.HMAC
 import           Data.Aeson                    hiding (json)
 import qualified Data.ByteString.Base16        as Base16
+import qualified Data.HashSet                  as Set
 import           Data.Text                     (Text)
 import qualified Data.Text                     as Text
 import qualified Data.Text.Encoding            as Text
@@ -30,8 +32,8 @@ import qualified Lodjur.Database               as Db
 import qualified Lodjur.Database.Checks        as Db
 import qualified Lodjur.Messages               as Msg
 
-import           Web.Base
-import           Web.WebHook.Events
+import           Base
+import           WebHook.Events
 
 import qualified GitHub                        as GH
 import qualified GitHub.Extra                  as GH
@@ -73,7 +75,7 @@ checkSuiteEvent CheckSuiteEvent {..} = do
   case action of
     "requested"     -> checkRequested suite repo
     "rerequested"   -> checkRequested suite repo
-    "completed"     -> ignoreEvent
+    "completed"     -> updateCheckSuite suite
     _               -> raise "Unknown check_suite action received"
 
 checkRunEvent :: CheckRunEvent -> Action ()
@@ -92,11 +94,8 @@ checkRunEvent CheckRunEvent {..} = do
     "created"           -> checkRun run
     "rerequested"       -> checkRun run
     "requested_action"  -> ignoreEvent
-    "completed"         -> ignoreEvent
+    "completed"         -> updateCheckRun run
     _                   -> raise "Unknown check_run action received"
-
-repoToRef :: GH.Repo -> GH.RepoRef
-repoToRef repo = GH.RepoRef { repoRefOwner = GH.repoOwner repo, repoRefRepo = GH.repoName repo }
 
 checkRequested :: GH.EventCheckSuite -> GH.Repo -> Action ()
 checkRequested suite repo = do
@@ -113,21 +112,12 @@ checkRequested suite repo = do
         , checkRuns  = mempty
         }
 
-    jobids <-
-      Q.push Msg.workersQueue
-        [ Msg.CheckRequested
-          { repo = repoToRef repo
-          , headSha = GH.eventCheckSuiteHeadSha suite
-          , checkSuiteId = GH.eventCheckSuiteId suite
-          }
-        ]
-    Q.setTtl jobids (1*60*60)
+    void $ Q.push Msg.checkRequestedQueue [GH.eventCheckSuiteId suite]
 
 checkRun :: GH.EventCheckRun -> Action ()
 checkRun run = do
-  let suite  = GH.eventCheckRunCheckSuite run
-
   Env {..} <- getState
+  let suite  = GH.eventCheckRunCheckSuite run
 
   liftIO $ Redis.runRedis envRedisConn $ do
     Db.put_ (Db.checkRunKeyFromId $ GH.eventCheckRunId run)
@@ -141,6 +131,46 @@ checkRun run = do
         , completedAt  = GH.eventCheckRunCompletedAt run
         , output       = GH.eventCheckRunOutput run
         }
+
+    Db.modify (Db.checkSuiteKeyFromId $ GH.eventCheckSuiteId suite) $
+      \cs -> cs
+        { Db.checkRuns  = Set.insert (GH.eventCheckRunId run) (Db.checkRuns cs)
+        } :: Db.CheckSuite
+
+    void $ Q.push Msg.runRequestedQueue [GH.eventCheckRunId run]
+
+updateCheckSuite :: GH.EventCheckSuite -> Action ()
+updateCheckSuite suite = do
+  Env {..} <- getState
+
+  liftIO $ Redis.runRedis envRedisConn $ do
+    Db.modify (Db.checkSuiteKeyFromId $ GH.eventCheckSuiteId suite) $
+      \cs -> cs
+        { Db.status     = GH.eventCheckSuiteStatus suite
+        , Db.conclusion = GH.eventCheckSuiteConclusion suite
+        } :: Db.CheckSuite
+    when (GH.eventCheckSuiteStatus suite == GH.Completed) $
+      void $ Q.move Msg.checkInProgressQueue Msg.checkCompletedQueue (GH.eventCheckSuiteId suite)
+
+updateCheckRun :: GH.EventCheckRun -> Action ()
+updateCheckRun run = do
+  Env {..} <- getState
+
+  liftIO $ Redis.runRedis envRedisConn $
+    if GH.eventCheckRunStatus run == GH.Completed
+    then
+      Db.modify (Db.checkRunKeyFromId $ GH.eventCheckRunId run) $
+        \cs -> cs
+          { Db.status      = GH.eventCheckRunStatus run
+          , Db.conclusion  = GH.eventCheckRunConclusion run
+          , Db.completedAt = GH.eventCheckRunCompletedAt run
+          } :: Db.CheckRun
+    else
+      Db.modify (Db.checkRunKeyFromId $ GH.eventCheckRunId run) $
+        \cs -> cs
+          { Db.status     = GH.eventCheckRunStatus run
+          , Db.conclusion = GH.eventCheckRunConclusion run
+          } :: Db.CheckRun
 
 raise :: MonadIO m => Text -> ActionCtxT ctx m b
 raise msg = do

@@ -25,7 +25,7 @@ data CheckSuite = CheckSuite
     , status                :: !GH.CheckStatus
     , conclusion            :: !(Maybe GH.Conclusion)
     , repository            :: !GH.Repo
-    , checkRuns             :: !(HashSet (Id CheckRun))
+    , checkRuns             :: !(HashSet (Id GH.CheckRun))
     }
   deriving (Show, Eq, Ord, Generic)
 

@@ -12,17 +12,16 @@ import           GitHub.Extra
 import           Database.Redis.Queue          (Queue(..))
 
 data WorkerMsg
-  = CheckRequested
-    { repo              :: !RepoRef
-    , headSha           :: !Sha
-    , checkSuiteId      :: !(Id CheckSuite)
-    }
-  | RunCheck
-    { repo              :: !RepoRef
-    , headSha           :: !Sha
-    , checkSuiteId      :: !(Id CheckSuite)
+  = CreateCheckRun
+    { checkSuiteId      :: !(Id CheckSuite)
     , checkRunName      :: !(Name CheckRun)
-    , checkRunId        :: !(Id CheckRun)
+    }
+  | CheckRunInProgress
+    { checkRunId        :: !(Id CheckRun)
+    }
+  | CheckRunCompleted
+    { checkRunId        :: !(Id CheckRun)
+    , conclusion        :: !Conclusion
     }
   deriving (Show, Eq, Ord, Generic)
 
@@ -32,30 +31,6 @@ instance ToJSON WorkerMsg where
 instance FromJSON WorkerMsg where
   parseJSON = genericParseJSON jsonOptions
 
-data LodjurMsg
-  = CreateCheckRun
-    { repo              :: !RepoRef
-    , headSha           :: !Sha
-    , checkSuiteId      :: !(Id CheckSuite)
-    , checkRunName      :: !(Name CheckRun)
-    }
-  | CheckRunInProgress
-    { repo              :: !RepoRef
-    , checkRunId        :: !(Id CheckRun)
-    }
-  | CheckRunCompleted
-    { repo              :: !RepoRef
-    , checkRunId        :: !(Id CheckRun)
-    , conclusion        :: !Conclusion
-    }
-  deriving (Show, Eq, Ord, Generic)
-
-instance ToJSON LodjurMsg where
-  toJSON = genericToJSON jsonOptions
-
-instance FromJSON LodjurMsg where
-  parseJSON = genericParseJSON jsonOptions
-
 jsonOptions :: Options
 jsonOptions =
   defaultOptions
@@ -63,8 +38,20 @@ jsonOptions =
     , fieldLabelModifier = camelTo2 '_'
     }
 
-workersQueue :: Queue
-workersQueue = Queue "workers"
+checkRequestedQueue :: Queue (Id CheckSuite)
+checkRequestedQueue = Queue "checks-requested"
 
-lodjurQueue :: Queue
-lodjurQueue = Queue "lodjur"
+checkInProgressQueue :: Queue (Id CheckSuite)
+checkInProgressQueue = Queue "checks-in-progress"
+
+checkCompletedQueue :: Queue (Id CheckSuite)
+checkCompletedQueue = Queue "checks-completed"
+
+runRequestedQueue :: Queue (Id CheckRun)
+runRequestedQueue = Queue "runs-requested"
+
+runInProgressQueue :: Queue (Id CheckRun)
+runInProgressQueue = Queue "runs-in-progress"
+
+workerQueue :: Queue WorkerMsg
+workerQueue = Queue "worker-msgs"

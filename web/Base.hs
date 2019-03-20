@@ -1,4 +1,4 @@
-module Lodjur.Web.Base where
+module Base where
 
 import           Control.Concurrent
 import           Data.ByteString              (ByteString)
@@ -10,7 +10,7 @@ import           URI.ByteString
 import qualified Web.JWT                      as JWT
 import           Web.Spock
 
-import           Lodjur.Database
+-- import           Lodjur.Database
 -- import           Lodjur.Deployment.Deployer
 -- import           Lodjur.Events.EventLogger
 -- import           Lodjur.Git.GitAgent
@@ -18,7 +18,8 @@ import           Lodjur.Database
 -- import           Lodjur.Output.OutputLoggers
 -- import           Lodjur.Output.OutputStreamer
 -- import           Lodjur.Process
-import           Lodjur.User
+
+import           User
 
 data Env = Env
   -- { envDeployer                      :: Ref Deployer
@@ -34,7 +35,7 @@ data Env = Env
   , envGithubInstallationId             :: !Int
   , envGithubInstallationAccessToken    :: !(MVar (Maybe GH.AccessToken))
   , envManager                          :: !Manager
-  , envDbPool                           :: !DbPool
+  -- , envDbPool                           :: !DbPool
   , envRedisConn                        :: !Redis.Connection
   }
 

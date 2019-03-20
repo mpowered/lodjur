@@ -1,6 +1,6 @@
 {-# LANGUAGE OverloadedStrings #-}
 {-# LANGUAGE RecordWildCards   #-}
-module Lodjur.Web.WebHook.Events where
+module WebHook.Events where
 
 import           Data.Aeson
 import           Data.Aeson.Types
@@ -22,7 +22,7 @@ instance FromJSON PushEvent where
 
 data CreateEvent = CreateEvent
   { createRef        :: !Text
-  , createRepository :: !RepoRef
+  , createRepository :: !Repo
   } deriving (Eq, Show)
 
 instance FromJSON CreateEvent where
@@ -34,7 +34,7 @@ instance FromJSON CreateEvent where
 
 data DeleteEvent = DeleteEvent
   { deleteRef        :: !Text
-  , deleteRepository :: !RepoRef
+  , deleteRepository :: !Repo
   } deriving (Eq, Show)
 
 instance FromJSON DeleteEvent where
@@ -46,7 +46,7 @@ instance FromJSON DeleteEvent where
 
 data CheckSuiteEvent = CheckSuiteEvent
   { checkSuiteEventAction       :: !Text
-  , checkSuiteEventRepository   :: !RepoRef
+  , checkSuiteEventRepository   :: !Repo
   , checkSuiteEventCheckSuite   :: !EventCheckSuite
   } deriving (Eq, Show)
 
@@ -61,7 +61,7 @@ instance FromJSON CheckSuiteEvent where
 data CheckRunEvent = CheckRunEvent
   { checkRunEventAction       :: !Text
   , checkRunEventCheckRun     :: !EventCheckRun
-  , checkRunEventRepository   :: !RepoRef
+  , checkRunEventRepository   :: !Repo
   } deriving (Eq, Show)
 
 instance FromJSON CheckRunEvent where

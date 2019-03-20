@@ -15,8 +15,8 @@ import           Config
 -- import qualified Lodjur.Database              as Database
 import qualified Lodjur.GitHub                as GH
 import           Web
-import           Web.Base
-import           Web.Messenger
+import           Base
+import           Messenger
 
 import           GitHub.Data.Id
 
