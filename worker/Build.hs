@@ -17,19 +17,19 @@ instance Show BuildError where
 instance Exception BuildError where
   displayException (BuildError code) = "BuildError: build exited with code " <> show code
 
-data Env = Env
+data Config = Config
   { buildCmd    :: FilePath
   , buildDebug  :: Bool
   }
 
-instance FromJSON Env where
-  parseJSON = withObject "Git Env" $ \o -> do
+instance FromJSON Config where
+  parseJSON = withObject "Build Config" $ \o -> do
     buildCmd    <- o .: "command"
     buildDebug  <- o .: "debug"
-    return Env{..}
+    return Config{..}
 
-runBuild :: Env -> CreateProcess -> IO ()
-runBuild Env{..} p = do
+runBuild :: Config -> CreateProcess -> IO ()
+runBuild Config{..} p = do
   when buildDebug $ putStrLn $ "GIT: " ++ show (cmdspec p)
   (exitcode, stdout, stderr) <- readCreateProcessWithExitCode p ""
   when buildDebug $ do
@@ -39,13 +39,13 @@ runBuild Env{..} p = do
     ExitSuccess -> return ()
     ExitFailure code -> throwIO $ BuildError code
 
-nixBuild :: Env -> [String] -> CreateProcess
-nixBuild Env{..} = proc buildCmd
+nixBuild :: Config -> [String] -> CreateProcess
+nixBuild Config{..} = proc buildCmd
 
 withCwd :: FilePath -> CreateProcess -> CreateProcess
 withCwd d p = p { cwd = Just d }
 
-build :: Env -> FilePath -> FilePath -> String -> [(String, String)] -> IO ()
+build :: Config -> FilePath -> FilePath -> String -> [(String, String)] -> IO ()
 build env cwd file attr args =
   runBuild env
     $ withCwd cwd

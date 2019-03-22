@@ -129,6 +129,7 @@ checkRun run = do
         , conclusion   = GH.eventCheckRunConclusion run
         , startedAt    = GH.eventCheckRunStartedAt run
         , completedAt  = GH.eventCheckRunCompletedAt run
+        , externalId   = GH.eventCheckRunExternalId run
         , output       = GH.eventCheckRunOutput run
         }
 

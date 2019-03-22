@@ -82,8 +82,8 @@ instance FromJSON Config where
         return Pg.ConnectInfo {..}
       parseRedisConnectInfo o = do
         connectHost     <- o .: "host"
-        connectPort     <- (Redis.PortNumber . fromInteger) <$> o .: "port"
-        connectAuth     <- (fmap Char8.pack) <$> o .:? "auth"
+        connectPort     <- Redis.PortNumber . fromInteger <$> o .: "port"
+        connectAuth     <- fmap Char8.pack <$> o .:? "auth"
         connectDatabase <- o .: "database"
         return Redis.ConnInfo
           { connectMaxConnections = 50

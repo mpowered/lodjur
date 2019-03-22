@@ -9,29 +9,29 @@ import           Data.Text.IO                 as Text
 import qualified Database.Redis               as Redis
 import           Text.Toml
 
-import qualified Build                        as Build
-import qualified Git                          as Git
+import qualified Build
+import qualified Git
 
 data Config = Config
-  { workDir                 :: FilePath
-  , redisConnectInfo        :: Redis.ConnectInfo
-  , gitEnv                  :: Git.Env
-  , buildEnv                :: Build.Env
+  { workDir             :: FilePath
+  , redisConnectInfo    :: Redis.ConnectInfo
+  , gitCfg              :: Git.Config
+  , buildCfg            :: Build.Config
   }
 
 instance FromJSON Config where
   parseJSON = withObject "Configuration" $ \o -> do
-    workDir <- o .: "work-dir"
-    redisConnectInfo <- o .: "redis" >>= parseRedisConnectInfo
-    gitEnv <- o .: "git"
-    buildEnv <- o .: "nix-build"
+    workDir             <- o .: "work-dir"
+    redisConnectInfo    <- o .: "redis" >>= parseRedisConnectInfo
+    gitCfg              <- o .: "git"
+    buildCfg            <- o .: "nix-build"
     return Config{..}
 
     where
       parseRedisConnectInfo o = do
         connectHost     <- o .: "host"
-        connectPort     <- (Redis.PortNumber . fromInteger) <$> o .: "port"
-        connectAuth     <- (fmap Char8.pack) <$> o .:? "auth"
+        connectPort     <- Redis.PortNumber . fromInteger <$> o .: "port"
+        connectAuth     <- fmap Char8.pack <$> o .:? "auth"
         connectDatabase <- o .: "database"
         return Redis.ConnInfo
           { connectMaxConnections = 50

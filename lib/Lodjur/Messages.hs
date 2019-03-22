@@ -5,6 +5,7 @@
 module Lodjur.Messages where
 
 import           Data.Aeson
+import           Data.Text                     (Text)
 import           GHC.Generics
 import           GitHub
 import           GitHub.Extra
@@ -13,15 +14,19 @@ import           Database.Redis.Queue          (Queue(..))
 
 data WorkerMsg
   = CreateCheckRun
-    { checkSuiteId      :: !(Id CheckSuite)
-    , checkRunName      :: !(Name CheckRun)
+    { checkSuiteId          :: !(Id CheckSuite)
+    , checkRunName          :: !(Name CheckRun)
+    , checkRunExternalId    :: !(Maybe Text)
+    , checkRunOutput        :: !(Maybe CheckRunOutput)
     }
   | CheckRunInProgress
-    { checkRunId        :: !(Id CheckRun)
+    { checkRunId            :: !(Id CheckRun)
+    , checkRunOutput        :: !(Maybe CheckRunOutput)
     }
   | CheckRunCompleted
-    { checkRunId        :: !(Id CheckRun)
-    , conclusion        :: !Conclusion
+    { checkRunId            :: !(Id CheckRun)
+    , conclusion            :: !Conclusion
+    , checkRunOutput        :: !(Maybe CheckRunOutput)
     }
   deriving (Show, Eq, Ord, Generic)
 

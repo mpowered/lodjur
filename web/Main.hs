@@ -56,10 +56,6 @@ start LodjurOptions {..} = do
 
   envManager <- newManager tlsManagerSettings
 
-  -- let stripes        = 4
-  --     ttl            = 5
-  --     connsPerStripe = 4
-  -- envDbPool <- Database.newPool databaseConnectInfo stripes ttl connsPerStripe
   envRedisConn <- Redis.checkedConnect redisConnectInfo
 
   envGithubInstallationAccessToken <- newMVar Nothing

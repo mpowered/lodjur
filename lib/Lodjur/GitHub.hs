@@ -50,20 +50,23 @@ newInstallationAccessToken mgr appid signer instid = do
   now <- getPOSIXTime
   let tok = createInstallationJWT appid signer now
   r <- executeRequestWithMgr mgr (Bearer tok) $ createInstallationTokenR instid
+  putStrLn $ "New token: " ++ show r
   return $ either (const Nothing) Just r
 
 getInstallationAccessToken :: Manager -> Id App -> JWT.Signer -> Id Installation -> MVar (Maybe AccessToken) -> IO (Maybe Token)
 getInstallationAccessToken mgr appid signer instid installationAccessToken = do
   now <- getCurrentTime
   tok <- takeMVar installationAccessToken
+  putStrLn $ "Existing token: " ++ show tok ++ " " ++ show now
   at  <- maybe renew (return . Just) (validAccessToken now tok)
+  putStrLn $ "Returned token: " ++ show at
   putMVar installationAccessToken at
   return (accessToken <$> at)
   where
     validAccessToken now tok = do
       at <- tok
       e  <- accessTokenExpiresAt at
-      guard $ e < now
+      guard (now < e)
       return at
 
     renew = newInstallationAccessToken mgr appid signer instid

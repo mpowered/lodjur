@@ -1,14 +1,14 @@
-{-# LANGUAGE OverloadedStrings #-}
-{-# LANGUAGE RecordWildCards #-}
+{-# LANGUAGE DuplicateRecordFields #-}
+{-# LANGUAGE OverloadedStrings     #-}
+{-# LANGUAGE RecordWildCards       #-}
 
 module Git where
 
+import           Control.Concurrent.QSem
 import           Control.Exception
 import           Control.Monad
 import           Data.Aeson
-import           Data.Text                  (Text)
 import qualified Data.Text                  as Text
-import           Data.Time.Clock            (UTCTime)
 import           System.Directory
 import           System.Directory.Internal.Prelude (isAlreadyExistsError, isDoesNotExistError)
 import           System.FilePath
@@ -18,30 +18,6 @@ import           System.Exit
 import qualified GitHub                     as GH
 import qualified GitHub.Extra               as GH
 
-type Hash = Text
-
-data Revision = Revision
-  { revisionHash :: Hash
-  , revisionTime :: UTCTime
-  } deriving (Show, Eq)
-
-data Ref
-  = Tag Text
-        Revision
-  | Branch Text
-           Revision
-  deriving (Eq, Show)
-
-refRevision :: Ref -> Revision
-refRevision (Tag _ rev)    = rev
-refRevision (Branch _ rev) = rev
-
-------------------------------------------------------------------------------
-
-type Logger = String -> IO ()
-
-------------------------------------------------------------------------------
-
 newtype GitError = GitError Int
 
 instance Show GitError where
@@ -50,31 +26,45 @@ instance Show GitError where
 instance Exception GitError where
   displayException (GitError code) = "GitError: git exited with code " <> show code
 
-data Env = Env
+data Config = Config
   { gitCmd      :: FilePath
   , gitCache    :: FilePath
   , gitWorkRoot :: FilePath
   , gitDebug    :: Bool
   }
 
-instance FromJSON Env where
-  parseJSON = withObject "Git Env" $ \o -> do
+instance FromJSON Config where
+  parseJSON = withObject "Git Config" $ \o -> do
     gitCmd      <- o .: "command"
     gitCache    <- o .: "cache"
     gitWorkRoot <- o .: "workdir"
     gitDebug    <- o .: "debug"
-    return Env{..}
+    return Config{..}
+
+data Env = Env
+  { gitCmd      :: FilePath
+  , gitCache    :: FilePath
+  , gitWorkRoot :: FilePath
+  , gitDebug    :: Bool
+  , gitSem      :: QSem
+  }
+
+setupEnv :: Config -> IO Env
+setupEnv Config{..} = do
+  gitSem <- newQSem 1
+  return Env{..}
 
 runGit :: Env -> CreateProcess -> IO ()
-runGit Env{..} p = do
-  when gitDebug $ putStrLn $ "GIT: " ++ show (cmdspec p)
-  (exitcode, stdout, stderr) <- readCreateProcessWithExitCode p ""
-  when gitDebug $ do
-    mapM_ putStrLn [ "> " <> l | l <- lines stdout ]
-    mapM_ putStrLn [ ">> " <> l | l <- lines stderr ]
-  case exitcode of
-    ExitSuccess -> return ()
-    ExitFailure code -> throwIO $ GitError code
+runGit Env{..} p =
+  bracket_ (waitQSem gitSem) (signalQSem gitSem) $ do
+    when gitDebug $ putStrLn $ "GIT: " ++ show (cmdspec p)
+    (exitcode, stdout, stderr) <- readCreateProcessWithExitCode p ""
+    when gitDebug $ do
+      mapM_ putStrLn [ "> " <> l | l <- lines stdout ]
+      mapM_ putStrLn [ ">> " <> l | l <- lines stderr ]
+    case exitcode of
+      ExitSuccess -> return ()
+      ExitFailure code -> throwIO $ GitError code
 
 git :: Env -> [String] -> CreateProcess
 git Env{..} = proc gitCmd
@@ -92,10 +82,10 @@ shaStr :: GH.Sha -> String
 shaStr = Text.unpack .GH.untagSha
 
 githubUrlFor :: Env -> GH.RepoRef -> String
-githubUrlFor _ repo = "https://github.com/" <> (login repo) <> "/" <> (name repo) <> ".git"
+githubUrlFor _ repo = "https://github.com/" <> login repo <> "/" <> name repo <> ".git"
 
 cachePathFor :: Env -> GH.RepoRef -> FilePath
-cachePathFor Env{..} repo = gitCache </> (login repo) </> (name repo)
+cachePathFor Env{..} repo = gitCache </> login repo </> name repo
 
 cacheClone :: Env -> GH.RepoRef -> IO ()
 cacheClone env@Env{..} repo =

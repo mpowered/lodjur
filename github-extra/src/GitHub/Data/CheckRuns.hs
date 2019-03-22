@@ -153,11 +153,14 @@ instance NFData CheckRunOutput where rnf = genericRnf
 instance Binary CheckRunOutput
 
 instance ToJSON CheckRunOutput where
-    toJSON CheckRunOutput {..} = object
+    toJSON CheckRunOutput {..} = object $ filter notNull
         [ "title"           .= checkRunOutputTitle
         , "summary"         .= checkRunOutputSummary
         , "text"            .= checkRunOutputText
         ]
+      where
+        notNull (_, Null) = False
+        notNull (_, _)    = True
 
 instance FromJSON CheckRunOutput where
     parseJSON = withObject "CheckRunOutput" $ \o -> CheckRunOutput

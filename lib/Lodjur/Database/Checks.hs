@@ -50,6 +50,7 @@ data CheckRun = CheckRun
     , conclusion            :: !(Maybe GH.Conclusion)
     , startedAt             :: !(Maybe UTCTime)
     , completedAt           :: !(Maybe UTCTime)
+    , externalId            :: !(Maybe Text)
     , output                :: !(Maybe GH.CheckRunOutput)
     }
   deriving (Show, Eq, Ord, Generic)

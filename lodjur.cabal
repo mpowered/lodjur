@@ -44,7 +44,6 @@ library                 lodjur-lib
                       , time                  >= 1.8.0 && < 1.9
                       , transformers          >= 0.5.5 && < 0.6
                       , unordered-containers  >= 0.2.9 && < 0.3
-                      , uuid                  >= 1.3.13 && < 1.4
 
 executable          lodjur
     hs-source-dirs: web
@@ -88,7 +87,6 @@ executable          lodjur
                   , process               >= 1.6.3 && < 1.7
                   , resource-pool         >= 0.2.3 && < 0.3
                   , transformers          >= 0.5.5 && < 0.6
-                  , uuid
                   , uri-bytestring
                   , Spock
                   , Spock-lucid
@@ -105,6 +103,7 @@ executable          lodjur-worker
     ghc-options:    -Wall -threaded -O2 -rtsopts -with-rtsopts=-N -I0
     other-modules:  Build
                   , Config
+                  , Env
                   , Git
                   , Paths_lodjur
     build-depends:  base                  >= 4.11 && < 5
@@ -124,3 +123,4 @@ executable          lodjur-worker
                   , process               >= 1.6.3 && < 1.7
                   , text                  >= 1.2.3 && < 1.3
                   , time                  >= 1.8.0 && < 1.9
+                  , uuid                  >= 1.3.13 && < 1.4
