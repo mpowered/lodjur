@@ -9,13 +9,13 @@ import           Data.Aeson
 import           System.Process
 import           System.Exit
 
-newtype BuildError = BuildError Int
+data BuildError = BuildError Int String String
 
 instance Show BuildError where
-  show (BuildError code) = "BuildError: build exited with code " <> show code
+  show (BuildError code _ _) = "BuildError: build exited with code " <> show code
 
 instance Exception BuildError where
-  displayException (BuildError code) = "BuildError: build exited with code " <> show code
+  displayException (BuildError code _ _) = "BuildError: build exited with code " <> show code
 
 data Config = Config
   { buildCmd    :: FilePath
@@ -37,7 +37,7 @@ runBuild Config{..} p = do
     mapM_ putStrLn [ ">> " <> l | l <- lines stderr ]
   case exitcode of
     ExitSuccess -> return ()
-    ExitFailure code -> throwIO $ BuildError code
+    ExitFailure code -> throwIO $ BuildError code stdout stderr
 
 nixBuild :: Config -> [String] -> CreateProcess
 nixBuild Config{..} = proc buildCmd
@@ -45,9 +45,8 @@ nixBuild Config{..} = proc buildCmd
 withCwd :: FilePath -> CreateProcess -> CreateProcess
 withCwd d p = p { cwd = Just d }
 
-build :: Config -> FilePath -> FilePath -> String -> [(String, String)] -> IO ()
-build env cwd file attr args =
+build :: Config -> FilePath -> FilePath -> IO ()
+build env d file =
   runBuild env
-    $ withCwd cwd
-    $ nixBuild env
-    $ [file, "-A", attr] ++ concat [ ["--argstr", arg, str] | (arg, str) <- args ]
+    $ withCwd d
+    $ nixBuild env [file]

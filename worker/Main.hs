@@ -9,13 +9,17 @@ module Main where
 
 import           Control.Concurrent.Async
 import           Control.Monad
+import           Control.Error
+import           Control.Exception
 import           Control.Monad.IO.Class
 import           Data.Aeson                   hiding (Options, Success)
 import           Data.ByteString              (ByteString)
 import           Data.Text                    (Text)
+import qualified Data.Text                    as Text
 import qualified Data.Text.Encoding           as Text
 import qualified Data.UUID                    as UUID
 import qualified Data.UUID.V4                 as UUID
+import qualified Data.Vector                  as Vec
 import qualified Database.Redis               as Redis
 import qualified Database.Redis.Queue         as Q
 import           GHC.Generics
@@ -33,6 +37,7 @@ import           Config
 import           Env
 import qualified Build
 import qualified Git
+import qualified RSpec
 
 newtype Options = Options
   { configFile :: FilePath
@@ -78,8 +83,8 @@ start Options{..} = do
           Nothing -> return ()  -- Timeout
           Just a ->
             case a of
-              Left err ->
-                putStrLn $ "Warning: unable to decode check request: " ++ err
+              Left errmsg ->
+                putStrLn $ "Warning: unable to decode check request: " ++ errmsg
               Right suite ->
                 checkRequested env suite
 
@@ -90,8 +95,8 @@ start Options{..} = do
           Nothing -> return ()  -- Timeout
           Just a ->
             case a of
-              Left err ->
-                putStrLn $ "Warning: unable to decode check request: " ++ err
+              Left errmsg ->
+                putStrLn $ "Warning: unable to decode check request: " ++ errmsg
               Right run ->
                 checkRun env run
 
@@ -110,29 +115,21 @@ checkRequested Env{..} suiteid = do
 
 lookupRun :: Env -> Id CheckRun -> IO (Maybe (Db.CheckSuite, Db.CheckRun, Maybe Run))
 lookupRun Env{..} runid = do
-  r <- Redis.runRedis redisConn $ Db.lookup (Db.checkRunKeyFromId runid)
+  r <- runExceptT $ do
+    run     <- Redis.runRedis redisConn (Db.lookup (Db.checkRunKeyFromId runid))
+              !? ("missing check run details for run " ++ show runid)
+    suite   <- Redis.runRedis redisConn (Db.lookup (Db.checkSuiteKeyFromId (Db.checkSuiteId run)))
+                !? ("missing check suite details for suite " ++ show (Db.checkSuiteId run))
+    return (run, suite)
   case r of
-    Nothing -> do
-      putStrLn $ "missing check run details for run " ++ show runid
+    Left errmsg -> do
+      putStrLn errmsg
       return Nothing
-    Just run -> do
-      s <- Redis.runRedis redisConn $ Db.lookup (Db.checkSuiteKeyFromId (Db.checkSuiteId run))
-      case s of
-        Nothing -> do
-          putStrLn $ "missing check suite details for suite " ++ show (Db.checkSuiteId run)
-          return Nothing
-        Just suite -> do
-          rundata <- getRunData (Db.externalId run)
-          return $ Just (suite, run, rundata)
-  where
-    getRunData Nothing = return Nothing
-    getRunData (Just externalid) = do
-      d <- Redis.runRedis redisConn $ Db.lookup (runKeyFromText externalid)
-      case d of
-        Nothing -> do
-          putStrLn $ "missing check run data " ++ show externalid
-          return Nothing
-        Just dat -> return $ Just dat
+    Right (run, suite) -> do
+      rundata <- case Db.externalId run of
+                  Just dataid -> Redis.runRedis redisConn (Db.lookup (runKeyFromText dataid))
+                  Nothing -> return Nothing
+      return $ Just (suite, run, rundata)
 
 data Run
   = Build
@@ -194,64 +191,92 @@ checkRun env@Env{..} runid =
         putStrLn "Nix Build"
         let reporef = RepoRef (repoOwner repository) (repoName repository)
         workdir <- Git.checkout gitEnv reporef headSha
-        Build.build buildCfg workdir "release.nix" "mpowered-services" [("railsEnv", "production")]
-
-        Redis.runRedis redisConn $ do
-          Q.push workerQueue
-            [ CheckRunCompleted
-              { checkRunId = runid
-              , conclusion = Success
-              , checkRunOutput = Just $ CheckRunOutput
-                { checkRunOutputTitle = "Nix Build"
-                , checkRunOutputSummary = "Build completed successfully."
-                , checkRunOutputText = Nothing
-                }
-              }
-            ]
-          void $ Q.remove runInProgressQueue runid
-
-          createRun checkSuiteId "rspec toolkit" (RSpec "toolkit")
-          createRun checkSuiteId "rspec sms"     (RSpec "sms")
-          createRun checkSuiteId "rspec beagle"  (RSpec "beagle")
-          -- Q.push workerQueue
-          --   [ CreateCheckRun
-          --     { checkSuiteId = checkSuiteId
-          --     , checkRunName = "rspec toolkit"
-          --     , checkRunExternalId = Just "toolkit"
-          --     , checkRunOutput = Nothing
-          --     }
-          --   , CreateCheckRun
-          --     { checkSuiteId = checkSuiteId
-          --     , checkRunName = "rspec sms"
-          --     , checkRunExternalId = Just "sms"
-          --     , checkRunOutput = Nothing
-          --     }
-          --   , CreateCheckRun
-          --     { checkSuiteId = checkSuiteId
-          --     , checkRunName = "rspec beagle"
-          --     , checkRunExternalId = Just "beagle"
-          --     , checkRunOutput = Nothing
-          --     }
-          --   ]
+        br <- try $ Build.build buildCfg workdir ".lodjur/build.nix"
+        case br of
+          Left (Build.BuildError code stdout _stderr) -> do
+            let o = Vec.fromList (lines stdout)
+                opos = max 0 (Vec.length o - 10)
+                otail = Vec.drop opos o
+                otxt = Text.pack $ unlines $ Vec.toList otail
+            Redis.runRedis redisConn $ do
+              void $ Q.remove runInProgressQueue runid
+              Q.push workerQueue
+                [ CheckRunCompleted
+                  { checkRunId = runid
+                  , conclusion = Failure
+                  , checkRunOutput = Just $ CheckRunOutput
+                    { checkRunOutputTitle = "Build failed"
+                    , checkRunOutputSummary = "Build returned an error: exit code " <> Text.pack (show code)
+                    , checkRunOutputText = Just otxt
+                    }
+                  }
+                ]
+          Right () ->
+            Redis.runRedis redisConn $ do
+              void $ Q.remove runInProgressQueue runid
+              createRun checkSuiteId "rspec toolkit" (RSpec "toolkit")
+              createRun checkSuiteId "rspec sms"     (RSpec "sms")
+              createRun checkSuiteId "rspec beagle"  (RSpec "beagle")
+              Q.push workerQueue
+                [ CheckRunCompleted
+                  { checkRunId = runid
+                  , conclusion = Success
+                  , checkRunOutput = Nothing
+                  }
+                ]
 
       Just (RSpec app) -> do
         putStrLn $ "RSpec " ++ show app
+        let reporef = RepoRef (repoOwner repository) (repoName repository)
+        workdir <- Git.checkout gitEnv reporef headSha
+        br <- try $ Build.build buildCfg workdir ".lodjur/build.nix"
+        case br of
+          Left (Build.BuildError code stdout _stderr) -> do
+            let o = Vec.fromList (lines stdout)
+                opos = max 0 (Vec.length o - 10)
+                otail = Vec.drop opos o
+                otxt = Text.pack $ unlines $ Vec.toList otail
+            Redis.runRedis redisConn $ do
+              void $ Q.remove runInProgressQueue runid
+              Q.push workerQueue
+                [ CheckRunCompleted
+                  { checkRunId = runid
+                  , conclusion = Failure
+                  , checkRunOutput = Just $ CheckRunOutput
+                    { checkRunOutputTitle = "Build failed"
+                    , checkRunOutputSummary = "Build returned an error: exit code " <> Text.pack (show code)
+                    , checkRunOutputText = Just otxt
+                    }
+                  }
+                ]
+          Right () -> do
+            rr <- try $ RSpec.rspec workdir [Text.unpack app]
 
-        -- TODO RSPEC
-
-        Redis.runRedis redisConn $ do
-          Q.push workerQueue
-            [ CheckRunCompleted
-              { checkRunId = runid
-              , conclusion = Success
-              , checkRunOutput = Just $ CheckRunOutput
-                { checkRunOutputTitle = "RSpec"
-                , checkRunOutputSummary = "Tests completed successfully."
-                , checkRunOutputText = Nothing
-                }
-              }
-            ]
-          void $ Q.remove runInProgressQueue runid
+            case rr of
+              Left (RSpec.RSpecError code) ->
+                Redis.runRedis redisConn $ do
+                  void $ Q.remove runInProgressQueue runid
+                  Q.push workerQueue
+                    [ CheckRunCompleted
+                      { checkRunId = runid
+                      , conclusion = Failure
+                      , checkRunOutput = Just $ CheckRunOutput
+                        { checkRunOutputTitle = "RSpec failed"
+                        , checkRunOutputSummary = "RSpec returned an error: exit code " <> Text.pack (show code)
+                        , checkRunOutputText = Nothing
+                        }
+                      }
+                    ]
+              Right () ->
+                Redis.runRedis redisConn $ do
+                  void $ Q.remove runInProgressQueue runid
+                  Q.push workerQueue
+                    [ CheckRunCompleted
+                      { checkRunId = runid
+                      , conclusion = Success
+                      , checkRunOutput = Nothing
+                      }
+                    ]
 
       _ ->
         Redis.runRedis redisConn $ do
