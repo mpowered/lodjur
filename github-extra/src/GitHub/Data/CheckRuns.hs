@@ -141,10 +141,10 @@ emptyUpdateCheckRun = UpdateCheckRun
     }
 
 data CheckRunOutput = CheckRunOutput
-    { checkRunOutputTitle   :: !Text
-    , checkRunOutputSummary :: !Text
-    , checkRunOutputText    :: !(Maybe Text)
-    -- , checkRunAnnotations       :: !(Maybe [CheckRunAnnotation])
+    { checkRunOutputTitle       :: !Text
+    , checkRunOutputSummary     :: !Text
+    , checkRunOutputText        :: !(Maybe Text)
+    , checkRunOutputAnnotations :: ![CheckRunAnnotation]
     -- , checkRunImages            :: !(Maybe [CheckRunImages])
     }
   deriving (Show, Data, Typeable, Eq, Ord, Generic)
@@ -157,6 +157,7 @@ instance ToJSON CheckRunOutput where
         [ "title"           .= checkRunOutputTitle
         , "summary"         .= checkRunOutputSummary
         , "text"            .= checkRunOutputText
+        , "annotations"     .= if null checkRunOutputAnnotations then Nothing else Just checkRunOutputAnnotations
         ]
       where
         notNull (_, Null) = False
@@ -167,6 +168,51 @@ instance FromJSON CheckRunOutput where
         <$> o .:? "title"   .!= ""
         <*> o .:? "summary" .!= ""
         <*> o .:? "text"
+        <*> o .:? "annotations" .!= []
+
+data CheckRunAnnotation = CheckRunAnnotation
+    { checkRunAnnotationPath        :: !Text
+    , checkRunAnnotationStartLine   :: !Integer
+    , checkRunAnnotationEndLine     :: !Integer
+    , checkRunAnnotationStartColumn :: !(Maybe Integer)
+    , checkRunAnnotationEndColumn   :: !(Maybe Integer)
+    , checkRunAnnotationLevel       :: !Text
+    , checkRunAnnotationMessage     :: !Text
+    , checkRunAnnotationTitle       :: !(Maybe Text)
+    , checkRunAnnotationRawDetails  :: !(Maybe Text)
+    }
+  deriving (Show, Data, Typeable, Eq, Ord, Generic)
+
+instance NFData CheckRunAnnotation where rnf = genericRnf
+instance Binary CheckRunAnnotation
+
+instance ToJSON CheckRunAnnotation where
+    toJSON CheckRunAnnotation {..} = object $ filter notNull
+        [ "path"                .= checkRunAnnotationPath
+        , "start_line"          .= checkRunAnnotationStartLine
+        , "end_line"            .= checkRunAnnotationEndLine
+        , "start_column"        .= checkRunAnnotationStartColumn
+        , "end_column"          .= checkRunAnnotationEndColumn
+        , "annotation_level"    .= checkRunAnnotationLevel
+        , "message"             .= checkRunAnnotationMessage
+        , "title"               .= checkRunAnnotationTitle
+        , "raw_details"         .= checkRunAnnotationRawDetails
+        ]
+      where
+        notNull (_, Null) = False
+        notNull (_, _)    = True
+
+instance FromJSON CheckRunAnnotation where
+    parseJSON = withObject "CheckRunAnnotation" $ \o -> CheckRunAnnotation
+        <$> o .: "path"
+        <*> o .: "start_line"
+        <*> o .: "end_line"
+        <*> o .:?"start_column"
+        <*> o .:?"end_column"
+        <*> o .: "annotation_level"
+        <*> o .: "message"
+        <*> o .:?"title"
+        <*> o .:?"raw_details"
 
 data CheckRunAction = CheckRunAction
     { checkRunActionLabel       :: !Text

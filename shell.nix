@@ -1,2 +1,5 @@
-{ compiler ? "ghc844" }:
-(import ./. { inherit compiler; }).lodjur-shell
+let
+  shell = (import ./. {}).lodjur-shell;
+  devpkgs = p: [ p.brittany ];
+in
+  shell devpkgs

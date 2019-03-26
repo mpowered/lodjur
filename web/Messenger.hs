@@ -39,9 +39,12 @@ messenger redis auth = forever $ do
 
 nextMsg :: FromJSON a => Redis.Connection -> Q.Queue a -> IO a
 nextMsg conn name = do
-  r <- Redis.runRedis conn $ Q.pop [name] 60
+  r <- Redis.runRedis conn $ Q.pop' [name] 60
   case r of
-    Just (_, msg) -> return msg
+    Just (_, Left err) -> do
+      putStrLn $ "couldn't parse message: " ++ err
+      nextMsg conn name
+    Just (_, Right msg) -> return msg
     Nothing -> nextMsg conn name
 
 owner :: RepoRef -> Name Owner

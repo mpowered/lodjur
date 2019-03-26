@@ -13,7 +13,9 @@ import           Control.Error
 import           Control.Exception
 import           Control.Monad.IO.Class
 import           Data.Aeson                   hiding (Options, Success)
+import           Data.Aeson.Encode.Pretty     (encodePretty)
 import           Data.ByteString              (ByteString)
+import qualified Data.ByteString.Lazy         as ByteString
 import           Data.Text                    (Text)
 import qualified Data.Text                    as Text
 import qualified Data.Text.Encoding           as Text
@@ -28,6 +30,7 @@ import qualified Lodjur.Database.Checks       as Db
 import qualified Lodjur.Database.Types        as Db
 import           Lodjur.Messages
 import           Options.Applicative          hiding (Success, Failure)
+import           System.Directory
 import           Prelude                      hiding (lookup)
 
 import           GitHub
@@ -38,6 +41,7 @@ import           Env
 import qualified Build
 import qualified Git
 import qualified RSpec
+import qualified RSpec.Results                as RSpec
 
 newtype Options = Options
   { configFile :: FilePath
@@ -208,6 +212,7 @@ checkRun env@Env{..} runid =
                     { checkRunOutputTitle = "Build failed"
                     , checkRunOutputSummary = "Build returned an error: exit code " <> Text.pack (show code)
                     , checkRunOutputText = Just otxt
+                    , checkRunOutputAnnotations = []
                     }
                   }
                 ]
@@ -224,6 +229,7 @@ checkRun env@Env{..} runid =
                   , checkRunOutput = Nothing
                   }
                 ]
+        removeDirectoryRecursive workdir
 
       Just (RSpec app) -> do
         putStrLn $ "RSpec " ++ show app
@@ -236,6 +242,7 @@ checkRun env@Env{..} runid =
                 opos = max 0 (Vec.length o - 10)
                 otail = Vec.drop opos o
                 otxt = Text.pack $ unlines $ Vec.toList otail
+            removeDirectoryRecursive workdir
             Redis.runRedis redisConn $ do
               void $ Q.remove runInProgressQueue runid
               Q.push workerQueue
@@ -246,11 +253,12 @@ checkRun env@Env{..} runid =
                     { checkRunOutputTitle = "Build failed"
                     , checkRunOutputSummary = "Build returned an error: exit code " <> Text.pack (show code)
                     , checkRunOutputText = Just otxt
+                    , checkRunOutputAnnotations = []
                     }
                   }
                 ]
           Right () -> do
-            rr <- try $ RSpec.rspec workdir [Text.unpack app]
+            rr <- try $ RSpec.rspec workdir (Text.unpack app)
 
             case rr of
               Left (RSpec.RSpecError code) ->
@@ -264,22 +272,60 @@ checkRun env@Env{..} runid =
                         { checkRunOutputTitle = "RSpec failed"
                         , checkRunOutputSummary = "RSpec returned an error: exit code " <> Text.pack (show code)
                         , checkRunOutputText = Nothing
+                        , checkRunOutputAnnotations = []
                         }
                       }
                     ]
-              Right () ->
+              Left RSpec.RSpecParseFailed ->
                 Redis.runRedis redisConn $ do
                   void $ Q.remove runInProgressQueue runid
                   Q.push workerQueue
                     [ CheckRunCompleted
                       { checkRunId = runid
-                      , conclusion = Success
-                      , checkRunOutput = Nothing
+                      , conclusion = Failure
+                      , checkRunOutput = Just $ CheckRunOutput
+                        { checkRunOutputTitle = "RSpec failed"
+                        , checkRunOutputSummary = "Unable to parse RSpec output"
+                        , checkRunOutputText = Nothing
+                        , checkRunOutputAnnotations = []
+                        }
                       }
                     ]
+              Right RSpec.RSpecResult{..} -> do
+                let RSpec.RSpecSummary{..} = rspecSummary
+                    failing = filter (\t -> RSpec.testStatus t == "failed") rspecExamples
+                    ann = map mkAnnotation failing
+                if rspecFailureCount == 0
+                  then
+                    Redis.runRedis redisConn $ do
+                      void $ Q.remove runInProgressQueue runid
+                      Q.push workerQueue
+                        [ CheckRunCompleted
+                          { checkRunId = runid
+                          , conclusion = Success
+                          , checkRunOutput = Nothing
+                          }
+                        ]
+                  else
+                    Redis.runRedis redisConn $ do
+                      void $ Q.remove runInProgressQueue runid
+                      Q.push workerQueue
+                        [ CheckRunCompleted
+                          { checkRunId = runid
+                          , conclusion = Failure
+                          , checkRunOutput = Just $ CheckRunOutput
+                            { checkRunOutputTitle = "RSpec failed"
+                            , checkRunOutputSummary = Text.pack (show rspecFailureCount) <> " tests failed"
+                            , checkRunOutputText = Nothing
+                            , checkRunOutputAnnotations = take 50 ann
+                            }
+                          }
+                        ]
+        removeDirectoryRecursive workdir
 
       _ ->
         Redis.runRedis redisConn $ do
+          void $ Q.remove runInProgressQueue runid
           Q.push workerQueue
             [ CheckRunCompleted
               { checkRunId = runid
@@ -288,7 +334,21 @@ checkRun env@Env{..} runid =
                 { checkRunOutputTitle = "Unknown Run Request"
                 , checkRunOutputSummary = "Run failed as the worker didn't recognise the request."
                 , checkRunOutputText = Nothing
+                , checkRunOutputAnnotations = []
                 }
               }
             ]
-          void $ Q.remove runInProgressQueue runid
+
+mkAnnotation :: RSpec.TestResult -> CheckRunAnnotation
+mkAnnotation RSpec.TestResult{..} =
+  CheckRunAnnotation
+    { checkRunAnnotationPath        = testFilePath
+    , checkRunAnnotationStartLine   = testLineNumber
+    , checkRunAnnotationEndLine     = testLineNumber
+    , checkRunAnnotationStartColumn = Nothing
+    , checkRunAnnotationEndColumn   = Nothing
+    , checkRunAnnotationLevel       = "failure"
+    , checkRunAnnotationMessage     = testFullDescription
+    , checkRunAnnotationTitle       = Just testDescription
+    , checkRunAnnotationRawDetails  = Text.decodeUtf8 . ByteString.toStrict . encodePretty <$> testException
+    }

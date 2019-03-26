@@ -26,7 +26,8 @@ let
 in
 {
   lodjur = drv;
-  lodjur-shell = haskellPackages.shellFor {
+  lodjur-shell = devpkgs: haskellPackages.shellFor {
     packages = p: [drv];
+    buildInputs = devpkgs haskellPackages;
   };
 }
