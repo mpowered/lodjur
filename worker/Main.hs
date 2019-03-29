@@ -29,9 +29,14 @@ import qualified Lodjur.Database              as Db
 import qualified Lodjur.Database.Checks       as Db
 import qualified Lodjur.Database.Types        as Db
 import           Lodjur.Messages
+import           Lodjur.Manager
+import qualified Lodjur.Manager.Messages      as Msg
 import           Options.Applicative          hiding (Success, Failure)
 import           System.Directory
 import           Prelude                      hiding (lookup)
+
+import           Network.Socket               (withSocketsDo)
+import           Network.WebSockets
 
 import           GitHub
 import           GitHub.Extra
@@ -68,7 +73,6 @@ main = start =<< execParser opts
 
 setupEnv :: Config -> IO Env
 setupEnv Config{..} = do
-  redisConn <- Redis.checkedConnect redisConnectInfo
   gitEnv <- Git.setupEnv gitCfg
   return Env{..}
 
@@ -77,6 +81,77 @@ start Options{..} = do
   cfg <- readConfiguration configFile
   env <- setupEnv cfg
 
+  withSocketsDo $
+    runManagerClient (managerCI cfg) (handshake (app env))
+
+handshake :: ClientApp () -> Connection -> IO ()
+handshake a conn = do
+  msg <- receiveMsg conn
+  case msg of
+    Just Msg.Greet -> do
+      sendMsg conn (Msg.Register "client")
+      a conn
+    Nothing -> return ()
+
+app :: Env -> Connection -> IO ()
+app env conn = forever $ do
+  msg <- receiveMsg conn
+  case msg of
+    Msg.Build src -> build env src >>= sendMsg conn
+    unsupported -> do
+      putStrLn $ "Unsupported message: " ++ show unsupported
+      sendMsg conn $ Msg.Completed Failure Nothing
+
+withWorkDir :: Env -> RepoRef -> Sha -> (FilePath -> IO a) -> IO a
+withWorkDir Env{..} repo sha =
+  bracket
+    (Git.checkout gitEnv repo sha)
+    removeDirectoryRecursive
+
+build :: Env -> Msg.Source -> IO Msg.Reply
+build env@Env{..} Msg.Source{..} = do
+  putStrLn "Nix Build"
+  withWorkDir env (RepoRef owner repo) sha $ \workdir ->
+    Build.build buildCfg workdir ".lodjur/build.nix"
+
+      -- Return error
+      {-
+      let o = Vec.fromList (lines stdout)
+          opos = max 0 (Vec.length o - 10)
+          otail = Vec.drop opos o
+          otxt = Text.pack $ unlines $ Vec.toList otail
+      Redis.runRedis redisConn $ do
+        void $ Q.remove runInProgressQueue runid
+        Q.push workerQueue
+          [ CheckRunCompleted
+            { checkRunId = runid
+            , conclusion = Failure
+            , checkRunOutput = Just $ CheckRunOutput
+              { checkRunOutputTitle = "Build failed"
+              , checkRunOutputSummary = "Build returned an error: exit code " <> Text.pack (show code)
+              , checkRunOutputText = Just otxt
+              , checkRunOutputAnnotations = []
+              }
+            }
+          ]
+    Right () ->
+      Redis.runRedis redisConn $ do
+        void $ Q.remove runInProgressQueue runid
+        createRun checkSuiteId "rspec toolkit-1" (RSpec "toolkit1")
+        createRun checkSuiteId "rspec toolkit-2" (RSpec "toolkit2")
+        createRun checkSuiteId "rspec toolkit-3" (RSpec "toolkit3")
+        createRun checkSuiteId "rspec sms"     (RSpec "sms")
+        createRun checkSuiteId "rspec beagle"  (RSpec "beagle")
+        Q.push workerQueue
+          [ CheckRunCompleted
+            { checkRunId = runid
+            , conclusion = Success
+            , checkRunOutput = Nothing
+            }
+          ]
+      -}
+
+{-
   concurrently_ (handleCheckRequests env) (handleCheckRuns env)
 
   where
@@ -354,3 +429,4 @@ mkAnnotation RSpec.TestResult{..} =
     , checkRunAnnotationTitle       = Just testDescription
     , checkRunAnnotationRawDetails  = Text.decodeUtf8 . ByteString.toStrict . encodePretty <$> testException
     }
+-}

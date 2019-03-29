@@ -1,6 +1,7 @@
 # Example configuration
 
 work-dir = "/home/shaun/devel/mpowered/lodjur/mpowered-services"
+manager = "ws://neptune:4000/manager"
 
 [redis]
 host = "localhost"

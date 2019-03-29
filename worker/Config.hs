@@ -3,42 +3,31 @@
 
 module Config where
 
-import           Data.Aeson                   as JSON
-import qualified Data.ByteString.Char8        as Char8
-import           Data.Text.IO                 as Text
-import qualified Database.Redis               as Redis
+import           Data.Aeson                    as JSON
+import           Data.Text.IO                  as Text
 import           Text.Toml
 
 import qualified Build
 import qualified Git
+import qualified Lodjur.Manager                as Mgr
 
 data Config = Config
-  { workDir             :: FilePath
-  , redisConnectInfo    :: Redis.ConnectInfo
-  , gitCfg              :: Git.Config
-  , buildCfg            :: Build.Config
+  { workDir     :: FilePath
+  , managerCI   :: Mgr.ConnectInfo
+  , gitCfg      :: Git.Config
+  , buildCfg    :: Build.Config
   }
 
 instance FromJSON Config where
   parseJSON = withObject "Configuration" $ \o -> do
-    workDir             <- o .: "work-dir"
-    redisConnectInfo    <- o .: "redis" >>= parseRedisConnectInfo
-    gitCfg              <- o .: "git"
-    buildCfg            <- o .: "nix-build"
-    return Config{..}
-
-    where
-      parseRedisConnectInfo o = do
-        connectHost     <- o .: "host"
-        connectPort     <- Redis.PortNumber . fromInteger <$> o .: "port"
-        connectAuth     <- fmap Char8.pack <$> o .:? "auth"
-        connectDatabase <- o .: "database"
-        return Redis.ConnInfo
-          { connectMaxConnections = 50
-          , connectMaxIdleTime = 30
-          , connectTimeout = Nothing
-          , connectTLSParams = Nothing
-          , ..}
+    workDir   <- o .: "work-dir"
+    managerCI <- o .: "manager" >>= mgr
+    gitCfg    <- o .: "git"
+    buildCfg  <- o .: "nix-build"
+    return Config { .. }
+   where
+    mgr s =
+      maybe (fail "Not a valid websocket URI") return $ Mgr.parseManagerURI s
 
 readConfiguration :: FilePath -> IO Config
 readConfiguration path = do

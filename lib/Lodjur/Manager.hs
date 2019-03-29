@@ -1,14 +1,21 @@
-{-# LANGUAGE FlexibleContexts  #-}
-{-# LANGUAGE DeriveAnyClass    #-}
-{-# LANGUAGE NamedFieldPuns    #-}
-{-# LANGUAGE OverloadedStrings #-}
-{-# LANGUAGE RecordWildCards   #-}
-{-# LANGUAGE TypeFamilies      #-}
+{-# LANGUAGE FlexibleContexts    #-}
+{-# LANGUAGE DeriveAnyClass      #-}
+{-# LANGUAGE NamedFieldPuns      #-}
+{-# LANGUAGE OverloadedStrings   #-}
+{-# LANGUAGE RecordWildCards     #-}
+{-# LANGUAGE ScopedTypeVariables #-}
+{-# LANGUAGE TypeFamilies        #-}
 
 module Lodjur.Manager
   ( Manager(..)
+  , ConnectInfo(..)
   , newManager
   , request
+  , parseManagerURI
+  , fromURI
+  , runManagerClient
+  , sendMsg
+  , receiveMsg
   )
 where
 
@@ -16,10 +23,18 @@ import           Control.Concurrent
 import           Control.Exception
 import           Control.Monad
 import           Data.Aeson
+import qualified Data.ByteString               as B
+import qualified Data.ByteString.Lazy          as LB
+import           Data.Default.Class
 import           Data.Text                      ( Text )
-import           Network.WebSockets
+import qualified Network.Connection            as NC
+import           Network.Socket                 ( PortNumber )
+import qualified Network.URI                   as URI
+import           Network.WebSockets      hiding ( runClient )
+import           Network.WebSockets.Stream
 import qualified Data.HashMap.Strict           as HM
 import qualified Lodjur.Manager.Messages       as Msg
+import           Text.Read                      ( readMaybe )
 
 type ClientId = Text
 
@@ -39,12 +54,19 @@ newtype State = State
   { registeredClients   :: MVar (HM.HashMap ClientId Client)
   }
 
+data ConnectInfo = ConnectInfo
+  { connectSecure       :: Bool     -- Use TLS
+  , connectHost         :: String
+  , connectPort         :: PortNumber
+  , connectPath         :: String
+  }
+
 newManager :: IO Manager
 newManager = do
   registeredClients <- newMVar HM.empty
-  let managerState        = State {..}
+  let managerState        = State { .. }
       managerWebServerApp = wsapp managerState
-  return Manager {..}
+  return Manager { .. }
 
 request :: Manager -> Msg.Request -> IO Msg.Reply
 request mgr req = do
@@ -137,3 +159,50 @@ sendMsg :: ToJSON a => Connection -> a -> IO ()
 sendMsg conn msg = do
   putStrLn $ "Send: " ++ show (encode msg)
   sendTextData conn . encode $ msg
+
+parseManagerURI :: String -> Maybe ConnectInfo
+parseManagerURI = fromURI <=< URI.parseURI
+
+fromURI :: URI.URI -> Maybe ConnectInfo
+fromURI uri = do
+  guard $ URI.uriIsAbsolute uri
+  connectSecure <- case URI.uriScheme uri of
+    "ws:"  -> return False
+    "wss:" -> return True
+    _     -> mzero
+  guard $ URI.uriQuery uri == ""
+  guard $ URI.uriFragment uri == ""
+  auth <- URI.uriAuthority uri
+  guard $ URI.uriUserInfo auth == ""
+  let connectHost = URI.uriRegName auth
+  connectPort <- readMaybe (dropWhile (== ':') $ URI.uriPort auth)
+  let connectPath = URI.uriPath uri
+  return ConnectInfo { .. }
+
+runManagerClient :: ConnectInfo -> ClientApp a -> IO a
+runManagerClient ci app = do
+  ctx <- NC.initConnectionContext
+  nc  <- NC.connectTo ctx params
+  s   <- makeConnectionStream nc
+  runClientWithStream s fullhost (connectPath ci) opts [] app
+ where
+  port = toInteger (connectPort ci)
+  fullhost =
+    if port == 80 then connectHost ci else connectHost ci ++ ":" ++ show port
+  opts   = defaultConnectionOptions
+  params = NC.ConnectionParams { connectionHostname  = connectHost ci
+                               , connectionPort      = connectPort ci
+                               , connectionUseSecure = secure
+                               , connectionUseSocks  = Nothing
+                               }
+  secure = if connectSecure ci then Just def else Nothing
+
+makeConnectionStream :: NC.Connection -> IO Stream
+makeConnectionStream conn = makeStream r s
+ where
+  r = do
+    bs <- NC.connectionGetChunk conn
+    return $ if B.null bs then Nothing else Just bs
+
+  s Nothing   = NC.connectionClose conn `Control.Exception.catch` \(_ :: IOException) -> return ()
+  s (Just bs) = NC.connectionPut conn (LB.toStrict bs)

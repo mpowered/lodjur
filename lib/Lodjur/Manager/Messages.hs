@@ -6,7 +6,8 @@ module Lodjur.Manager.Messages where
 import           Data.Aeson
 import           Data.Text                      ( Text )
 import           GHC.Generics
-import           GitHub.Extra
+import qualified GitHub                        as GH
+import qualified GitHub.Extra                  as GH
 
 data HandshakeRequest
   = Greet
@@ -49,7 +50,7 @@ instance FromJSON Request where
   parseJSON = genericParseJSON jsonOptions
 
 data Reply
-  = Completed
+  = Completed GH.Conclusion (Maybe GH.CheckRunOutput)
   | Cancelled
   | Disconnected
   deriving (Show, Eq, Ord, Generic)
@@ -62,9 +63,9 @@ instance FromJSON Reply where
 
 data Source
   = Source
-  { sha         :: !Sha
-  , owner       :: !Text
-  , repo        :: !Text
+  { sha         :: !GH.Sha
+  , owner       :: !GH.SimpleOwner
+  , repo        :: !(GH.Name GH.Repo)
   }
   deriving (Show, Eq, Ord, Generic)
 

@@ -6,8 +6,12 @@ module Build where
 import           Control.Exception
 import           Control.Monad
 import           Data.Aeson
+import qualified Data.Text               as Text
 import           System.Process
 import           System.Exit
+
+import qualified GitHub.Extra            as GH
+import qualified Lodjur.Manager.Messages as Msg
 
 data BuildError = BuildError Int String String
 
@@ -28,7 +32,7 @@ instance FromJSON Config where
     buildDebug  <- o .: "debug"
     return Config{..}
 
-runBuild :: Config -> CreateProcess -> IO ()
+runBuild :: Config -> CreateProcess -> IO Msg.Reply
 runBuild Config{..} p = do
   when buildDebug $ putStrLn $ "GIT: " ++ show (cmdspec p)
   (exitcode, stdout, stderr) <- readCreateProcessWithExitCode p ""
@@ -36,8 +40,28 @@ runBuild Config{..} p = do
     mapM_ putStrLn [ "> " <> l | l <- lines stdout ]
     mapM_ putStrLn [ ">> " <> l | l <- lines stderr ]
   case exitcode of
-    ExitSuccess -> return ()
-    ExitFailure code -> throwIO $ BuildError code stdout stderr
+    ExitSuccess -> do
+      let output = GH.CheckRunOutput
+                     { checkRunOutputTitle       = "Build"
+                     , checkRunOutputSummary     = Text.unlines
+                        [ "nix-build completed successfully"
+                        , "`" <> Text.pack (last $ lines stdout) <> "`"
+                        ]
+                     , checkRunOutputText        = Nothing
+                     , checkRunOutputAnnotations = []
+                     }
+      return $ Msg.Completed GH.Success (Just output)
+    ExitFailure code
+      | code < 0 ->             -- exited due to signal
+          return Msg.Cancelled
+      | otherwise -> do
+          let output = GH.CheckRunOutput
+                        { checkRunOutputTitle       = "Build"
+                        , checkRunOutputSummary     = "nix-build exited with code " <> Text.pack (show code)
+                        , checkRunOutputText        = Just (Text.pack $ unlines $ reverse $ take 100 $ reverse $ lines stdout)
+                        , checkRunOutputAnnotations = []
+                        }
+          return $ Msg.Completed GH.Failure (Just output)
 
 nixBuild :: Config -> [String] -> CreateProcess
 nixBuild Config{..} = proc buildCmd
@@ -45,7 +69,7 @@ nixBuild Config{..} = proc buildCmd
 withCwd :: FilePath -> CreateProcess -> CreateProcess
 withCwd d p = p { cwd = Just d }
 
-build :: Config -> FilePath -> FilePath -> IO ()
+build :: Config -> FilePath -> FilePath -> IO Msg.Reply
 build env d file =
   runBuild env
     $ withCwd d
