@@ -23,10 +23,11 @@ let
 
   drv = haskellPackages.callCabal2nix "lodjur" ./. {};
 
-in
+in rec
 {
   lodjur = drv;
-  lodjur-shell = devpkgs: haskellPackages.shellFor {
+  lodjur-shell = lodjur-shell-with (p: []);
+  lodjur-shell-with = devpkgs: haskellPackages.shellFor {
     packages = p: [drv];
     buildInputs = devpkgs haskellPackages;
   };

@@ -219,7 +219,9 @@ checkRun env@Env{..} runid =
           Right () ->
             Redis.runRedis redisConn $ do
               void $ Q.remove runInProgressQueue runid
-              createRun checkSuiteId "rspec toolkit" (RSpec "toolkit")
+              createRun checkSuiteId "rspec toolkit-1" (RSpec "toolkit1")
+              createRun checkSuiteId "rspec toolkit-2" (RSpec "toolkit2")
+              createRun checkSuiteId "rspec toolkit-3" (RSpec "toolkit3")
               createRun checkSuiteId "rspec sms"     (RSpec "sms")
               createRun checkSuiteId "rspec beagle"  (RSpec "beagle")
               Q.push workerQueue

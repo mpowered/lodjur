@@ -18,18 +18,6 @@ import           URI.ByteString
 import           URI.ByteString.QQ
 import qualified Web.JWT                      as JWT
 
--- import           Lodjur.Auth
--- import qualified Lodjur.Database              as Database
--- import           Lodjur.Deployment
--- import qualified Lodjur.Deployment.Deployer   as Deployer
--- import qualified Lodjur.Events.EventLogger    as EventLogger
--- import qualified Lodjur.Git.GitAgent          as GitAgent
--- import qualified Lodjur.Git.GitReader         as GitReader
--- import qualified Lodjur.Output.OutputLoggers  as OutputLoggers
--- import qualified Lodjur.Output.OutputStreamer as OutputStreamer
--- import           Lodjur.Process
--- import           Lodjur.Web.Base
-
 data Config = Config
   { workDir                 :: FilePath
   , httpPort                :: Int

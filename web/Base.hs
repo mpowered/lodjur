@@ -10,24 +10,9 @@ import           URI.ByteString
 import qualified Web.JWT                      as JWT
 import           Web.Spock
 
--- import           Lodjur.Database
--- import           Lodjur.Deployment.Deployer
--- import           Lodjur.Events.EventLogger
--- import           Lodjur.Git.GitAgent
--- import           Lodjur.Git.GitReader
--- import           Lodjur.Output.OutputLoggers
--- import           Lodjur.Output.OutputStreamer
--- import           Lodjur.Process
-
 import           User
 
 data Env = Env
-  -- { envDeployer                      :: Ref Deployer
-  -- , envEventLogger                   :: Ref EventLogger
-  -- , envOutputLoggers                 :: Ref OutputLoggers
-  -- , envOutputStreamer                :: Ref OutputStreamer
-  -- , envGitAgent                      :: Ref GitAgent
-  -- , envGitReader                     :: Ref GitReader
   { envGithubRepos                      :: ![Text]
   , envGithubSecretToken                :: !ByteString
   , envGithubAppId                      :: !Int
@@ -35,7 +20,6 @@ data Env = Env
   , envGithubInstallationId             :: !Int
   , envGithubInstallationAccessToken    :: !(MVar (Maybe GH.AccessToken))
   , envManager                          :: !Manager
-  -- , envDbPool                           :: !DbPool
   , envRedisConn                        :: !Redis.Connection
   }
 
