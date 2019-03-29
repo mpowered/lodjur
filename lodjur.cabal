@@ -60,7 +60,6 @@ executable          lodjur
                   , Messenger
                   , WebHook
                   , WebHook.Events
-                  , WS
                   , Paths_lodjur
     build-depends:  base                  >= 4.11 && < 5
                   , lodjur-lib
