@@ -1,5 +1,5 @@
-{-# LANGUAGE DeriveGeneric         #-}
 {-# LANGUAGE DuplicateRecordFields #-}
+{-# LANGUAGE ExtendedDefaultRules  #-}
 {-# LANGUAGE NamedFieldPuns        #-}
 {-# LANGUAGE OverloadedStrings     #-}
 {-# LANGUAGE RecordWildCards       #-}
@@ -10,8 +10,10 @@ module Main where
 import           Control.Concurrent.Async
 import           Control.Monad
 import           Control.Error
-import           Control.Exception
+import           Control.Monad.Catch          (MonadMask, bracket)
 import           Control.Monad.IO.Class
+import           Control.Monad.Log
+import           Control.Monad.Reader
 import           Data.Aeson                   hiding (Options, Success)
 import           Data.Aeson.Encode.Pretty     (encodePretty)
 import           Data.ByteString              (ByteString)
@@ -19,6 +21,7 @@ import qualified Data.ByteString.Lazy         as ByteString
 import           Data.Text                    (Text)
 import qualified Data.Text                    as Text
 import qualified Data.Text.Encoding           as Text
+import           Data.Text.Prettyprint.Doc
 import qualified Data.UUID                    as UUID
 import qualified Data.UUID.V4                 as UUID
 import qualified Data.Vector                  as Vec
@@ -47,6 +50,9 @@ import qualified Build
 import qualified Git
 import qualified RSpec
 import qualified RSpec.Results                as RSpec
+import           Types
+
+default (Text)
 
 newtype Options = Options
   { configFile :: FilePath
@@ -71,48 +77,57 @@ main = start =<< execParser opts
       "Performs check jobs submitted by Lodjur"
     )
 
-setupEnv :: Config -> IO Env
-setupEnv Config{..} = do
-  gitEnv <- Git.setupEnv gitCfg
-  return Env{..}
-
 start :: Options -> IO ()
 start Options{..} = do
-  cfg <- readConfiguration configFile
-  env <- setupEnv cfg
+  Config{..} <- readConfiguration configFile
+  gitEnv <- Git.setupEnv gitCfg
 
   withSocketsDo $
-    runManagerClient (managerCI cfg) (handshake (app env))
+    runManagerClient managerCI $ \messageConn ->
+      runWorker Env{..} (handshake app)
 
-handshake :: ClientApp () -> Connection -> IO ()
-handshake a conn = do
-  msg <- receiveMsg conn
+handshake :: Worker () -> Worker ()
+handshake a = do
+  Env{..} <- ask
+  msg <- receiveMsg messageConn
   case msg of
     Just Msg.Greet -> do
-      sendMsg conn (Msg.Register "client")
-      a conn
+      sendMsg messageConn (Msg.Register "client")
+      a
     Nothing -> return ()
 
-app :: Env -> Connection -> IO ()
-app env conn = forever $ do
-  msg <- receiveMsg conn
-  case msg of
-    Msg.Build src -> build env src >>= sendMsg conn
-    unsupported -> do
-      putStrLn $ "Unsupported message: " ++ show unsupported
-      sendMsg conn $ Msg.Completed Failure Nothing
+app :: Worker ()
+app = do
+  Env{..} <- ask
+  logInfo "Worker ready"
+  forever $ do
+    msg <- receiveMsg messageConn
+    case msg of
+      Msg.Build src -> build src >>= sendMsg messageConn
+      unsupported -> do
+        logError $ "Unsupported message:" <+> nest 4 (viaShow unsupported)
+        sendMsg messageConn $ Msg.Completed Failure Nothing
 
-withWorkDir :: Env -> RepoRef -> Sha -> (FilePath -> IO a) -> IO a
-withWorkDir Env{..} repo sha =
-  bracket
-    (Git.checkout gitEnv repo sha)
-    removeDirectoryRecursive
+withWorkDir
+  :: (MonadIO io, MonadMask io)
+  => Env
+  -> RepoRef
+  -> Sha
+  -> (FilePath -> io a)
+  -> io a
+withWorkDir Env {..} repo sha
+  = bracket
+    (liftIO $ Git.checkout gitEnv repo sha)
+    (liftIO . removeDirectoryRecursive)
 
-build :: Env -> Msg.Source -> IO Msg.Reply
-build env@Env{..} Msg.Source{..} = do
-  putStrLn "Nix Build"
-  withWorkDir env (RepoRef owner repo) sha $ \workdir ->
-    Build.build buildCfg workdir ".lodjur/build.nix"
+build :: Msg.Source -> Worker Msg.Reply
+build Msg.Source{..} = do
+  env@Env{..} <- ask
+  logInfo "Build started"
+  reply <- withWorkDir env (RepoRef owner repo) sha $ \workdir ->
+    Build.build workdir ".lodjur/build.nix"
+  logInfo $ "Build completed:" <+> viaShow reply
+  return reply
 
       -- Return error
       {-

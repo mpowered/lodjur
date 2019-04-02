@@ -1,12 +1,13 @@
 module Env where
 
-import           Network.URI
-
-import qualified Build
+import           Config
 import qualified Git
+import           Network.WebSockets
 
 data Env = Env
-  { workDir     :: FilePath
+  { logFile     :: FilePath
+  , messageConn :: Connection
+  , workDir     :: FilePath
   , gitEnv      :: Git.Env
-  , buildCfg    :: Build.Config
+  , buildCfg    :: BuildConfig
   }

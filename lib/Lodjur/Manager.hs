@@ -22,6 +22,7 @@ where
 import           Control.Concurrent
 import           Control.Exception
 import           Control.Monad
+import           Control.Monad.IO.Class
 import           Data.Aeson
 import qualified Data.ByteString               as B
 import qualified Data.ByteString.Lazy          as LB
@@ -147,16 +148,16 @@ registerClient conn state = do
       putMVar (registeredClients state) $! HM.insert clientid client clients
   return client
 
-receiveMsg :: FromJSON a => Connection -> IO a
-receiveMsg conn = do
+receiveMsg :: (FromJSON a, MonadIO m) => Connection -> m a
+receiveMsg conn = liftIO $ do
   d <- receiveData conn
   putStrLn $ "Recv: " ++ show d
   case decode' d of
     Nothing  -> throwIO UnexpectedReply
     Just msg -> return msg
 
-sendMsg :: ToJSON a => Connection -> a -> IO ()
-sendMsg conn msg = do
+sendMsg :: (ToJSON a, MonadIO m) => Connection -> a -> m ()
+sendMsg conn msg = liftIO $ do
   putStrLn $ "Send: " ++ show (encode msg)
   sendTextData conn . encode $ msg
 

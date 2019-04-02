@@ -7,19 +7,25 @@ import           Data.Aeson                    as JSON
 import           Data.Text.IO                  as Text
 import           Text.Toml
 
-import qualified Build
 import qualified Git
 import qualified Lodjur.Manager                as Mgr
 
 data Config = Config
-  { workDir     :: FilePath
+  { logFile     :: FilePath
+  , workDir     :: FilePath
   , managerCI   :: Mgr.ConnectInfo
   , gitCfg      :: Git.Config
-  , buildCfg    :: Build.Config
+  , buildCfg    :: BuildConfig
+  }
+
+data BuildConfig = BuildConfig
+  { buildCmd    :: FilePath
+  , buildDebug  :: Bool
   }
 
 instance FromJSON Config where
   parseJSON = withObject "Configuration" $ \o -> do
+    logFile   <- o .: "log-file"
     workDir   <- o .: "work-dir"
     managerCI <- o .: "manager" >>= mgr
     gitCfg    <- o .: "git"
@@ -28,6 +34,12 @@ instance FromJSON Config where
    where
     mgr s =
       maybe (fail "Not a valid websocket URI") return $ Mgr.parseManagerURI s
+
+instance FromJSON BuildConfig where
+  parseJSON = withObject "Build Config" $ \o -> do
+    buildCmd    <- o .: "command"
+    buildDebug  <- o .: "debug"
+    return BuildConfig{..}
 
 readConfiguration :: FilePath -> IO Config
 readConfiguration path = do

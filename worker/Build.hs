@@ -5,13 +5,20 @@ module Build where
 
 import           Control.Exception
 import           Control.Monad
+import           Control.Monad.Log
+import           Control.Monad.Reader
 import           Data.Aeson
 import qualified Data.Text               as Text
+import           Data.Text.Prettyprint.Doc
 import           System.Process
 import           System.Exit
 
 import qualified GitHub.Extra            as GH
 import qualified Lodjur.Manager.Messages as Msg
+
+import           Config
+import           Env
+import           Types
 
 data BuildError = BuildError Int String String
 
@@ -21,24 +28,13 @@ instance Show BuildError where
 instance Exception BuildError where
   displayException (BuildError code _ _) = "BuildError: build exited with code " <> show code
 
-data Config = Config
-  { buildCmd    :: FilePath
-  , buildDebug  :: Bool
-  }
-
-instance FromJSON Config where
-  parseJSON = withObject "Build Config" $ \o -> do
-    buildCmd    <- o .: "command"
-    buildDebug  <- o .: "debug"
-    return Config{..}
-
-runBuild :: Config -> CreateProcess -> IO Msg.Reply
-runBuild Config{..} p = do
-  when buildDebug $ putStrLn $ "GIT: " ++ show (cmdspec p)
-  (exitcode, stdout, stderr) <- readCreateProcessWithExitCode p ""
-  when buildDebug $ do
-    mapM_ putStrLn [ "> " <> l | l <- lines stdout ]
-    mapM_ putStrLn [ ">> " <> l | l <- lines stderr ]
+runBuild :: CreateProcess -> Worker Msg.Reply
+runBuild p = do
+  BuildConfig{..} <- asks Env.buildCfg
+  logDebug $ "GIT: " <> viaShow (cmdspec p)
+  (exitcode, stdout, stderr) <- liftIO $ readCreateProcessWithExitCode p ""
+  logDebug $ "GIT stdout:" <> line <> indent 4 (vsep (map pretty $ lines stdout))
+  logDebug $ "GIT stderr:" <> line <> indent 4 (vsep (map pretty $ lines stderr))
   case exitcode of
     ExitSuccess -> do
       let output = GH.CheckRunOutput
@@ -63,14 +59,13 @@ runBuild Config{..} p = do
                         }
           return $ Msg.Completed GH.Failure (Just output)
 
-nixBuild :: Config -> [String] -> CreateProcess
-nixBuild Config{..} = proc buildCmd
+nixBuild :: BuildConfig -> [String] -> CreateProcess
+nixBuild BuildConfig{..} = proc buildCmd
 
 withCwd :: FilePath -> CreateProcess -> CreateProcess
 withCwd d p = p { cwd = Just d }
 
-build :: Config -> FilePath -> FilePath -> IO Msg.Reply
-build env d file =
-  runBuild env
-    $ withCwd d
-    $ nixBuild env [file]
+build :: FilePath -> FilePath -> Worker Msg.Reply
+build d file = do
+  cfg <- asks Env.buildCfg
+  runBuild $ withCwd d $ nixBuild cfg [file]

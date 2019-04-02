@@ -1,5 +1,6 @@
 # Example configuration
 
+log-file = "worker.log"
 work-dir = "/home/shaun/devel/mpowered/lodjur/mpowered-services"
 manager = "ws://neptune:4000/manager"
 
