@@ -4,9 +4,9 @@ import           Control.Monad.Log
 import           Control.Monad.Reader
 
 import           Env
-import           Logging
+import           Lodjur.Logging
 
 type Worker = ReaderT Env (LoggingT LogMsg IO)
 
 runWorker :: Env -> Worker a -> IO a
-runWorker env = runLogging (logFile env) . flip runReaderT env
+runWorker env = runLogging (logTarget env) . flip runReaderT env

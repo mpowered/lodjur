@@ -31,6 +31,7 @@ import           GHC.Generics
 import qualified Lodjur.Database              as Db
 import qualified Lodjur.Database.Checks       as Db
 import qualified Lodjur.Database.Types        as Db
+import           Lodjur.Logging
 import           Lodjur.Messages
 import           Lodjur.Manager
 import qualified Lodjur.Manager.Messages      as Msg
@@ -81,6 +82,7 @@ start :: Options -> IO ()
 start Options{..} = do
   Config{..} <- readConfiguration configFile
   gitEnv <- Git.setupEnv gitCfg
+  let logTarget = maybe LogStdout LogFile logFile
 
   withSocketsDo $
     runManagerClient managerCI $ \messageConn ->

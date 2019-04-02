@@ -11,7 +11,7 @@ import qualified Git
 import qualified Lodjur.Manager                as Mgr
 
 data Config = Config
-  { logFile     :: FilePath
+  { logFile     :: Maybe FilePath
   , workDir     :: FilePath
   , managerCI   :: Mgr.ConnectInfo
   , gitCfg      :: Git.Config
@@ -25,7 +25,7 @@ data BuildConfig = BuildConfig
 
 instance FromJSON Config where
   parseJSON = withObject "Configuration" $ \o -> do
-    logFile   <- o .: "log-file"
+    logFile   <- o .:?"log-file"
     workDir   <- o .: "work-dir"
     managerCI <- o .: "manager" >>= mgr
     gitCfg    <- o .: "git"
