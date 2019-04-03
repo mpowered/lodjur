@@ -26,18 +26,21 @@ library                 lodjur-lib
     hs-source-dirs:     lib
     ghc-options:        -Wall -O2
     default-language:   Haskell2010
-    exposed-modules:    Lodjur.Messages
+    exposed-modules:    Lodjur.Database
+                      , Lodjur.Database.CheckRun
+                      , Lodjur.Database.CheckSuite
+                      , Lodjur.Database.Event
+                      , Lodjur.Database.Internal
+                      , Lodjur.Database.Job
+                      , Lodjur.Database.Revision
                       , Lodjur.GitHub
-                      , Lodjur.Database
-                      , Lodjur.Database.Checks
-                      , Lodjur.Database.Types
                       , Lodjur.Logging
                       , Lodjur.Manager
                       , Lodjur.Manager.Messages
-                      , Database.Redis.Exception
-                      , Database.Redis.Queue
     build-depends:      base                  >= 4.11 && < 5
                       , aeson                 >= 1.3.1 && < 1.4
+                      , beam-core             >= 0.7.2.2 && <0.8
+                      , beam-postgres         >= 0.3.2.2 && <0.4
                       , bytestring            >= 0.10.8 && < 0.11
                       , connection            >= 0.2 && < 0.3
                       , data-default-class
@@ -45,17 +48,18 @@ library                 lodjur-lib
                       , github                >= 0.21 && < 0.22
                       , github-extra
                       , hashable              >= 1.2.7.0 && < 1.3
-                      , hedis                 >= 0.10.4 && < 0.11
                       , http-client
                       , jwt                   >= 0.9.0 && < 0.10
                       , logging-effect        >= 1.3 && < 1.4
                       , network               >= 2.6 && < 3.1
                       , network-uri           >= 2.6 && < 2.7
+                      , postgresql-simple     >= 0.5.4 && < 0.6
                       , prettyprinter         >= 1.2 && < 1.3
                       , text                  >= 1.2.3 && < 1.3
                       , time                  >= 1.8.0 && < 1.9
                       , transformers          >= 0.5.5 && < 0.6
                       , unordered-containers  >= 0.2.9 && < 0.3
+                      , uuid                  >= 1.3.13 && < 1.4
                       , websockets            >= 0.12 && < 0.13
 
 executable              lodjur
@@ -68,7 +72,6 @@ executable              lodjur
                       , Web
                       , Auth.GitHub
                       , Base
-                      , Messenger
                       , WebHook
                       , WebHook.Events
                       , Paths_lodjur
@@ -85,7 +88,6 @@ executable              lodjur
                       , github                >= 0.21 && < 0.22
                       , github-extra
                       , hashable              >= 1.2.7 && < 1.3
-                      , hedis                 >= 0.10.4 && < 0.11
                       , hoauth2
                       , htoml                 >= 1.0.0 && < 1.1
                       , http-client
@@ -113,6 +115,7 @@ executable              lodjur
                       , warp                  >= 3.2 && < 3.3
                       , websockets            >= 0.12 && < 0.13
                       , Spock
+                      , Spock-core
                       , Spock-lucid
 
 executable              lodjur-worker
@@ -124,7 +127,6 @@ executable              lodjur-worker
                       , Config
                       , Env
                       , Git
-                      , Logging
                       , RSpec
                       , RSpec.Results
                       , Types
@@ -141,7 +143,6 @@ executable              lodjur-worker
                       , filepath              >= 1.4 && < 1.5
                       , github                >= 0.21 && < 0.22
                       , github-extra
-                      , hedis                 >= 0.10.4 && < 0.11
                       , http-client           >= 0.5 && < 0.6
                       , http-client-tls       >= 0.3 && < 0.4
                       , htoml                 >= 1.0.0 && < 1.1

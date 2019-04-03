@@ -8,7 +8,9 @@ module Web
   )
 where
 
+import           Data.Pool
 import qualified Data.Text                     as Text
+import qualified Database.PostgreSQL.Simple    as Pg
 import           Network.OAuth.OAuth2
 import qualified Network.Wai.Handler.Warp      as Warp
 import           Network.Wai.Handler.WebSockets
@@ -34,9 +36,9 @@ ifLoggedIn thenRoute elseRoute = readSession >>= \case
   Session { currentUser = Just _ } -> thenRoute
   _ -> elseRoute
 
-runServer :: Int -> Env -> OAuth2 -> IO ()
-runServer port env githubOauth = do
-  cfg    <- defaultSpockCfg emptySession PCNoDatabase env
+runServer :: Int -> Env -> Pool Pg.Connection -> OAuth2 -> IO ()
+runServer port env pool githubOauth = do
+  cfg    <- defaultSpockCfg emptySession (PCPool pool) env
   lodjur <- spockAsApp (spock cfg app)
   wsmgr  <- newManager
   Warp.run port $ websocketsOr opts (managerWebServerApp wsmgr) lodjur

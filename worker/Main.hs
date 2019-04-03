@@ -25,14 +25,8 @@ import           Data.Text.Prettyprint.Doc
 import qualified Data.UUID                    as UUID
 import qualified Data.UUID.V4                 as UUID
 import qualified Data.Vector                  as Vec
-import qualified Database.Redis               as Redis
-import qualified Database.Redis.Queue         as Q
 import           GHC.Generics
-import qualified Lodjur.Database              as Db
-import qualified Lodjur.Database.Checks       as Db
-import qualified Lodjur.Database.Types        as Db
 import           Lodjur.Logging
-import           Lodjur.Messages
 import           Lodjur.Manager
 import qualified Lodjur.Manager.Messages      as Msg
 import           Options.Applicative          hiding (Success, Failure)

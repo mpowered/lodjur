@@ -3,7 +3,7 @@ module Base where
 import           Control.Concurrent
 import           Data.ByteString              (ByteString)
 import           Data.Text                    (Text)
-import qualified Database.Redis               as Redis
+import qualified Database.PostgreSQL.Simple   as Pg
 import qualified GitHub.Extra                 as GH
 import           Network.HTTP.Client
 import           URI.ByteString
@@ -20,7 +20,6 @@ data Env = Env
   , envGithubInstallationId             :: !Int
   , envGithubInstallationAccessToken    :: !(MVar (Maybe GH.AccessToken))
   , envManager                          :: !Manager
-  , envRedisConn                        :: !Redis.Connection
   }
 
 data Session = Session
@@ -32,5 +31,5 @@ data Session = Session
 emptySession :: Session
 emptySession = Session Nothing Nothing Nothing
 
-type App = SpockM () Session Env
-type Action = SpockAction () Session Env
+type App = SpockM Pg.Connection Session Env
+type Action = SpockAction Pg.Connection Session Env

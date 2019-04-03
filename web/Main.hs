@@ -5,18 +5,17 @@ module Main where
 
 import           Control.Concurrent
 import           Control.Concurrent.Async
+import           Data.Pool
 import           Data.Semigroup               ((<>))
-import qualified Database.Redis               as Redis
+import qualified Database.PostgreSQL.Simple   as Pg
 import           Network.HTTP.Client
 import           Network.HTTP.Client.TLS
 import           Options.Applicative
 
 import           Config
--- import qualified Lodjur.Database              as Database
 import qualified Lodjur.GitHub                as GH
 import           Web
 import           Base
-import           Messenger
 
 import           GitHub.Data.Id
 
@@ -55,9 +54,7 @@ start LodjurOptions {..} = do
     } <- readConfiguration configFile
 
   envManager <- newManager tlsManagerSettings
-
-  envRedisConn <- Redis.checkedConnect redisConnectInfo
-
+  dbpool <- createPool (Pg.connect databaseConnectInfo) Pg.close 1 60 16
   envGithubInstallationAccessToken <- newMVar Nothing
 
   let env = Env{..}
@@ -69,6 +66,4 @@ start LodjurOptions {..} = do
       envGithubAppSigner
       (Id envGithubInstallationId)
 
-  withAsync (messenger envRedisConn githubToken) $ \ma -> do
-    runServer httpPort env githubOauth
-    wait ma
+  runServer httpPort env dbpool githubOauth

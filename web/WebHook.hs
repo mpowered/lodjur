@@ -17,20 +17,12 @@ import           Crypto.Hash
 import           Crypto.MAC.HMAC
 import           Data.Aeson                    hiding (json)
 import qualified Data.ByteString.Base16        as Base16
-import qualified Data.HashSet                  as Set
 import           Data.Text                     (Text)
 import qualified Data.Text                     as Text
 import qualified Data.Text.Encoding            as Text
 import           Data.Time.Clock               (getCurrentTime)
 import           Network.HTTP.Types.Status
 import           Web.Spock
-
-import qualified Database.Redis                as Redis
-import qualified Database.Redis.Queue          as Q
-
-import qualified Lodjur.Database               as Db
-import qualified Lodjur.Database.Checks        as Db
-import qualified Lodjur.Messages               as Msg
 
 import           Base
 import           WebHook.Events
@@ -100,78 +92,82 @@ checkRunEvent CheckRunEvent {..} = do
 checkRequested :: GH.EventCheckSuite -> GH.Repo -> Action ()
 checkRequested suite repo = do
   Env {..} <- getState
+  return ()
 
-  liftIO $ Redis.runRedis envRedisConn $ do
-    Db.put_ (Db.checkSuiteKeyFromId $ GH.eventCheckSuiteId suite)
-      Db.CheckSuite
-        { headBranch = GH.eventCheckSuiteHeadBranch suite
-        , headSha    = GH.eventCheckSuiteHeadSha suite
-        , status     = GH.eventCheckSuiteStatus suite
-        , conclusion = GH.eventCheckSuiteConclusion suite
-        , repository = repo
-        , checkRuns  = mempty
-        }
+  -- liftIO $ Redis.runRedis envRedisConn $ do
+  --   Db.put_ (Db.checkSuiteKeyFromId $ GH.eventCheckSuiteId suite)
+  --     Db.CheckSuite
+  --       { headBranch = GH.eventCheckSuiteHeadBranch suite
+  --       , headSha    = GH.eventCheckSuiteHeadSha suite
+  --       , status     = GH.eventCheckSuiteStatus suite
+  --       , conclusion = GH.eventCheckSuiteConclusion suite
+  --       , repository = repo
+  --       , checkRuns  = mempty
+  --       }
 
-    void $ Q.push Msg.checkRequestedQueue [GH.eventCheckSuiteId suite]
+  --   void $ Q.push Msg.checkRequestedQueue [GH.eventCheckSuiteId suite]
 
 checkRun :: GH.EventCheckRun -> Action ()
 checkRun run = do
   Env {..} <- getState
-  let suite  = GH.eventCheckRunCheckSuite run
+  return ()
+  -- let suite  = GH.eventCheckRunCheckSuite run
 
-  liftIO $ Redis.runRedis envRedisConn $ do
-    Db.put_ (Db.checkRunKeyFromId $ GH.eventCheckRunId run)
-      Db.CheckRun
-        { checkSuiteId = GH.eventCheckSuiteId suite
-        , name         = GH.eventCheckRunName run
-        , headSha      = GH.eventCheckRunHeadSha run
-        , status       = GH.eventCheckRunStatus run
-        , conclusion   = GH.eventCheckRunConclusion run
-        , startedAt    = GH.eventCheckRunStartedAt run
-        , completedAt  = GH.eventCheckRunCompletedAt run
-        , externalId   = GH.eventCheckRunExternalId run
-        , output       = GH.eventCheckRunOutput run
-        }
+  -- liftIO $ Redis.runRedis envRedisConn $ do
+  --   Db.put_ (Db.checkRunKeyFromId $ GH.eventCheckRunId run)
+  --     Db.CheckRun
+  --       { checkSuiteId = GH.eventCheckSuiteId suite
+  --       , name         = GH.eventCheckRunName run
+  --       , headSha      = GH.eventCheckRunHeadSha run
+  --       , status       = GH.eventCheckRunStatus run
+  --       , conclusion   = GH.eventCheckRunConclusion run
+  --       , startedAt    = GH.eventCheckRunStartedAt run
+  --       , completedAt  = GH.eventCheckRunCompletedAt run
+  --       , externalId   = GH.eventCheckRunExternalId run
+  --       , output       = GH.eventCheckRunOutput run
+  --       }
 
-    Db.modify (Db.checkSuiteKeyFromId $ GH.eventCheckSuiteId suite) $
-      \cs -> cs
-        { Db.checkRuns  = Set.insert (GH.eventCheckRunId run) (Db.checkRuns cs)
-        } :: Db.CheckSuite
+  --   Db.modify (Db.checkSuiteKeyFromId $ GH.eventCheckSuiteId suite) $
+  --     \cs -> cs
+  --       { Db.checkRuns  = Set.insert (GH.eventCheckRunId run) (Db.checkRuns cs)
+  --       } :: Db.CheckSuite
 
-    void $ Q.push Msg.runRequestedQueue [GH.eventCheckRunId run]
+  --   void $ Q.push Msg.runRequestedQueue [GH.eventCheckRunId run]
 
 updateCheckSuite :: GH.EventCheckSuite -> Action ()
 updateCheckSuite suite = do
   Env {..} <- getState
+  return ()
 
-  liftIO $ Redis.runRedis envRedisConn $ do
-    Db.modify (Db.checkSuiteKeyFromId $ GH.eventCheckSuiteId suite) $
-      \cs -> cs
-        { Db.status     = GH.eventCheckSuiteStatus suite
-        , Db.conclusion = GH.eventCheckSuiteConclusion suite
-        } :: Db.CheckSuite
-    when (GH.eventCheckSuiteStatus suite == GH.Completed) $
-      void $ Q.move Msg.checkInProgressQueue Msg.checkCompletedQueue (GH.eventCheckSuiteId suite)
+  -- liftIO $ Redis.runRedis envRedisConn $ do
+  --   Db.modify (Db.checkSuiteKeyFromId $ GH.eventCheckSuiteId suite) $
+  --     \cs -> cs
+  --       { Db.status     = GH.eventCheckSuiteStatus suite
+  --       , Db.conclusion = GH.eventCheckSuiteConclusion suite
+  --       } :: Db.CheckSuite
+  --   when (GH.eventCheckSuiteStatus suite == GH.Completed) $
+  --     void $ Q.move Msg.checkInProgressQueue Msg.checkCompletedQueue (GH.eventCheckSuiteId suite)
 
 updateCheckRun :: GH.EventCheckRun -> Action ()
 updateCheckRun run = do
   Env {..} <- getState
+  return ()
 
-  liftIO $ Redis.runRedis envRedisConn $
-    if GH.eventCheckRunStatus run == GH.Completed
-    then
-      Db.modify (Db.checkRunKeyFromId $ GH.eventCheckRunId run) $
-        \cs -> cs
-          { Db.status      = GH.eventCheckRunStatus run
-          , Db.conclusion  = GH.eventCheckRunConclusion run
-          , Db.completedAt = GH.eventCheckRunCompletedAt run
-          } :: Db.CheckRun
-    else
-      Db.modify (Db.checkRunKeyFromId $ GH.eventCheckRunId run) $
-        \cs -> cs
-          { Db.status     = GH.eventCheckRunStatus run
-          , Db.conclusion = GH.eventCheckRunConclusion run
-          } :: Db.CheckRun
+  -- liftIO $ Redis.runRedis envRedisConn $
+  --   if GH.eventCheckRunStatus run == GH.Completed
+  --   then
+  --     Db.modify (Db.checkRunKeyFromId $ GH.eventCheckRunId run) $
+  --       \cs -> cs
+  --         { Db.status      = GH.eventCheckRunStatus run
+  --         , Db.conclusion  = GH.eventCheckRunConclusion run
+  --         , Db.completedAt = GH.eventCheckRunCompletedAt run
+  --         } :: Db.CheckRun
+  --   else
+  --     Db.modify (Db.checkRunKeyFromId $ GH.eventCheckRunId run) $
+  --       \cs -> cs
+  --         { Db.status     = GH.eventCheckRunStatus run
+  --         , Db.conclusion = GH.eventCheckRunConclusion run
+  --         } :: Db.CheckRun
 
 raise :: MonadIO m => Text -> ActionCtxT ctx m b
 raise msg = do

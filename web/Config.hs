@@ -11,7 +11,6 @@ import           Data.Text                    (Text)
 import           Data.Text.IO                 as Text
 import           Data.Text.Encoding           as Text
 import qualified Database.PostgreSQL.Simple   as Pg
-import qualified Database.Redis               as Redis
 import           Network.OAuth.OAuth2
 import           Text.Toml
 import           URI.ByteString
@@ -21,12 +20,10 @@ import qualified Web.JWT                      as JWT
 data Config = Config
   { workDir                 :: FilePath
   , httpPort                :: Int
-  -- , databaseConnectInfo     :: Pg.ConnectInfo
-  , redisConnectInfo        :: Redis.ConnectInfo
+  , databaseConnectInfo     :: Pg.ConnectInfo
   , githubSecretToken       :: ByteString
   , githubRepos             :: [Text]
   , githubOauth             :: OAuth2
-  -- , githubTeamAuth          :: TeamAuthConfig
   , githubAppId             :: Int
   , githubAppSigner         :: JWT.Signer
   , githubInstallationId    :: Int
@@ -37,8 +34,7 @@ instance FromJSON Config where
   parseJSON = withObject "Configuration" $ \o -> do
     workDir <- o .: "work-dir"
     httpPort <- o .: "http-port"
-    -- databaseConnectInfo <- o .: "database" >>= parseDatabaseConnectInfo
-    redisConnectInfo <- o .: "redis" >>= parseRedisConnectInfo
+    databaseConnectInfo <- o .: "database" >>= parseDatabaseConnectInfo
     githubSecretToken <- Char8.pack <$> (o .: "github-secret-token")
     githubRepos <- o .: "github-repos"
     githubAppId <- o .: "github-app-id"
@@ -55,10 +51,6 @@ instance FromJSON Config where
           , oauthAccessTokenEndpoint = [uri|https://github.com/login/oauth/access_token|]
           , ..
           }
-    -- githubAuthTeam <- o .: "github-authorized-team"
-    -- githubAuthOrg <- o .: "github-authorized-organization"
-    -- let githubTeamAuth = TeamAuthConfig{..}
-
     return Config{..}
     where
       parseDatabaseConnectInfo o = do
@@ -68,17 +60,6 @@ instance FromJSON Config where
         connectUser     <- o .: "user"
         connectPassword <- o .: "password"
         return Pg.ConnectInfo {..}
-      parseRedisConnectInfo o = do
-        connectHost     <- o .: "host"
-        connectPort     <- Redis.PortNumber . fromInteger <$> o .: "port"
-        connectAuth     <- fmap Char8.pack <$> o .:? "auth"
-        connectDatabase <- o .: "database"
-        return Redis.ConnInfo
-          { connectMaxConnections = 50
-          , connectMaxIdleTime = 30
-          , connectTimeout = Nothing
-          , connectTLSParams = Nothing
-          , ..}
       parsePrivateKey key =
         maybe (fail "Invalid RSA secret.") (return . JWT.RSAPrivateKey) $
           JWT.readRsaSecret (Text.encodeUtf8 key)

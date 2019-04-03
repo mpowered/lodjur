@@ -1,78 +1,167 @@
+{-# LANGUAGE DeriveAnyClass        #-}
+{-# LANGUAGE DeriveGeneric         #-}
+{-# LANGUAGE FlexibleContexts      #-}
 {-# LANGUAGE FlexibleInstances     #-}
+{-# LANGUAGE GADTs                 #-}
 {-# LANGUAGE LambdaCase            #-}
 {-# LANGUAGE MultiParamTypeClasses #-}
-{-# LANGUAGE ScopedTypeVariables   #-}
+{-# LANGUAGE OverloadedStrings     #-}
+{-# LANGUAGE StandaloneDeriving    #-}
+{-# LANGUAGE TypeFamilies          #-}
+{-# LANGUAGE UndecidableInstances  #-}
 
-module Lodjur.Database
-  ( lookup
-  , put
-  , put_
-  , del
-  , del_
-  , adjust
-  , modify
-  )
-where
+module Lodjur.Database where
 
-import           Control.Monad
-import           Control.Exception
-import           Control.Monad.IO.Class
-import           Data.Aeson                 (FromJSON, ToJSON)
-import qualified Data.Aeson                 as Aeson
-import           Data.ByteString            (ByteString)
-import qualified Data.ByteString.Lazy       as BS
-import           Database.Redis             (Redis)
-import qualified Database.Redis             as Redis
-import qualified Database.Redis.Exception   as Redis
+import           Data.Aeson                             (Value)
+import           Data.Int                               (Int32)
+import           Data.Text                              (Text)
+import qualified Data.Text                              as Text
+import           Data.Time.Clock                        (UTCTime)
+import           Data.UUID                              (UUID)
+import           Database.Beam
+import           Database.Beam.Backend.SQL
+import           Database.PostgreSQL.Simple.FromField
+import           Database.PostgreSQL.Simple.ToField
 
-import           Lodjur.Database.Types
+class DbEnum a where
+  enumToText :: a -> Text
+  enumFromText :: Text -> Either Text a
 
-import           Prelude                    hiding (lookup)
+toDbEnumField :: DbEnum a => a -> Action
+toDbEnumField = toField . enumToText
 
-decode :: (MonadIO m, FromJSON a) => ByteString -> m a
-decode x =
-  case Aeson.eitherDecodeStrict' x of
-    Left string -> liftIO $ throwIO $ DecodeError string
-    Right a -> return a
+fromDbEnumField :: (Typeable a, DbEnum a) => FieldParser a
+fromDbEnumField f mdata =
+  enumFromText <$> fromField f mdata >>= \case
+    Left bad -> returnError ConversionFailed f (Text.unpack bad)
+    Right ok -> return ok
 
-lookup :: (HasKey a, FromJSON a) => Key a -> Redis (Maybe a)
-lookup key = do
-  bs <- Redis.check $ Redis.get (redisKey key)
-  traverse decode bs
+data DB f = DB
+  { dbRevisions     :: f (TableEntity RevisionT)
+  , dbBuilds        :: f (TableEntity BuildT)
+  , dbDeploys       :: f (TableEntity DeployT)
+  , dbChecks        :: f (TableEntity CheckT)
+  , dbCheckExamples :: f (TableEntity CheckExampleT)
+  } deriving Generic
 
-put :: (HasKey a, ToJSON a) => Key a -> a -> Redis Bool
-put key a = do
-  r <- Redis.check $ Redis.set (redisKey key) (BS.toStrict . Aeson.encode $ a)
-  return $ r == Redis.Ok
+instance Database be DB
 
-put_ :: (HasKey a, ToJSON a) => Key a -> a -> Redis ()
-put_ key a = void $ put key a
+db :: DatabaseSettings be DB
+db = defaultDbSettings
 
-del :: HasKey a => Key a -> Redis Bool
-del key = do
-  r <- Redis.check $ Redis.del [redisKey key]
-  return $ r == 1
+-- Revisions
 
-del_ :: HasKey a => Key a -> Redis ()
-del_ key = void $ del key
+data RevisionT f = Revision
+  { revId           :: C f Text
+  , revTime         :: C f UTCTime
+  } deriving (Generic, Beamable)
 
-adjust :: (HasKey a, FromJSON a, ToJSON a) => Key a -> (Maybe a -> Maybe a) -> Redis ()
-adjust key f = do
-  void $ Redis.check $ Redis.watch [redisKey key]
-  a <- lookup key
-  case (a, f a) of
-    (_, Just v) ->
-      void $ Redis.check $ Redis.multiExec $
-        Redis.set (redisKey key) (BS.toStrict . Aeson.encode $ v)
-    (Just _, Nothing) ->
-      void $ Redis.check $ Redis.multiExec $
-        Redis.del [redisKey key]
-    _ ->
-      return ()
-  void $ Redis.check Redis.unwatch
+instance Table RevisionT where
+  data PrimaryKey RevisionT f = RevisionKey (C f Text) deriving (Generic, Beamable)
+  primaryKey = RevisionKey <$> revId
 
-modify :: (HasKey a, FromJSON a, ToJSON a) => Key a -> (a -> a) -> Redis ()
-modify key f = adjust key $
-  \case
-    Just a -> Just (f a)
-    Nothing -> Nothing
+type Revision = RevisionT Identity
+deriving instance Show Revision
+deriving instance Show (PrimaryKey RevisionT Identity)
+
+-- Jobs
+
+data JobStatus
+  = JobRunning
+  | JobSuccess
+  | JobFailure
+  deriving (Show, Read, Eq, Ord, Enum)
+
+instance DbEnum JobStatus where
+  enumFromText "running" = Right JobRunning
+  enumFromText "success" = Right JobSuccess
+  enumFromText "fail"    = Right JobFailure
+  enumFromText bad       = Left bad
+
+  enumToText JobRunning  = "running"
+  enumToText JobSuccess  = "success"
+  enumToText JobFailure  = "fail"
+
+instance FromField JobStatus where
+  fromField = fromDbEnumField
+
+instance ToField JobStatus where
+  toField = toDbEnumField
+
+instance HasSqlValueSyntax be Text => HasSqlValueSyntax be JobStatus where
+  sqlValueSyntax = sqlValueSyntax . enumToText
+
+instance (BackendFromField be JobStatus, BeamBackend be) => FromBackendRow be JobStatus
+
+data BuildT f = Build
+  { buildId             :: C f UUID
+  , buildRevision       :: PrimaryKey RevisionT f
+  , buildStartTime      :: C f UTCTime
+  , buildFinishTime     :: C f UTCTime
+  , buildStatus         :: C f JobStatus
+  , buildStartedBy      :: C f Text
+  } deriving (Generic, Beamable)
+
+instance Table BuildT where
+  data PrimaryKey BuildT f = BuildKey (C f UUID) deriving (Generic, Beamable)
+  primaryKey = BuildKey <$> buildId
+
+type Build = BuildT Identity
+deriving instance Show Build
+
+data DeployT f = Deploy
+  { deployId            :: C f UUID
+  , deployRevision      :: PrimaryKey RevisionT f
+  , deployStartTime     :: C f UTCTime
+  , deployFinishTime    :: C f UTCTime
+  , deployStatus        :: C f JobStatus
+  , deployStartedBy     :: C f Text
+  , deployTarget        :: C f Text
+  } deriving (Generic, Beamable)
+
+instance Table DeployT where
+  data PrimaryKey DeployT f = DeployKey (C f UUID) deriving (Generic, Beamable)
+  primaryKey = DeployKey <$> deployId
+
+type Deploy = DeployT Identity
+deriving instance Show Deploy
+
+data CheckT f = Check
+  { checkId             :: C f UUID
+  , checkRevision       :: PrimaryKey RevisionT f
+  , checkStartTime      :: C f UTCTime
+  , checkFinishTime     :: C f UTCTime
+  , checkStatus         :: C f JobStatus
+  , checkStartedBy      :: C f Text
+  , checkApplication    :: C f Text
+  , checkExamples       :: C f Int32
+  , checkFailed         :: C f Int32
+  , checkPending        :: C f Int32
+  , checkDuration       :: C f Double
+  } deriving (Generic, Beamable)
+
+instance Table CheckT where
+  data PrimaryKey CheckT f = CheckKey (C f UUID) deriving (Generic, Beamable)
+  primaryKey = CheckKey <$> checkId
+
+type Check = CheckT Identity
+deriving instance Show Check
+deriving instance Show (PrimaryKey CheckT Identity)
+
+data CheckExampleT f = CheckExample
+  { egId                :: C f Int32
+  , egCheck             :: PrimaryKey CheckT f
+  , egDescription       :: C f Text
+  , egFullDescription   :: C f Text
+  , egStatus            :: C f Text
+  , egFilePath          :: C f Text
+  , egLineNumber        :: C f Int32
+  , egException         :: C f Value
+  } deriving (Generic, Beamable)
+
+instance Table CheckExampleT where
+  data PrimaryKey CheckExampleT f = CheckExampleKey (C f Int32) deriving (Generic, Beamable)
+  primaryKey = CheckExampleKey <$> egId
+
+type CheckExample = CheckExampleT Identity
+deriving instance Show CheckExample
