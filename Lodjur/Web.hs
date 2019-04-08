@@ -45,9 +45,11 @@ import           Network.Wai                   (StreamingBody, pathInfo)
 import           Network.Wai.Middleware.Static (Policy, addBase, policy,
                                                 staticPolicy, (>->))
 import           URI.ByteString                (URIRef (..))
-import           Web.Spock                     hiding (static)
+import           Web.Spock                     (HasSpock (..), spock)
+import           Web.Spock.Core                hiding (static)
 import           Web.Spock.Config
 import           Web.Spock.Lucid
+import           Web.Spock.SessionActions
 
 import           Lodjur.Auth
 import           Lodjur.Deployment
@@ -658,7 +660,7 @@ runServer
   -> IO ()
 runServer port staticBase env githubOauth teamAuth = do
     cfg <- defaultSpockCfg emptySession PCNoDatabase env
-    runSpock port (spock cfg app)
+    runSpock port (spock cfg (runSpook app))
  where
   app = do
     -- Middleware
@@ -677,4 +679,4 @@ runServer port staticBase env githubOauth teamAuth = do
     post "/webhook/git/refresh" refreshRemoteAction
 
     -- Fallback
-    hookAnyAll (const notFoundAction)
+    liftSpook $ hookAnyAll (const notFoundAction)

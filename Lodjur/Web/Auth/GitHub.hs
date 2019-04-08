@@ -13,7 +13,9 @@ import qualified GitHub
 import           Network.HTTP.Types.Status
 import           Network.OAuth.OAuth2
 import           URI.ByteString
-import           Web.Spock
+import           Web.Spock (HasSpock (..))
+import           Web.Spock.Core
+import           Web.Spock.SessionActions
 
 import           Lodjur.Auth
 import           Lodjur.User
