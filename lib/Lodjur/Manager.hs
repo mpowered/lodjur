@@ -10,7 +10,11 @@ module Lodjur.Manager
   ( Manager(..)
   , ConnectInfo(..)
   , newManager
+  , withClient
   , request
+  , sendRequest
+  , waitReply
+  , cancelRequest
   , parseManagerURI
   , fromURI
   , runManagerClient
@@ -69,13 +73,29 @@ newManager = do
       managerWebServerApp = wsapp managerState
   return Manager { .. }
 
-request :: Manager -> Msg.Request -> IO Msg.Reply
-request mgr req = do
-  (clientid, client) <- reserveClient mgr
+withClient :: Manager -> ((ClientId, Client) -> IO a) -> IO a
+withClient mgr = bracket (reserveClient mgr) (releaseClient mgr . fst)
+
+sendRequest :: Msg.Request -> (ClientId, Client) -> IO ()
+sendRequest req (_, client) =
   putMVar (clientRequest client) req
-  rep <- takeMVar (clientReply client)
-  releaseClient mgr clientid
-  return rep
+
+waitReply :: (ClientId, Client) -> IO Msg.Reply
+waitReply (_, client) =
+  takeMVar (clientReply client)
+
+cancelRequest :: (ClientId, Client) -> IO ()
+cancelRequest (_, client) = do
+  sendClose
+    (clientConnection client)
+    ("Request cancelled" :: Text)
+  void $ takeMVar (clientReply client)
+
+request :: Manager -> Msg.Request -> IO Msg.Reply
+request mgr req =
+  withClient mgr $ \client -> do
+    sendRequest req client
+    waitReply client
 
 reserveClient :: Manager -> IO (ClientId, Client)
 reserveClient mgr = go
@@ -122,17 +142,22 @@ accept pending_conn state = do
   conn <- acceptRequest pending_conn
   forkPingThread conn 30
   r <- try $ registerClient conn state
-  case (r :: Either ConnectionException Client) of
+  case (r :: Either ConnectionException (ClientId, Client)) of
     Left  _      -> return ()
-    Right client -> forever $ do
+    Right (clientid, client) ->
+      finally
+        (serve conn client)
+        (deregisterClient state clientid)
+  where
+    serve conn client = do
       req <- takeMVar (clientRequest client)
       sendMsg conn req
       msg <- try $ receiveMsg conn
       case (msg :: Either ConnectionException Msg.Reply) of
         Left  _   -> putMVar (clientReply client) Msg.Disconnected
-        Right rep -> putMVar (clientReply client) rep
+        Right rep -> putMVar (clientReply client) rep >> serve conn client
 
-registerClient :: Connection -> State -> IO Client
+registerClient :: Connection -> State -> IO (ClientId, Client)
 registerClient conn state = do
   sendMsg conn Msg.Greet
   msg    <- receiveMsg conn
@@ -146,7 +171,12 @@ registerClient conn state = do
           ("Another client with the same name registered" :: Text)
         Nothing -> return ()
       putMVar (registeredClients state) $! HM.insert clientid client clients
-  return client
+      return (clientid, client)
+
+deregisterClient :: State -> ClientId -> IO ()
+deregisterClient state clientid = do
+  clients <- takeMVar (registeredClients state)
+  putMVar (registeredClients state) $! HM.delete clientid clients
 
 receiveMsg :: (FromJSON a, MonadIO m) => Connection -> m a
 receiveMsg conn = liftIO $ do
@@ -170,7 +200,7 @@ fromURI uri = do
   connectSecure <- case URI.uriScheme uri of
     "ws:"  -> return False
     "wss:" -> return True
-    _     -> mzero
+    _      -> mzero
   guard $ URI.uriQuery uri == ""
   guard $ URI.uriFragment uri == ""
   auth <- URI.uriAuthority uri
@@ -205,5 +235,6 @@ makeConnectionStream conn = makeStream r s
     bs <- NC.connectionGetChunk conn
     return $ if B.null bs then Nothing else Just bs
 
-  s Nothing   = NC.connectionClose conn `Control.Exception.catch` \(_ :: IOException) -> return ()
+  s Nothing = NC.connectionClose conn
+    `Control.Exception.catch` \(_ :: IOException) -> return ()
   s (Just bs) = NC.connectionPut conn (LB.toStrict bs)

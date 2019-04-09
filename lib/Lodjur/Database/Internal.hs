@@ -5,11 +5,17 @@
 {-# LANGUAGE GADTs                 #-}
 {-# LANGUAGE LambdaCase            #-}
 {-# LANGUAGE MultiParamTypeClasses #-}
+{-# LANGUAGE OverloadedStrings     #-}
 {-# LANGUAGE StandaloneDeriving    #-}
 {-# LANGUAGE TypeFamilies          #-}
 {-# LANGUAGE UndecidableInstances  #-}
 
-module Lodjur.Database.Internal where
+module Lodjur.Database.Internal
+  ( module Lodjur.Database.Internal
+  , module Database.Beam
+  , Connection
+  )
+where
 
 import           Data.Aeson                             (Value)
 import           Data.Int                               (Int64)
@@ -17,28 +23,69 @@ import           Data.Text                              (Text)
 import qualified Data.Text                              as Text
 import           Data.Time.Clock                        (UTCTime)
 import           Database.Beam
-import qualified Database.Beam.Postgres                 as Pg
-import           Database.PostgreSQL.Simple
+import           Database.Beam.Backend.SQL
+import           Database.Beam.Postgres
 import           Database.PostgreSQL.Simple.FromField
 import           Database.PostgreSQL.Simple.ToField
 
+import qualified GitHub.Extra                  as GH
 
-beam :: Connection -> Pg.Pg a -> IO a
-beam = Pg.runBeamPostgres
+beam :: Connection -> Pg a -> IO a
+beam = runBeamPostgres
 --runBeamPostgres = runBeamPostgresDebug putStrLn
 
-class DbEnum a where
+class TextEnum a where
   enumToText :: a -> Text
   enumFromText :: Text -> Either Text a
 
-toDbEnumField :: DbEnum a => a -> Action
+instance TextEnum GH.CheckStatus where
+  enumToText GH.Queued       = "queued"
+  enumToText GH.InProgress   = "in_progress"
+  enumToText GH.Completed    = "completed"
+
+  enumFromText "queued"      = return GH.Queued
+  enumFromText "in_progress" = return GH.InProgress
+  enumFromText "completed"   = return GH.Completed
+  enumFromText bad           = Left ("Bad CheckStatus '" <> bad <> "'")
+
+instance TextEnum GH.Conclusion where
+  enumToText GH.Success          = "success"
+  enumToText GH.Failure          = "failure"
+  enumToText GH.Neutral          = "neutral"
+  enumToText GH.Cancelled        = "cancelled"
+  enumToText GH.TimedOut         = "timed_out"
+  enumToText GH.ActionRequired   = "action_required"
+
+  enumFromText "success"         = return GH.Success
+  enumFromText "failure"         = return GH.Failure
+  enumFromText "neutral"         = return GH.Neutral
+  enumFromText "cancelled"       = return GH.Cancelled
+  enumFromText "timed_out"       = return GH.TimedOut
+  enumFromText "action_required" = return GH.ActionRequired
+  enumFromText bad               = Left ("Bad Conclusion '" <> bad <> "'")
+
+toDbEnumField :: TextEnum a => a -> Action
 toDbEnumField = toField . enumToText
 
-fromDbEnumField :: (Typeable a, DbEnum a) => FieldParser a
+fromDbEnumField :: (Typeable a, TextEnum a) => FieldParser a
 fromDbEnumField f mdata =
   enumFromText <$> fromField f mdata >>= \case
     Left bad -> returnError ConversionFailed f (Text.unpack bad)
     Right ok -> return ok
+
+newtype DbEnum a = DbEnum { unDbEnum :: a }
+  deriving (Eq, Ord, Show)
+
+instance (Typeable a, TextEnum a) => FromField (DbEnum a) where
+  fromField f mdata = DbEnum <$> fromDbEnumField f mdata
+
+instance TextEnum a => ToField (DbEnum a) where
+  toField = toDbEnumField . unDbEnum
+
+instance (TextEnum a, HasSqlValueSyntax be Text) => HasSqlValueSyntax be (DbEnum a) where
+  sqlValueSyntax = sqlValueSyntax . enumToText . unDbEnum
+
+instance (BackendFromField be (DbEnum a), BeamBackend be) => FromBackendRow be (DbEnum a)
 
 data DB f = DB
   { dbEvents        :: f (TableEntity EventT)
@@ -77,7 +124,8 @@ data CheckSuiteT f = CheckSuite
   , checksuiteRepositoryOwner   :: C f Text
   , checksuiteRepositoryName    :: C f Text
   , checksuiteHeadSha           :: C f Text
-  , checksuiteStatus            :: C f Text
+  , checksuiteStatus            :: C f (DbEnum GH.CheckStatus)
+  , checksuiteConclusion        :: C f (Maybe (DbEnum GH.Conclusion))
   , checksuiteStartedAt         :: C f (Maybe UTCTime)
   , checksuiteCompletedAt       :: C f (Maybe UTCTime)
   } deriving (Generic, Beamable)
@@ -96,8 +144,8 @@ data CheckRunT f = CheckRun
   { checkrunId                :: C f Int
   , checkrunCheckSuite        :: PrimaryKey CheckSuiteT f
   , checkrunName              :: C f Text
-  , checkrunStatus            :: C f Text
-  , checkrunConclusion        :: C f (Maybe Text)
+  , checkrunStatus            :: C f (DbEnum GH.CheckStatus)
+  , checkrunConclusion        :: C f (Maybe (DbEnum GH.Conclusion))
   , checkrunStartedAt         :: C f (Maybe UTCTime)
   , checkrunCompletedAt       :: C f (Maybe UTCTime)
   } deriving (Generic, Beamable)

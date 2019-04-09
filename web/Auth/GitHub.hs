@@ -54,7 +54,7 @@ exchangeCode oauth2 = do
   checkState
   code   <- param' "code"
   result <- liftIO $
-    fetchAccessToken envManager oauth2 (ExchangeToken code)
+    fetchAccessToken envHttpManager oauth2 (ExchangeToken code)
   case result of
     Left err -> do
       setStatus status400
@@ -98,7 +98,7 @@ getUser at = do
   Env {..} <- getState
   liftIO $
     GitHub.executeRequestWithMgr
-      envManager
+      envHttpManager
       (toOAuth at)
       GitHub.userInfoCurrentR
 

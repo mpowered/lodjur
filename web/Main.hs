@@ -3,17 +3,16 @@
 
 module Main where
 
-import           Control.Concurrent
-import           Control.Concurrent.Async
 import           Data.Pool
-import           Data.Semigroup               ((<>))
-import qualified Database.PostgreSQL.Simple   as Pg
-import           Network.HTTP.Client
-import           Network.HTTP.Client.TLS
+import           Data.Semigroup                 ( (<>) )
+import qualified Database.PostgreSQL.Simple    as Pg
+import qualified Network.HTTP.Client           as Http
+import qualified Network.HTTP.Client.TLS       as Http
 import           Options.Applicative
 
 import           Config
-import qualified Lodjur.GitHub                as GH
+import qualified Lodjur.GitHub                 as GH
+import qualified Lodjur.Manager                as Work
 import           Web
 import           Base
 
@@ -24,14 +23,13 @@ newtype LodjurOptions = LodjurOptions
   }
 
 lodjur :: Parser LodjurOptions
-lodjur = LodjurOptions
-  <$> strOption
-    (  long "config-file"
-    <> metavar "PATH"
-    <> short 'c'
-    <> value "lodjur.toml"
-    <> help "Path to Lodjur configuration file"
-    )
+lodjur = LodjurOptions <$> strOption
+  (  long "config-file"
+  <> metavar "PATH"
+  <> short 'c'
+  <> value "lodjur.toml"
+  <> help "Path to Lodjur configuration file"
+  )
 
 main :: IO ()
 main = start =<< execParser opts
@@ -48,22 +46,20 @@ start LodjurOptions {..} = do
     { githubRepos = envGithubRepos
     , githubSecretToken = envGithubSecretToken
     , githubAppId = envGithubAppId
-    , githubAppSigner = envGithubAppSigner
     , githubInstallationId = envGithubInstallationId
-    , ..
-    } <- readConfiguration configFile
+    , .. } <- readConfiguration configFile
 
-  envManager <- newManager tlsManagerSettings
-  dbpool <- createPool (Pg.connect databaseConnectInfo) Pg.close 1 60 16
-  envGithubInstallationAccessToken <- newMVar Nothing
+  envHttpManager  <- Http.newManager Http.tlsManagerSettings
+  envWorkManager  <- Work.newManager
+  envDbPool       <- createPool (Pg.connect databaseConnectInfo)
+                                 Pg.close
+                                 1 60 16
+  envGithubInstallationAccessToken <- GH.installationToken
+    envHttpManager
+    (Id envGithubAppId)
+    githubAppSigner
+    (Id envGithubInstallationId)
 
-  let env = Env{..}
+  let env = Env { .. }
 
-  githubToken <-
-    GH.installationToken
-      envManager
-      (Id envGithubAppId)
-      envGithubAppSigner
-      (Id envGithubInstallationId)
-
-  runServer httpPort env dbpool githubOauth
+  runServer httpPort env githubOauth

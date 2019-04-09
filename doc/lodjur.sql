@@ -13,6 +13,7 @@ CREATE TABLE check_suites (
     repository_name text NOT NULL,
     head_sha text NOT NULL,
     status text NOT NULL,
+    conclusion text NULL,
     started_at timestamp with time zone NULL,
     completed_at timestamp with time zone NULL
 );

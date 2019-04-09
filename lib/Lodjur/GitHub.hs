@@ -32,6 +32,15 @@ getToken :: GitHubToken -> IO (Maybe Token)
 getToken (StaticToken tok) = return (Just tok)
 getToken (RenewableToken f) = f
 
+ensureToken :: GitHubToken -> IO Token
+ensureToken auth = do
+  tok <- getToken auth
+  case tok of
+    Just t -> return t
+    Nothing -> do
+      threadDelay (10 * 1000000)
+      ensureToken auth
+
 idToText :: Id a -> Text
 idToText = Text.pack . show . untagId
 

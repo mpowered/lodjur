@@ -51,7 +51,6 @@ instance FromJSON Request where
 
 data Reply
   = Completed GH.Conclusion (Maybe GH.CheckRunOutput)
-  | Cancelled
   | Disconnected
   deriving (Show, Eq, Ord, Generic)
 

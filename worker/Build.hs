@@ -49,7 +49,7 @@ runBuild p = do
       return $ Msg.Completed GH.Success (Just output)
     ExitFailure code
       | code < 0 ->             -- exited due to signal
-          return Msg.Cancelled
+          return $ Msg.Completed GH.Cancelled Nothing
       | otherwise -> do
           let output = GH.CheckRunOutput
                         { checkRunOutputTitle       = "Build"

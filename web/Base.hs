@@ -1,25 +1,25 @@
 module Base where
 
-import           Control.Concurrent
-import           Data.ByteString              (ByteString)
-import           Data.Text                    (Text)
-import qualified Database.PostgreSQL.Simple   as Pg
-import qualified GitHub.Extra                 as GH
-import           Network.HTTP.Client
+import           Data.ByteString                ( ByteString )
+import           Data.Pool
+import           Data.Text                      ( Text )
+import qualified Database.PostgreSQL.Simple    as Pg
+import           Lodjur.GitHub
+import qualified Lodjur.Manager                as Work
+import qualified Network.HTTP.Client           as HTTP
 import           URI.ByteString
-import qualified Web.JWT                      as JWT
-import           Web.Spock
-
 import           User
+import           Web.Spock
 
 data Env = Env
   { envGithubRepos                      :: ![Text]
   , envGithubSecretToken                :: !ByteString
   , envGithubAppId                      :: !Int
-  , envGithubAppSigner                  :: !JWT.Signer
   , envGithubInstallationId             :: !Int
-  , envGithubInstallationAccessToken    :: !(MVar (Maybe GH.AccessToken))
-  , envManager                          :: !Manager
+  , envGithubInstallationAccessToken    :: !GitHubToken
+  , envHttpManager                      :: !HTTP.Manager
+  , envWorkManager                      :: !Work.Manager
+  , envDbPool                           :: !(Pool Pg.Connection)
   }
 
 data Session = Session
