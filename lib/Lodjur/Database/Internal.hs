@@ -13,6 +13,8 @@
 module Lodjur.Database.Internal
   ( module Lodjur.Database.Internal
   , module Database.Beam
+  , module Database.Beam.Backend.SQL
+  , module Database.Beam.Backend.SQL.BeamExtensions
   , Connection
   )
 where
@@ -24,6 +26,7 @@ import qualified Data.Text                              as Text
 import           Data.Time.Clock                        (UTCTime)
 import           Database.Beam
 import           Database.Beam.Backend.SQL
+import           Database.Beam.Backend.SQL.BeamExtensions
 import           Database.Beam.Postgres
 import           Database.PostgreSQL.Simple.FromField
 import           Database.PostgreSQL.Simple.ToField

@@ -5,6 +5,7 @@
 {-# LANGUAGE OverloadedStrings     #-}
 {-# LANGUAGE RecordWildCards       #-}
 {-# LANGUAGE TypeFamilies          #-}
+
 module WebHook
   ( webhookAction
   )
@@ -31,6 +32,7 @@ import           Web.Spock
 import qualified Lodjur.Database               as Db
 import qualified Lodjur.Database.CheckRun      as Db
 import qualified Lodjur.Database.CheckSuite    as Db
+import qualified Lodjur.Database.Event         as Db
 import           Lodjur.GitHub
 import qualified Lodjur.Manager                as Mgr
 import qualified Lodjur.Manager.Messages       as Msg
@@ -47,11 +49,19 @@ ignoreEvent = text "Event ignored"
 
 webhookAction :: Action ()
 webhookAction = do
-  Env {..}    <- getState
-
-  _delivery   <- header "X-GitHub-Delivery"
+  now         <- liftIO getCurrentTime
+  delivery    <- header "X-GitHub-Delivery"
   githubEvent <- requiredHeader "X-GitHub-Event"
   event       <- secureJsonData
+  runQuery $ \conn -> Db.insertEventsE conn
+    [ Db.Event  { Db.eventId = Db.default_
+                , Db.eventSource = Db.val_ "GitHub"
+                , Db.eventDelivery = Db.val_ delivery
+                , Db.eventType = Db.val_ githubEvent
+                , Db.eventCreatedAt = Db.val_ now
+                , Db.eventData = Db.val_ event
+                }
+    ]
   case githubEvent of
     "check_suite" -> checkSuiteEvent =<< parseEvent event
     "check_run"   -> checkRunEvent =<< parseEvent event
@@ -59,8 +69,8 @@ webhookAction = do
   text "Event received"
  where
   parseEvent e = case fromJSON e of
-    Success a   -> return a
-    Error   err -> raise $ "event - no parse: " <> Text.pack err
+    Success a -> return a
+    Error   x -> raise $ "event - no parse: " <> Text.pack x
 
 checkSuiteEvent :: CheckSuiteEvent -> Action ()
 checkSuiteEvent CheckSuiteEvent {..} = do
@@ -93,7 +103,7 @@ checkRunEvent CheckRunEvent {..} = do
     "completed"        -> ignoreEvent
     _                  -> raise "Unknown check_run action received"
 
-data WebHookError = GithubError GH.Error
+newtype WebHookError = GithubError GH.Error
 
 type WebHook = ExceptT WebHookError (ReaderT Env IO)
 
@@ -134,8 +144,8 @@ updateCheckRun Msg.Source{..} runid run = do
   liftIO $ withResource envDbPool $ \conn -> Db.upsertCheckRun conn (checkrunGHtoDB urun)
   return urun
 
-checkRun :: GH.Name GH.CheckRun -> Msg.Request -> WebHook ()
-checkRun name req = do
+checkRun :: Msg.Request -> WebHook ()
+checkRun req = do
   env@Env{..} <- ask
   run <- createCheckRun src name
   rep <- eitherIO id $ Mgr.withClient envWorkManager $ \client -> do
@@ -155,6 +165,17 @@ checkRun name req = do
           , GH.updateCheckRunCompletedAt  = Just now
           }
       return ()
+    Msg.DependsOn deps output -> do
+      now <- liftIO getCurrentTime
+      _crun <- updateCheckRun src (GH.checkRunId run) $
+        GH.emptyUpdateCheckRun
+          { GH.updateCheckRunStatus       = Just GH.Completed
+          , GH.updateCheckRunConclusion   = Just GH.Neutral
+          , GH.updateCheckRunOutput       = output
+          , GH.updateCheckRunCompletedAt  = Just now
+          }
+      _ <- mapM_ checkRun deps
+      return ()
     Msg.Disconnected -> do
       now <- liftIO getCurrentTime
       _crun <- updateCheckRun src (GH.checkRunId run) $
@@ -164,9 +185,9 @@ checkRun name req = do
           , GH.updateCheckRunCompletedAt  = Just now
           }
       return ()
-
   where
     src = Msg.src req
+    name = Msg.name req
     inprogress env runid = do
       now <- getCurrentTime
       runWebHook env $ updateCheckRun src runid $
@@ -194,7 +215,7 @@ checkRequested GH.EventCheckSuite{..} GH.Repo{..} = do
 
   let src = Msg.Source eventCheckSuiteHeadSha repoOwner repoName
 
-  _ <- liftIO $ runWebHook env $ checkRun "build" (Msg.Build src)
+  _ <- liftIO $ runWebHook env $ checkRun (Msg.Build "build" src)
   return ()
 
 -- checkRun :: GH.EventCheckRun -> Action ()

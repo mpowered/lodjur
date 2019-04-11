@@ -18,7 +18,7 @@ data Env = Env
   , envGithubInstallationId             :: !Int
   , envGithubInstallationAccessToken    :: !GitHubToken
   , envHttpManager                      :: !HTTP.Manager
-  , envWorkManager                      :: !Work.Manager
+  , envWorkManager                      :: !(Work.Manager Int)
   , envDbPool                           :: !(Pool Pg.Connection)
   }
 

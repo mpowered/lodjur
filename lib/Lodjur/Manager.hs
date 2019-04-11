@@ -10,11 +10,8 @@ module Lodjur.Manager
   ( Manager(..)
   , ConnectInfo(..)
   , newManager
-  , withClient
-  , request
-  , sendRequest
+  , submitRequest
   , waitReply
-  , cancelRequest
   , parseManagerURI
   , fromURI
   , runManagerClient
@@ -24,10 +21,12 @@ module Lodjur.Manager
 where
 
 import           Control.Concurrent
+import           Control.Concurrent.STM
+import           Control.Error
 import           Control.Exception
 import           Control.Monad
 import           Control.Monad.IO.Class
-import           Data.Aeson
+import           Data.Aeson                     ( FromJSON, ToJSON, encode, decode' )
 import qualified Data.ByteString               as B
 import qualified Data.ByteString.Lazy          as LB
 import           Data.Default.Class
@@ -41,23 +40,16 @@ import qualified Data.HashMap.Strict           as HM
 import qualified Lodjur.Manager.Messages       as Msg
 import           Text.Read                      ( readMaybe )
 
-type ClientId = Text
+import           Lodjur.Manager.Client
+import           Lodjur.Manager.State
 
-data Client = Client
-  { clientConnection    :: Connection
-  , clientBusy          :: Bool
-  , clientRequest       :: MVar Msg.Request
-  , clientReply         :: MVar Msg.Reply
-  }
-
-data Manager = Manager
-  { managerState        :: State
+data Manager a = Manager
+  { managerThread       :: ThreadId
   , managerWebServerApp :: ServerApp
+  , managerState        :: State a
   }
 
-newtype State = State
-  { registeredClients   :: MVar (HM.HashMap ClientId Client)
-  }
+type ClientMap a = HM.HashMap ClientId (Client a)
 
 data ConnectInfo = ConnectInfo
   { connectSecure       :: Bool     -- Use TLS
@@ -66,68 +58,63 @@ data ConnectInfo = ConnectInfo
   , connectPath         :: String
   }
 
-newManager :: IO Manager
+newManager :: IO (Manager a)
 newManager = do
-  registeredClients <- newMVar HM.empty
-  let managerState        = State { .. }
-      managerWebServerApp = wsapp managerState
-  return Manager { .. }
+  requestQueue      <- newTQueueIO
+  replyQueue        <- newTQueueIO
+  registeredClients <- newTVarIO HM.empty
+  let managerState = State{..}
+  managerThread   <- forkIO $ manager managerState
+  return Manager { managerWebServerApp = wsapp managerState
+                 , .. }
 
-withClient :: Manager -> ((ClientId, Client) -> IO a) -> IO a
-withClient mgr = bracket (reserveClient mgr) (releaseClient mgr . fst)
+manager :: State a -> IO ()
+manager State{..} =
+  forever $ atomically $ do
+    req <- readTQueue requestQueue
+    client <- idleClient registeredClients
+    putTMVar (clientRequest client) req
 
-sendRequest :: Msg.Request -> (ClientId, Client) -> IO ()
-sendRequest req (_, client) =
-  putMVar (clientRequest client) req
+submitRequest :: Manager a -> Msg.Request -> a -> IO ()
+submitRequest mgr req a =
+  atomically $
+    writeTQueue (requestQueue . managerState $ mgr) (req, a)
 
-waitReply :: (ClientId, Client) -> IO Msg.Reply
-waitReply (_, client) =
-  takeMVar (clientReply client)
+waitReply :: Manager a -> IO (Msg.Reply, a)
+waitReply mgr =
+  atomically $
+    readTQueue (replyQueue . managerState $ mgr)
 
-cancelRequest :: (ClientId, Client) -> IO ()
-cancelRequest (_, client) = do
-  sendClose
-    (clientConnection client)
-    ("Request cancelled" :: Text)
-  void $ takeMVar (clientReply client)
+idleClient :: TVar (ClientMap a) -> STM (Client a)
+idleClient clients = do
+  c <- readTVar clients
+  idle <- filterM (isEmptyTMVar . clientRequest) (HM.elems c)
+  case headMay idle of
+    Nothing -> retry
+    Just client -> return client
 
-request :: Manager -> Msg.Request -> IO Msg.Reply
-request mgr req =
-  withClient mgr $ \client -> do
-    sendRequest req client
-    waitReply client
+registerClient :: TVar (ClientMap a) -> Client a -> STM (Maybe (Client a))
+registerClient clients client = do
+  c <- readTVar clients
+  writeTVar clients $! HM.insert (clientId client) client c
+  return $! HM.lookup (clientId client) c
 
-reserveClient :: Manager -> IO (ClientId, Client)
-reserveClient mgr = go
- where
-  go = do
-    clients <- takeMVar (registeredClients $ managerState mgr)
-    let idle = filter (not . clientBusy . snd) (HM.toList clients)
-    case headMay idle of
-      Just (clientid, client) -> do
-        putMVar (registeredClients $ managerState mgr)
-          $ HM.insert clientid (client { clientBusy = True }) clients
-        return (clientid, client)
-      Nothing -> go
+deregisterClient :: TVar (ClientMap a) -> Client a -> STM ()
+deregisterClient clients client =
+  modifyTVar' clients $! HM.delete (clientId client)
 
-  headMay (a : _) = Just a
-  headMay []      = Nothing
+cancelClient :: Client a -> Text -> IO ()
+cancelClient client =
+  sendClose (clientConnection client)
 
-releaseClient :: Manager -> ClientId -> IO ()
-releaseClient mgr clientid = do
-  clients <- takeMVar (registeredClients $ managerState mgr)
-  let clients' = case HM.lookup clientid clients of
-        Just client ->
-          HM.insert clientid (client { clientBusy = False }) clients
-        Nothing -> clients
-  putMVar (registeredClients $ managerState mgr) clients'
-
-wsapp :: State -> ServerApp
-wsapp state pending_conn = if validRequest (pendingRequest pending_conn)
-  then accept pending_conn state
-  else reject pending_conn
-  -- where validRequest RequestHead {..} = requestPath == "/manager"
+wsapp :: State a -> ServerApp
+wsapp state pending_conn =
+  if validRequest (pendingRequest pending_conn)
+    then accept pending_conn state
+    else reject pending_conn
   where validRequest _ = True
+
+  -- where validRequest RequestHead {..} = requestPath == "/manager"
 
 data AppError
   = UnexpectedReply
@@ -136,47 +123,43 @@ data AppError
 reject :: PendingConnection -> IO ()
 reject pending_conn = rejectRequest pending_conn "Authorization failed"
 
-accept :: PendingConnection -> State -> IO ()
-accept pending_conn state = do
-  putStrLn "Accepted"
-  conn <- acceptRequest pending_conn
-  forkPingThread conn 30
-  r <- try $ registerClient conn state
-  case (r :: Either ConnectionException (ClientId, Client)) of
-    Left  _      -> return ()
-    Right (clientid, client) ->
-      finally
-        (serve conn client)
-        (deregisterClient state clientid)
-  where
-    serve conn client = do
-      req <- takeMVar (clientRequest client)
-      sendMsg conn req
-      msg <- try $ receiveMsg conn
-      case (msg :: Either ConnectionException Msg.Reply) of
-        Left  _   -> putMVar (clientReply client) Msg.Disconnected
-        Right rep -> putMVar (clientReply client) rep >> serve conn client
-
-registerClient :: Connection -> State -> IO (ClientId, Client)
-registerClient conn state = do
+clientHandshake :: Connection -> IO (Client a)
+clientHandshake conn = do
   sendMsg conn Msg.Greet
-  msg    <- receiveMsg conn
-  client <- Client conn False <$> newEmptyMVar <*> newEmptyMVar
+  msg <- receiveMsg conn
   case msg of
-    Msg.Register clientid -> do
-      clients <- takeMVar (registeredClients state)
-      case HM.lookup clientid clients of
-        Just old -> sendClose
-          (clientConnection old)
-          ("Another client with the same name registered" :: Text)
-        Nothing -> return ()
-      putMVar (registeredClients state) $! HM.insert clientid client clients
-      return (clientid, client)
+    Msg.Register clientid -> Client clientid conn <$> newEmptyTMVarIO
 
-deregisterClient :: State -> ClientId -> IO ()
-deregisterClient state clientid = do
-  clients <- takeMVar (registeredClients state)
-  putMVar (registeredClients state) $! HM.delete clientid clients
+accept :: PendingConnection -> State a -> IO ()
+accept pending_conn State{..} = do
+  (conn, client) <- start
+  existing <- atomically $ registerClient registeredClients client
+  case existing of
+    Just c -> cancelClient c "Another client with the same name registered"
+    Nothing -> return ()
+  serve conn client `finally` cleanup client
+ where
+  start = do
+    putStrLn "Accepted"
+    conn <- acceptRequest pending_conn
+    forkPingThread conn 30
+    client <- clientHandshake conn
+    return (conn, client)
+
+  cleanup client = atomically $ do
+    req <- tryTakeTMVar (clientRequest client)
+    case req of
+      Just (_, a) -> writeTQueue replyQueue (Msg.Disconnected, a)
+      Nothing -> return ()
+    deregisterClient registeredClients client
+
+  serve conn client = forever $ do
+    (req, a) <- atomically $ readTMVar (clientRequest client)
+    sendMsg conn req
+    rep <- receiveMsg conn
+    atomically $ do
+      _ <- takeTMVar (clientRequest client)
+      writeTQueue replyQueue (rep, a)
 
 receiveMsg :: (FromJSON a, MonadIO m) => Connection -> m a
 receiveMsg conn = liftIO $ do

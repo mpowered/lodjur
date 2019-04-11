@@ -99,7 +99,7 @@ app = do
   forever $ do
     msg <- receiveMsg messageConn
     case msg of
-      Msg.Build src -> build src >>= sendMsg messageConn
+      Msg.Build _name src -> build src >>= sendMsg messageConn
       unsupported -> do
         logError $ "Unsupported message:" <+> nest 4 (viaShow unsupported)
         sendMsg messageConn $ Msg.Completed Failure Nothing

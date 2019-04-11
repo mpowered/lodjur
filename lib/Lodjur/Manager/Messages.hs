@@ -33,13 +33,16 @@ instance FromJSON HandshakeReply where
 
 data Request
   = Build
-  { src         :: !Source
+  { name        :: !(GH.Name GH.CheckRun)
+  , src         :: !Source
   }
   | Check
-  { src         :: !Source
+  { name        :: !(GH.Name GH.CheckRun)
+  , src         :: !Source
   }
   | Deploy
-  { src         :: !Source
+  { name        :: !(GH.Name GH.CheckRun)
+  , src         :: !Source
   }
   deriving (Show, Eq, Ord, Generic)
 
@@ -51,6 +54,7 @@ instance FromJSON Request where
 
 data Reply
   = Completed GH.Conclusion (Maybe GH.CheckRunOutput)
+  | DependsOn [Request] (Maybe GH.CheckRunOutput)
   | Disconnected
   deriving (Show, Eq, Ord, Generic)
 
