@@ -11,17 +11,13 @@ module WebHook
   )
 where
 
-import           Control.Concurrent.Async
-import           Control.Error
 import           Control.Monad
 import           Control.Monad.IO.Class         ( liftIO )
 import           Control.Monad.Reader
 import           Crypto.Hash
 import           Crypto.MAC.HMAC
 import           Data.Aeson              hiding ( json )
-import           Data.Bifunctor
 import qualified Data.ByteString.Base16        as Base16
-import           Data.Pool
 import           Data.Text                      ( Text )
 import qualified Data.Text                     as Text
 import qualified Data.Text.Encoding            as Text
@@ -34,8 +30,6 @@ import qualified Lodjur.Database               as Db
 import qualified Lodjur.Database.CheckRun      as Db
 import qualified Lodjur.Database.CheckSuite    as Db
 import qualified Lodjur.Database.Event         as Db
-import           Lodjur.GitHub
-import qualified Lodjur.Manager                as Mgr
 import qualified Lodjur.Manager.Messages       as Msg
 
 import           Base
@@ -43,7 +37,6 @@ import           WebHook.Events
 
 import qualified GitHub                        as GH
 import qualified GitHub.Extra                  as GH
-import qualified GitHub.Endpoints.Checks       as GH
 
 ignoreEvent :: Action ()
 ignoreEvent = text "Event ignored"
@@ -82,10 +75,12 @@ checkSuiteEvent CheckSuiteEvent {..} = do
 
   validateApp app
 
+  updateCheckSuite suite repo
+
   case action of
     "requested"   -> checkRequested suite repo
     "rerequested" -> checkRequested suite repo
-    "completed"   -> updateCheckSuite suite repo
+    "completed"   -> return ()
     _             -> raise "Unknown check_suite action received"
 
 checkRunEvent :: CheckRunEvent -> Action ()
@@ -97,11 +92,13 @@ checkRunEvent CheckRunEvent {..} = do
 
   validateApp app
 
+  updateCheckRun run
+
   case action of
-    "created"          -> updateCheckRun run
+    "created"          -> return ()
     "rerequested"      -> ignoreEvent   -- TODO: rerun
     "requested_action" -> ignoreEvent
-    "completed"        -> updateCheckRun run
+    "completed"        -> return ()
     _                  -> raise "Unknown check_run action received"
 
 checkRequested :: GH.EventCheckSuite -> GH.Repo -> Action ()
@@ -111,7 +108,7 @@ checkRequested GH.EventCheckSuite{..} GH.Repo{..} = do
 
   r <- liftIO $ Core.request envCore (Msg.Build "build" src)
   case r of
-    Left e -> text $ "Failed to queue run: " <> Text.pack (show e)
+    Left e -> raise $ "Failed to queue run: " <> Text.pack (show e)
     Right () -> return ()
 
 updateCheckSuite :: GH.EventCheckSuite -> GH.Repo -> Action ()
@@ -180,10 +177,3 @@ validateApp app = do
 
   unless (envGithubAppId == GH.untagId (GH.appId app))
     $ text "Event ignored, different AppId"
-
--- workerRequest :: Msg.Request -> (Msg.Reply -> IO ()) -> Action (Async ())
--- workerRequest req action = do
---   Env {..} <- getState
---   liftIO $ async $ do
---     rep <- Mgr.request envWorkManager req
---     action rep

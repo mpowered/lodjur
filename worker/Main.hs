@@ -7,10 +7,11 @@
 
 module Main where
 
+import           Control.Concurrent
 import           Control.Concurrent.Async
 import           Control.Monad
 import           Control.Error
-import           Control.Monad.Catch          (MonadMask, bracket)
+import           Control.Monad.Catch          (MonadMask, bracket, onException)
 import           Control.Monad.IO.Class
 import           Control.Monad.Log
 import           Control.Monad.Reader
@@ -77,32 +78,67 @@ start Options{..} = do
   Config{..} <- readConfiguration configFile
   gitEnv <- Git.setupEnv gitCfg
   let logTarget = maybe LogStdout LogFile logFile
+  request <- newEmptyMVar
+  reply   <- newEmptyMVar
 
   withSocketsDo $
     runManagerClient managerCI $ \messageConn ->
-      runWorker Env{..} (handshake app)
+      worker Env{..}
 
-handshake :: Worker () -> Worker ()
-handshake a = do
+waitRequest :: Worker Msg.Request
+waitRequest = do
   Env{..} <- ask
+  liftIO $ takeMVar request
+
+complete :: Msg.Reply -> Worker ()
+complete rep = do
+  Env{..} <- ask
+  liftIO $ putMVar reply rep
+
+worker :: Env -> IO ()
+worker env = do
+  connected <- handshake env
+  when connected $
+    withAsync (runWorker env app) networking
+  where
+    networking a = concurrently_ (sendloop a) (recvloop a)
+    recvloop a =
+      forever $ do
+        req <- receiveMsg (messageConn env)
+        putMVar (request env) req
+       `onException`
+        cancel a
+
+    sendloop a =
+      forever $ do
+        rep <- takeMVar (reply env)
+        sendMsg (messageConn env) rep
+       `onException`
+        cancel a
+
+handshake :: Env -> IO Bool
+handshake Env{..} = do
   msg <- receiveMsg messageConn
   case msg of
     Just Msg.Greet -> do
       sendMsg messageConn (Msg.Register "client")
-      a
-    Nothing -> return ()
+      return True
+    Nothing -> return False
 
 app :: Worker ()
 app = do
-  Env{..} <- ask
   logInfo "Worker ready"
   forever $ do
-    msg <- receiveMsg messageConn
-    case msg of
-      Msg.Build _name src -> build src >>= sendMsg messageConn
-      unsupported -> do
-        logError $ "Unsupported message:" <+> nest 4 (viaShow unsupported)
-        sendMsg messageConn $ Msg.Completed Failure Nothing
+    req <- waitRequest
+    rep <- handleRequest req
+    complete rep
+
+handleRequest :: Msg.Request -> Worker Msg.Reply
+handleRequest (Msg.Build _name src) = build src
+
+handleRequest unsupported = do
+  logError $ "Unsupported message:" <+> nest 4 (viaShow unsupported)
+  return (Msg.Completed Failure Nothing)
 
 withWorkDir
   :: (MonadIO io, MonadMask io)
@@ -120,10 +156,10 @@ build :: Msg.Source -> Worker Msg.Reply
 build Msg.Source{..} = do
   env@Env{..} <- ask
   logInfo "Build started"
-  reply <- withWorkDir env (RepoRef owner repo) sha $ \workdir ->
+  rep <- withWorkDir env (RepoRef owner repo) sha $ \workdir ->
     Build.build workdir ".lodjur/build.nix"
-  logInfo $ "Build completed:" <+> viaShow reply
-  return reply
+  logInfo $ "Build completed:" <+> viaShow rep
+  return rep
 
       -- Return error
       {-
