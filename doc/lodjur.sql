@@ -14,8 +14,6 @@ CREATE TABLE check_suites (
     head_sha text NOT NULL,
     status text NOT NULL,
     conclusion text NULL,
-    started_at timestamp with time zone NULL,
-    completed_at timestamp with time zone NULL
 );
 
 CREATE TABLE check_runs (

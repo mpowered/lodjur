@@ -11,6 +11,7 @@ import qualified Network.HTTP.Client.TLS       as Http
 import           Options.Applicative
 
 import           Config
+import qualified Lodjur.Core                   as Core
 import qualified Lodjur.GitHub                 as GH
 import qualified Lodjur.Manager                as Work
 import           Web
@@ -59,6 +60,8 @@ start LodjurOptions {..} = do
     (Id envGithubAppId)
     githubAppSigner
     (Id envGithubInstallationId)
+
+  envCore <- Core.startCore envGithubInstallationAccessToken envHttpManager envDbPool
 
   let env = Env { .. }
 

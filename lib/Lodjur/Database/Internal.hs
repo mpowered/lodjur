@@ -129,8 +129,6 @@ data CheckSuiteT f = CheckSuite
   , checksuiteHeadSha           :: C f Text
   , checksuiteStatus            :: C f (DbEnum GH.CheckStatus)
   , checksuiteConclusion        :: C f (Maybe (DbEnum GH.Conclusion))
-  , checksuiteStartedAt         :: C f (Maybe UTCTime)
-  , checksuiteCompletedAt       :: C f (Maybe UTCTime)
   } deriving (Generic, Beamable)
 
 instance Table CheckSuiteT where

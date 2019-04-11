@@ -4,6 +4,7 @@ import           Data.ByteString                ( ByteString )
 import           Data.Pool
 import           Data.Text                      ( Text )
 import qualified Database.PostgreSQL.Simple    as Pg
+import qualified Lodjur.Core                   as Core
 import           Lodjur.GitHub
 import qualified Lodjur.Manager                as Work
 import qualified Network.HTTP.Client           as HTTP
@@ -20,6 +21,7 @@ data Env = Env
   , envHttpManager                      :: !HTTP.Manager
   , envWorkManager                      :: !(Work.Manager Int)
   , envDbPool                           :: !(Pool Pg.Connection)
+  , envCore                             :: !Core.Core
   }
 
 data Session = Session

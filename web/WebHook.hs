@@ -29,6 +29,7 @@ import           Data.Time.Clock                ( getCurrentTime )
 import           Network.HTTP.Types.Status
 import           Web.Spock
 
+import qualified Lodjur.Core                   as Core
 import qualified Lodjur.Database               as Db
 import qualified Lodjur.Database.CheckRun      as Db
 import qualified Lodjur.Database.CheckSuite    as Db
@@ -84,7 +85,7 @@ checkSuiteEvent CheckSuiteEvent {..} = do
   case action of
     "requested"   -> checkRequested suite repo
     "rerequested" -> checkRequested suite repo
-    "completed"   -> ignoreEvent
+    "completed"   -> updateCheckSuite suite repo
     _             -> raise "Unknown check_suite action received"
 
 checkRunEvent :: CheckRunEvent -> Action ()
@@ -97,188 +98,46 @@ checkRunEvent CheckRunEvent {..} = do
   validateApp app
 
   case action of
-    "created"          -> ignoreEvent
+    "created"          -> updateCheckRun run
     "rerequested"      -> ignoreEvent   -- TODO: rerun
     "requested_action" -> ignoreEvent
-    "completed"        -> ignoreEvent
+    "completed"        -> updateCheckRun run
     _                  -> raise "Unknown check_run action received"
-
-newtype WebHookError = GithubError GH.Error
-
-type WebHook = ExceptT WebHookError (ReaderT Env IO)
-
-runWebHook :: Env -> WebHook a -> IO (Either WebHookError a)
-runWebHook env a = runReaderT (runExceptT a) env
-
-eitherIO :: MonadIO m => (a -> e) -> IO (Either a b) -> ExceptT e m b
-eitherIO f a = liftIO a >>= hoistEither . first f
-
-checkrunGHtoDB :: GH.CheckRun -> Db.CheckRun
-checkrunGHtoDB GH.CheckRun{..} =
-  Db.CheckRun
-    { Db.checkrunId           = GH.untagId checkRunCheckSuiteId
-    , Db.checkrunName         = GH.untagName checkRunName
-    , Db.checkrunStatus       = Db.DbEnum checkRunStatus
-    , Db.checkrunConclusion   = Db.DbEnum <$> checkRunConclusion
-    , Db.checkrunStartedAt    = checkRunStartedAt
-    , Db.checkrunCompletedAt  = checkRunCompletedAt
-    , Db.checkrunCheckSuite   = Db.CheckSuiteKey (GH.untagId checkRunCheckSuiteId)
-    }
-
-createCheckRun :: Msg.Source -> GH.Name GH.CheckRun -> WebHook GH.CheckRun
-createCheckRun Msg.Source{..} name = do
-  Env{..} <- ask
-  tok <- liftIO $ ensureToken envGithubInstallationAccessToken
-  run <- eitherIO GithubError $ GH.createCheckRun (GH.OAuth tok) (GH.simpleOwnerLogin owner) repo $
-    (GH.newCheckRun name sha)
-      { GH.newCheckRunStatus = Just GH.Queued
-      }
-  liftIO $ withResource envDbPool $ \conn -> Db.upsertCheckRun conn (checkrunGHtoDB run)
-  return run
-
-updateCheckRun :: Msg.Source -> GH.Id GH.CheckRun -> GH.UpdateCheckRun -> WebHook GH.CheckRun
-updateCheckRun Msg.Source{..} runid run = do
-  Env{..} <- ask
-  tok <- liftIO $ ensureToken envGithubInstallationAccessToken
-  urun <- eitherIO GithubError $ GH.updateCheckRun (GH.OAuth tok) (GH.simpleOwnerLogin owner) repo runid run
-  liftIO $ withResource envDbPool $ \conn -> Db.upsertCheckRun conn (checkrunGHtoDB urun)
-  return urun
-
-checkRun :: Msg.Request -> WebHook ()
-checkRun req = do
-  env@Env{..} <- ask
-  run <- createCheckRun src name
-  rep <- eitherIO id $ Mgr.withClient envWorkManager $ \client -> do
-    Mgr.sendRequest req client
-    iprun <- inprogress env (GH.checkRunId run)
-    case iprun of
-      Left e -> Mgr.cancelRequest client >> return (Left e)
-      Right _ -> Right <$> Mgr.waitReply client
-  case rep of
-    Msg.Completed concl output -> do
-      now <- liftIO getCurrentTime
-      _crun <- updateCheckRun src (GH.checkRunId run) $
-        GH.emptyUpdateCheckRun
-          { GH.updateCheckRunStatus       = Just GH.Completed
-          , GH.updateCheckRunConclusion   = Just concl
-          , GH.updateCheckRunOutput       = output
-          , GH.updateCheckRunCompletedAt  = Just now
-          }
-      return ()
-    Msg.DependsOn deps output -> do
-      now <- liftIO getCurrentTime
-      _crun <- updateCheckRun src (GH.checkRunId run) $
-        GH.emptyUpdateCheckRun
-          { GH.updateCheckRunStatus       = Just GH.Completed
-          , GH.updateCheckRunConclusion   = Just GH.Neutral
-          , GH.updateCheckRunOutput       = output
-          , GH.updateCheckRunCompletedAt  = Just now
-          }
-      _ <- mapM_ checkRun deps
-      return ()
-    Msg.Disconnected -> do
-      now <- liftIO getCurrentTime
-      _crun <- updateCheckRun src (GH.checkRunId run) $
-        GH.emptyUpdateCheckRun
-          { GH.updateCheckRunStatus       = Just GH.Completed
-          , GH.updateCheckRunConclusion   = Just GH.Cancelled
-          , GH.updateCheckRunCompletedAt  = Just now
-          }
-      return ()
-  where
-    src = Msg.src req
-    name = Msg.name req
-    inprogress env runid = do
-      now <- getCurrentTime
-      runWebHook env $ updateCheckRun src runid $
-        GH.emptyUpdateCheckRun
-          { GH.updateCheckRunStatus    = Just GH.InProgress
-          , GH.updateCheckRunStartedAt = Just now
-          }
 
 checkRequested :: GH.EventCheckSuite -> GH.Repo -> Action ()
 checkRequested GH.EventCheckSuite{..} GH.Repo{..} = do
-  env@Env {..} <- getState
-  start <- liftIO getCurrentTime
-  runQuery $ \conn ->
-    Db.upsertCheckSuite conn
-      Db.CheckSuite
-      { checksuiteId              = GH.untagId eventCheckSuiteId
-      , checksuiteRepositoryOwner = GH.untagName (GH.simpleOwnerLogin repoOwner)
-      , checksuiteRepositoryName  = GH.untagName repoName
-      , checksuiteHeadSha         = GH.untagSha  eventCheckSuiteHeadSha
-      , checksuiteStatus          = Db.DbEnum eventCheckSuiteStatus
-      , checksuiteConclusion      = Db.DbEnum <$> eventCheckSuiteConclusion
-      , checksuiteStartedAt       = Just start
-      , checksuiteCompletedAt     = Nothing
-      }
-
+  Env{..} <- getState
   let src = Msg.Source eventCheckSuiteHeadSha repoOwner repoName
 
-  _ <- liftIO $ runWebHook env $ checkRun (Msg.Build "build" src)
-  return ()
+  r <- liftIO $ Core.request envCore (Msg.Build "build" src)
+  case r of
+    Left e -> text $ "Failed to queue run: " <> Text.pack (show e)
+    Right () -> return ()
 
--- checkRun :: GH.EventCheckRun -> Action ()
--- checkRun run = do
---   Env {..} <- getState
---   return ()
-  -- let suite  = GH.eventCheckRunCheckSuite run
+updateCheckSuite :: GH.EventCheckSuite -> GH.Repo -> Action ()
+updateCheckSuite GH.EventCheckSuite{..} GH.Repo{..} = runQuery $ \conn ->
+  Db.upsertCheckSuite conn
+    Db.CheckSuite
+    { checksuiteId              = GH.untagId eventCheckSuiteId
+    , checksuiteRepositoryOwner = GH.untagName (GH.simpleOwnerLogin repoOwner)
+    , checksuiteRepositoryName  = GH.untagName repoName
+    , checksuiteHeadSha         = GH.untagSha eventCheckSuiteHeadSha
+    , checksuiteStatus          = Db.DbEnum eventCheckSuiteStatus
+    , checksuiteConclusion      = Db.DbEnum <$> eventCheckSuiteConclusion
+    }
 
-  -- liftIO $ Redis.runRedis envRedisConn $ do
-  --   Db.put_ (Db.checkRunKeyFromId $ GH.eventCheckRunId run)
-  --     Db.CheckRun
-  --       { checkSuiteId = GH.eventCheckSuiteId suite
-  --       , name         = GH.eventCheckRunName run
-  --       , headSha      = GH.eventCheckRunHeadSha run
-  --       , status       = GH.eventCheckRunStatus run
-  --       , conclusion   = GH.eventCheckRunConclusion run
-  --       , startedAt    = GH.eventCheckRunStartedAt run
-  --       , completedAt  = GH.eventCheckRunCompletedAt run
-  --       , externalId   = GH.eventCheckRunExternalId run
-  --       , output       = GH.eventCheckRunOutput run
-  --       }
-
-  --   Db.modify (Db.checkSuiteKeyFromId $ GH.eventCheckSuiteId suite) $
-  --     \cs -> cs
-  --       { Db.checkRuns  = Set.insert (GH.eventCheckRunId run) (Db.checkRuns cs)
-  --       } :: Db.CheckSuite
-
-  --   void $ Q.push Msg.runRequestedQueue [GH.eventCheckRunId run]
-
-updateCheckSuite :: GH.EventCheckSuite -> Action ()
-updateCheckSuite suite = do
-  Env {..} <- getState
-  return ()
-
-  -- liftIO $ Redis.runRedis envRedisConn $ do
-  --   Db.modify (Db.checkSuiteKeyFromId $ GH.eventCheckSuiteId suite) $
-  --     \cs -> cs
-  --       { Db.status     = GH.eventCheckSuiteStatus suite
-  --       , Db.conclusion = GH.eventCheckSuiteConclusion suite
-  --       } :: Db.CheckSuite
-  --   when (GH.eventCheckSuiteStatus suite == GH.Completed) $
-  --     void $ Q.move Msg.checkInProgressQueue Msg.checkCompletedQueue (GH.eventCheckSuiteId suite)
-
--- updateCheckRun :: GH.EventCheckRun -> Action ()
--- updateCheckRun run = do
---   Env {..} <- getState
---   return ()
-
-  -- liftIO $ Redis.runRedis envRedisConn $
-  --   if GH.eventCheckRunStatus run == GH.Completed
-  --   then
-  --     Db.modify (Db.checkRunKeyFromId $ GH.eventCheckRunId run) $
-  --       \cs -> cs
-  --         { Db.status      = GH.eventCheckRunStatus run
-  --         , Db.conclusion  = GH.eventCheckRunConclusion run
-  --         , Db.completedAt = GH.eventCheckRunCompletedAt run
-  --         } :: Db.CheckRun
-  --   else
-  --     Db.modify (Db.checkRunKeyFromId $ GH.eventCheckRunId run) $
-  --       \cs -> cs
-  --         { Db.status     = GH.eventCheckRunStatus run
-  --         , Db.conclusion = GH.eventCheckRunConclusion run
-  --         } :: Db.CheckRun
+updateCheckRun :: GH.EventCheckRun -> Action ()
+updateCheckRun GH.EventCheckRun{..} = runQuery $ \conn ->
+  Db.upsertCheckRun conn
+    Db.CheckRun
+    { checkrunId                = GH.untagId eventCheckRunId
+    , checkrunCheckSuite        = Db.CheckSuiteKey (GH.untagId $ GH.eventCheckSuiteId eventCheckRunCheckSuite)
+    , checkrunName              = GH.untagName eventCheckRunName
+    , checkrunStatus            = Db.DbEnum eventCheckRunStatus
+    , checkrunConclusion        = Db.DbEnum <$> eventCheckRunConclusion
+    , checkrunStartedAt         = eventCheckRunStartedAt
+    , checkrunCompletedAt       = eventCheckRunCompletedAt
+    }
 
 raise :: MonadIO m => Text -> ActionCtxT ctx m b
 raise msg = do
@@ -322,9 +181,9 @@ validateApp app = do
   unless (envGithubAppId == GH.untagId (GH.appId app))
     $ text "Event ignored, different AppId"
 
-workerRequest :: Msg.Request -> (Msg.Reply -> IO ()) -> Action (Async ())
-workerRequest req action = do
-  Env {..} <- getState
-  liftIO $ async $ do
-    rep <- Mgr.request envWorkManager req
-    action rep
+-- workerRequest :: Msg.Request -> (Msg.Reply -> IO ()) -> Action (Async ())
+-- workerRequest req action = do
+--   Env {..} <- getState
+--   liftIO $ async $ do
+--     rep <- Mgr.request envWorkManager req
+--     action rep

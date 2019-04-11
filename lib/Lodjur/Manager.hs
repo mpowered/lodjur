@@ -10,6 +10,7 @@ module Lodjur.Manager
   ( Manager(..)
   , ConnectInfo(..)
   , newManager
+  , cancelManager
   , submitRequest
   , waitReply
   , parseManagerURI
@@ -67,6 +68,10 @@ newManager = do
   managerThread   <- forkIO $ manager managerState
   return Manager { managerWebServerApp = wsapp managerState
                  , .. }
+
+cancelManager :: Manager a -> IO ()
+cancelManager mgr =
+  killThread (managerThread mgr)
 
 manager :: State a -> IO ()
 manager State{..} =

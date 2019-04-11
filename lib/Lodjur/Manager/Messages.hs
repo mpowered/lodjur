@@ -46,6 +46,12 @@ data Request
   }
   deriving (Show, Eq, Ord, Generic)
 
+requestName :: Request -> GH.Name GH.CheckRun
+requestName = name
+
+requestSource :: Request -> Source
+requestSource = src
+
 instance ToJSON Request where
   toEncoding = genericToEncoding jsonOptions
 

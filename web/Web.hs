@@ -92,7 +92,7 @@ homeAction = do
         $ runSelectReturningList
         $ select
           $ limit_ n
-          $ orderBy_ (desc_ . checksuiteStartedAt)
+          $ orderBy_ (desc_ . checksuiteId)
           $ all_ (dbCheckSuites db)
 
 data Layout
@@ -155,7 +155,6 @@ renderCheckSuites ss = div_ [class_ "card"] $ do
   table_ [class_ "table mb-0"] $ do
     tr_ $ do
       th_ "Id"
-      th_ "Started At"
       th_ "Revision"
       th_ "Status"
     mapM_ renderCheckSuite ss
@@ -163,7 +162,6 @@ renderCheckSuites ss = div_ [class_ "card"] $ do
   renderCheckSuite :: CheckSuite -> Html ()
   renderCheckSuite s = tr_ $ do
     td_ (toHtml $ show $ checksuiteId s)
-    td_ (maybe mempty renderUTCTime $ checksuiteStartedAt s)
     td_ (toHtml $ checksuiteHeadSha s)
     td_ $
       case unDbEnum (checksuiteStatus s) of
