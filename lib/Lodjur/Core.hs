@@ -18,6 +18,7 @@ import           Lodjur.GitHub
 import qualified Lodjur.Manager                as Mgr
 import qualified Lodjur.Manager.Messages       as Msg
 import qualified Network.HTTP.Client           as HTTP
+import           Network.WebSockets             ( ServerApp )
 
 data Core = Core
   { coreReplyHandler    :: Async ()
@@ -36,6 +37,9 @@ cancelCore core = do
   cancel (coreReplyHandler core)
   Mgr.cancelManager (envWorkManager $ coreEnv core)
 
+coreWSApp :: Core -> ServerApp
+coreWSApp = Mgr.managerWebServerApp . envWorkManager . coreEnv
+
 data Env = Env
   { envGithubInstallationAccessToken    :: !GitHubToken
   , envHttpManager                      :: !HTTP.Manager
@@ -44,6 +48,7 @@ data Env = Env
   }
 
 data Associated = Associated GH.CheckRun Msg.Source
+  deriving (Show)
 
 newtype Error
   = GithubError GH.Error

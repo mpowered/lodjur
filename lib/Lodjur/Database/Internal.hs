@@ -159,27 +159,20 @@ type CheckRun = CheckRunT Identity
 deriving instance Show CheckRun
 deriving instance Show (PrimaryKey CheckRunT Identity)
 
-{-
-  , checkSuiteApplication    :: C f Text
-  , checkSuiteExamples       :: C f Int32
-  , checkSuiteFailed         :: C f Int32
-  , checkSuitePending        :: C f Int32
-  , checkSuiteDuration       :: C f Double
 data CheckExampleT f = CheckExample
-  { egId                :: C f Int32
-  , egCheck             :: PrimaryKey CheckT f
+  { egId                :: C f Int
+  , egCheckRun          :: PrimaryKey CheckRunT f
   , egDescription       :: C f Text
   , egFullDescription   :: C f Text
   , egStatus            :: C f Text
   , egFilePath          :: C f Text
-  , egLineNumber        :: C f Int32
+  , egLineNumber        :: C f Int
   , egException         :: C f Value
   } deriving (Generic, Beamable)
 
 instance Table CheckExampleT where
-  data PrimaryKey CheckExampleT f = CheckExampleKey (C f Int32) deriving (Generic, Beamable)
+  data PrimaryKey CheckExampleT f = CheckExampleKey (C f Int) deriving (Generic, Beamable)
   primaryKey = CheckExampleKey <$> egId
 
 type CheckExample = CheckExampleT Identity
 deriving instance Show CheckExample
--}

@@ -22,6 +22,7 @@ module Lodjur.Manager
 where
 
 import           Control.Concurrent
+import           Control.Concurrent.Async
 import           Control.Concurrent.STM
 import           Control.Error
 import           Control.Exception
@@ -74,11 +75,15 @@ cancelManager mgr =
   killThread (managerThread mgr)
 
 manager :: State a -> IO ()
-manager State{..} =
-  forever $ atomically $ do
-    req <- readTQueue requestQueue
-    client <- idleClient registeredClients
-    putTMVar (clientRequest client) req
+manager State{..} = do
+  putStrLn "Manager ready to distribute requets"
+  forever $ do
+    req <- atomically $ do
+      req <- readTQueue requestQueue
+      client <- idleClient registeredClients
+      putTMVar (clientRequest client) req
+      return req
+    putStrLn $ "Sent request to client: " ++ show (fst req)
 
 submitRequest :: Manager a -> Msg.Request -> a -> IO ()
 submitRequest mgr req a =
@@ -128,6 +133,60 @@ data AppError
 reject :: PendingConnection -> IO ()
 reject pending_conn = rejectRequest pending_conn "Authorization failed"
 
+accept :: PendingConnection -> State a -> IO ()
+accept pending_conn State{..} = do
+  conn <- acceptRequest pending_conn
+  client <- clientHandshake conn
+  forkPingThread conn 30
+  existing <- atomically $ registerClient registeredClients client
+  case existing of
+    Just c -> cancelClient c "Another client with the same name registered"
+    Nothing -> return ()
+  putStrLn "Worker connected"
+
+  s <- newEmptyMVar
+  r <- newEmptyMVar
+  catch
+    (withAsync (serve s r client) (networking conn s r))
+    (\(_e :: SomeException) -> return ())    -- TODO log this
+  cleanup client
+
+ where
+  networking conn s r a = concurrently_ (sendloop conn s a) (recvloop conn r a)
+
+  recvloop conn r a =
+    forever $ do
+      req <- receiveMsg conn
+      putMVar r req
+     `onException`
+      cancel a
+
+  sendloop conn s a =
+    forever $ do
+      rep <- takeMVar s
+      sendMsg conn rep
+     `onException`
+      cancel a
+
+  serve s r client = forever $ do
+    (req, a) <- atomically $ readTMVar (clientRequest client)
+    putStrLn "Sending request to worker"
+    putMVar s req
+    putStrLn "Awaiting response from worker"
+    rep <- takeMVar r
+    atomically $ do
+      _ <- takeTMVar (clientRequest client)
+      writeTQueue replyQueue (rep, a)
+
+  cleanup client = do
+    atomically $ do
+      req <- tryTakeTMVar (clientRequest client)
+      case req of
+        Just (_, a) -> writeTQueue replyQueue (Msg.Disconnected, a) -- TODO requeue?
+        Nothing -> return ()
+      deregisterClient registeredClients client
+    putStrLn "Worker disconnected"
+
 clientHandshake :: Connection -> IO (Client a)
 clientHandshake conn = do
   sendMsg conn Msg.Greet
@@ -135,36 +194,28 @@ clientHandshake conn = do
   case msg of
     Msg.Register clientid -> Client clientid conn <$> newEmptyTMVarIO
 
-accept :: PendingConnection -> State a -> IO ()
-accept pending_conn State{..} = do
-  (conn, client) <- start
-  existing <- atomically $ registerClient registeredClients client
-  case existing of
-    Just c -> cancelClient c "Another client with the same name registered"
-    Nothing -> return ()
-  serve conn client `finally` cleanup client
- where
-  start = do
-    putStrLn "Accepted"
-    conn <- acceptRequest pending_conn
-    forkPingThread conn 30
-    client <- clientHandshake conn
-    return (conn, client)
+{-
+worker :: Env -> IO ()
+worker env = do
+  connected <- handshake env
+  when connected $
+    withAsync (runWorker env app) networking
+  where
+    networking a = concurrently_ (sendloop a) (recvloop a)
+    recvloop a =
+      forever $ do
+        req <- receiveMsg (messageConn env)
+        putMVar (request env) req
+       `onException`
+        cancel a
 
-  cleanup client = atomically $ do
-    req <- tryTakeTMVar (clientRequest client)
-    case req of
-      Just (_, a) -> writeTQueue replyQueue (Msg.Disconnected, a)
-      Nothing -> return ()
-    deregisterClient registeredClients client
-
-  serve conn client = forever $ do
-    (req, a) <- atomically $ readTMVar (clientRequest client)
-    sendMsg conn req
-    rep <- receiveMsg conn
-    atomically $ do
-      _ <- takeTMVar (clientRequest client)
-      writeTQueue replyQueue (rep, a)
+    sendloop a =
+      forever $ do
+        rep <- takeMVar (reply env)
+        sendMsg (messageConn env) rep
+       `onException`
+        cancel a
+-}
 
 receiveMsg :: (FromJSON a, MonadIO m) => Connection -> m a
 receiveMsg conn = liftIO $ do

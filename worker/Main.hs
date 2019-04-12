@@ -102,6 +102,7 @@ worker env = do
     withAsync (runWorker env app) networking
   where
     networking a = concurrently_ (sendloop a) (recvloop a)
+
     recvloop a =
       forever $ do
         req <- receiveMsg (messageConn env)

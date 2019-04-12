@@ -30,7 +30,7 @@ import           Base
 import           WebHook
 
 import           Lodjur.Database         hiding ( div_ )
-import           Lodjur.Manager
+import           Lodjur.Core                    ( coreWSApp )
 
 import           Paths_lodjur
 
@@ -39,10 +39,9 @@ runServer port env githubOauth = do
   cfg    <- defaultSpockCfg emptySession (PCPool $ envDbPool env) env
   sbase  <- getDataFileName "static"
   lodjur <- spockAsApp $ spock cfg $ app sbase
-  wsmgr  <- newManager
   putStrLn $ "Serving on port " ++ show port
   putStrLn $ "static from " ++ show sbase
-  Warp.run port $ websocketsOr opts (managerWebServerApp wsmgr) lodjur
+  Warp.run port $ websocketsOr opts (coreWSApp $ envCore env) lodjur
  where
   opts = defaultConnectionOptions
   staticPrefix = "static/"

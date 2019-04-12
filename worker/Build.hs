@@ -51,10 +51,13 @@ runBuild p = do
       | code < 0 ->             -- exited due to signal
           return $ Msg.Completed GH.Cancelled Nothing
       | otherwise -> do
+          let txt = Text.pack $ unlines $ reverse $
+                       take 50 (reverse $ lines stdout) ++
+                       take 50 (reverse $ lines stderr)
           let output = GH.CheckRunOutput
                         { checkRunOutputTitle       = "Build"
                         , checkRunOutputSummary     = "nix-build exited with code " <> Text.pack (show code)
-                        , checkRunOutputText        = Just (Text.pack $ unlines $ reverse $ take 100 $ reverse $ lines stdout)
+                        , checkRunOutputText        = Just txt
                         , checkRunOutputAnnotations = []
                         }
           return $ Msg.Completed GH.Failure (Just output)

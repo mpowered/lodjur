@@ -13,7 +13,7 @@ CREATE TABLE check_suites (
     repository_name text NOT NULL,
     head_sha text NOT NULL,
     status text NOT NULL,
-    conclusion text NULL,
+    conclusion text NULL
 );
 
 CREATE TABLE check_runs (

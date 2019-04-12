@@ -51,7 +51,6 @@ start LodjurOptions {..} = do
     , .. } <- readConfiguration configFile
 
   envHttpManager  <- Http.newManager Http.tlsManagerSettings
-  envWorkManager  <- Work.newManager
   envDbPool       <- createPool (Pg.connect databaseConnectInfo)
                                  Pg.close
                                  1 60 16
