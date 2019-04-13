@@ -88,7 +88,7 @@ checkRequested :: GH.EventCheckSuite -> GH.Repo -> Action ()
 checkRequested GH.EventCheckSuite{..} GH.Repo{..} = do
   Env{..} <- getState
   let src = GH.Source eventCheckSuiteHeadSha repoOwner repoName
-  liftIO $ Core.submit envCore (Job.Request "build" src Job.Build)
+  liftIO $ Core.submit envCore Nothing (Job.Request "build" src (Job.Build { doCheck = True}))
 
 raise :: MonadIO m => Text -> ActionCtxT ctx m b
 raise msg = do

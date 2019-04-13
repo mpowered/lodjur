@@ -13,6 +13,7 @@ import           Control.Exception
 import           Control.Monad
 import           Control.Monad.IO.Class         ( liftIO )
 import           Data.Aeson
+import           Data.Int                       ( Int32 )
 import           Data.Pool
 import qualified Data.Text                     as Text
 import           Data.Time.Clock                ( getCurrentTime )
@@ -49,12 +50,12 @@ replyHandler env = forever $
     )
     ( \(SomeException e) -> putStrLn $ "Exception in replyHandler: " ++ show e )
 
-submit :: Core -> Job.Request -> IO ()
-submit core = runCore (coreEnv core) . createJob
+submit :: Core -> Maybe Int32 -> Job.Request -> IO ()
+submit core parent job = runCore (coreEnv core) $ createJob parent job
 
-createJob :: Job.Request -> CoreM ()
-createJob work = do
-  let Job.Request {..}    = work
+createJob :: Maybe Int32 -> Job.Request -> CoreM ()
+createJob parent req = do
+  let Job.Request {..}    = req
       GH.Source {..}      = githubSource
       GH.SimpleOwner {..} = owner
   Env {..} <- getEnv
@@ -71,7 +72,7 @@ createJob work = do
            , jobCreatedAt   = val_ now
            , jobStartedAt   = val_ Nothing
            , jobCompletedAt = val_ Nothing
-           , jobParent      = val_ (JobKey Nothing)
+           , jobParent      = val_ (JobKey parent)
            }
     ]
   let lodjurJobId = jobId job
@@ -80,7 +81,7 @@ createJob work = do
       { GH.newCheckRunStatus     = Just GH.Queued
       , GH.newCheckRunExternalId = Just (toExternalId lodjurJobId)
       }
-  liftIO $ atomically $ writeTQueue envJobQueue (work, Associated { .. })
+  liftIO $ atomically $ writeTQueue envJobQueue (req, Associated { .. })
   where toExternalId = Text.pack . show
 
 handleReply :: Reply -> Associated -> CoreM ()
@@ -125,5 +126,6 @@ handleReply rep Associated {..} = do
                                               Job.Neutral   -> GH.Neutral
                                               Job.Cancelled -> GH.Cancelled
             , GH.updateCheckRunCompletedAt = Just now
+            , GH.updateCheckRunOutput      = output
             }
-      mapM_ createJob dependencies
+      mapM_ (createJob (Just lodjurJobId)) dependencies

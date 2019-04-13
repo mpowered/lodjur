@@ -148,7 +148,9 @@ runClient ci handler =
 
   clientloop s r = forever $ do
     req <- takeMVar r
-    rep <- handler req
+    rep <- handler req `catch` \(e :: IOException) -> do
+      putStrLn $ "Worker threw an excaption: " ++ show e
+      return $ Job.Result Job.Failure Nothing []
     putMVar s rep
 
   networking conn s r _a = concurrently_ (sendloop conn s) (recvloop conn r)

@@ -80,13 +80,38 @@ start Options{..} = do
   withSocketsDo $ WS.runClient managerCI (runWorker Env{..} . handler)
 
 handler :: Job.Request -> Worker Job.Result
-handler (Job.Request _name src act) =
+handler (Job.Request _name src act) = do
+  let GH.Source{..} = src
+  env@Env{..} <- ask
   case act of
-    Job.Build -> build src
-    Job.Check app -> check src app
-    _ -> do
-      -- logError $ "Unsupported message:" <+> nest 4 (viaShow unsupported)
-      return (Job.Result Job.Failure [] [])
+    Job.Build doCheck -> do
+      res <- withWorkDir env (GH.RepoRef owner repo) sha $ \workdir ->
+        Build.build workdir ".lodjur/build.nix"
+      if doCheck && (Job.conclusion res == Job.Success)
+       then do
+        let checkdeps =
+              [ Job.Request "check-toolkit1" src (Job.Check "toolkit1")
+              , Job.Request "check-toolkit2" src (Job.Check "toolkit2")
+              , Job.Request "check-toolkit3" src (Job.Check "toolkit3")
+              , Job.Request "check-sms"      src (Job.Check "sms")
+              , Job.Request "check-beagle"   src (Job.Check "beagle")
+              ]
+        return $ res
+          { Job.conclusion   = Job.Neutral
+          , Job.dependencies = Job.dependencies res ++ checkdeps
+          }
+       else
+        return res
+
+    Job.Check app ->
+      withWorkDir env (GH.RepoRef owner repo) sha $ \workdir -> do
+        res <- Build.build workdir ".lodjur/build.nix"
+        case Job.conclusion res of
+          Job.Success -> RSpec.rspec workdir (Text.unpack app)
+          _ -> return res
+
+    _ ->
+      return (Job.Result Job.Failure Nothing [])
 
 withWorkDir
   :: (MonadIO io, MonadMask io)
@@ -99,22 +124,3 @@ withWorkDir Env {..} repo sha
   = bracket
     (liftIO $ Git.checkout gitEnv repo sha)
     (liftIO . removeDirectoryRecursive)
-
-build :: GH.Source -> Worker Job.Result
-build src@GH.Source{..} = do
-  env@Env{..} <- ask
-  -- logInfo "Build started"
-  rep <- withWorkDir env (GH.RepoRef owner repo) sha $ \workdir ->
-    Build.build workdir ".lodjur/build.nix" src
-  -- logInfo $ "Build completed:" <+> viaShow rep
-  return rep
-
-check :: GH.Source -> Text -> Worker Job.Result
-check src@GH.Source{..} app = do
-  env@Env{..} <- ask
-  -- logInfo "Check started"
-  rep <- withWorkDir env (GH.RepoRef owner repo) sha $ \workdir -> do
-    Build.build workdir ".lodjur/build.nix" src
-    RSpec.rspec workdir (Text.unpack app)
-  -- logInfo $ "Check completed:" <+> viaShow rep
-  return rep

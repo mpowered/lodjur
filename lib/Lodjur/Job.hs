@@ -41,7 +41,7 @@ instance FromJSON Reply where
 
 data Result = Result
   { conclusion      :: !Conclusion
-  , output          :: ![Text]
+  , output          :: !(Maybe GH.CheckRunOutput)
   , dependencies    :: ![Request]
   }
   deriving (Show, Eq, Ord, Generic)
@@ -54,8 +54,14 @@ instance FromJSON Result where
 
 data Action
   = Build
-  | Check Text
-  | DeployTo Text
+    { doCheck   :: Bool
+    }
+  | Check
+    { checkItem :: Text
+    }
+  | Deploy
+    { deployTo  :: Text
+    }
   deriving (Show, Eq, Ord, Generic)
 
 instance ToJSON Action where
