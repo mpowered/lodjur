@@ -8,12 +8,13 @@ import           Data.Text.IO                  as Text
 import           Text.Toml
 
 import qualified Git
-import qualified Lodjur.Manager                as Mgr
+import qualified Lodjur.Core                   as Core
+import qualified Lodjur.Core.Util              as Core
 
 data Config = Config
   { logFile     :: Maybe FilePath
   , workDir     :: FilePath
-  , managerCI   :: Mgr.ConnectInfo
+  , managerCI   :: Core.ConnectInfo
   , gitCfg      :: Git.Config
   , buildCfg    :: BuildConfig
   }
@@ -33,7 +34,7 @@ instance FromJSON Config where
     return Config { .. }
    where
     mgr s =
-      maybe (fail "Not a valid websocket URI") return $ Mgr.parseManagerURI s
+      maybe (fail "Not a valid websocket URI") return $ Core.parseConnectURI s
 
 instance FromJSON BuildConfig where
   parseJSON = withObject "Build Config" $ \o -> do

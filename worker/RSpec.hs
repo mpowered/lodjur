@@ -4,13 +4,17 @@ module RSpec where
 
 import           Control.Exception
 import           Control.Monad
+import           Control.Monad.IO.Class
 import           Data.Aeson
 import           System.Directory
 import           System.FilePath
 import           System.Process
 import           System.Exit
 
+import qualified Lodjur.Job              as Job
+
 import           RSpec.Results
+import           Types
 
 data RSpecError
   = RSpecError Int
@@ -40,13 +44,14 @@ rspecCmd = proc ".lodjur/rspec"
 withCwd :: FilePath -> CreateProcess -> CreateProcess
 withCwd d p = p { cwd = Just d }
 
-rspec :: FilePath -> String -> IO RSpecResult
-rspec d app = do
+rspec :: FilePath -> String -> Worker Job.Result
+rspec d app = liftIO $ do
   createDirectoryIfMissing True (d </> checkOutput)
   runRSpec $ withCwd d $ rspecCmd [app, checkOutput]
-  parseCheckResults (d </> checkOutput)
-  where
-    checkOutput = "lodjur-check"
+  rspec <- parseCheckResults (d </> checkOutput)
+  return $ Job.Result Job.Success [] []
+ where
+  checkOutput = "lodjur-check"
 
 parseCheckResults :: FilePath -> IO RSpecResult
 parseCheckResults dir = do

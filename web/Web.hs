@@ -1,5 +1,4 @@
 {-# LANGUAGE FlexibleContexts  #-}
-{-# LANGUAGE LambdaCase        #-}
 {-# LANGUAGE NamedFieldPuns    #-}
 {-# LANGUAGE OverloadedStrings #-}
 {-# LANGUAGE TypeFamilies      #-}
@@ -15,7 +14,6 @@ import           Data.Time.Format              (defaultTimeLocale, formatTime)
 import           Lucid.Base                    (Html, toHtml)
 import           Lucid.Bootstrap
 import           Lucid.Html5
-import qualified GitHub.Extra                  as GH
 import           Network.OAuth.OAuth2
 import qualified Network.Wai.Handler.Warp      as Warp
 import           Network.Wai.Handler.WebSockets
@@ -29,8 +27,7 @@ import           Auth.GitHub
 import           Base
 import           WebHook
 
-import           Lodjur.Database         hiding ( div_ )
-import           Lodjur.Core                    ( coreWSApp )
+import qualified Lodjur.Core                   as Core
 
 import           Paths_lodjur
 
@@ -41,7 +38,7 @@ runServer port env githubOauth = do
   lodjur <- spockAsApp $ spock cfg $ app sbase
   putStrLn $ "Serving on port " ++ show port
   putStrLn $ "static from " ++ show sbase
-  Warp.run port $ websocketsOr opts (coreWSApp $ envCore env) lodjur
+  Warp.run port $ websocketsOr opts (Core.coreWebSocketApp $ envCore env) lodjur
  where
   opts = defaultConnectionOptions
   staticPrefix = "static/"
@@ -69,17 +66,21 @@ runServer port env githubOauth = do
     --   get ("jobs" <//> var <//> "output") streamOutputAction
     --   get ("jobs" <//> var <//> "result" <//> var) getResultAction
 
-ifLoggedIn :: Action () -> Action () -> Action ()
-ifLoggedIn thenRoute elseRoute = readSession >>= \case
-  Session { currentUser = Just _ } -> thenRoute
-  _ -> elseRoute
+-- ifLoggedIn :: Action () -> Action () -> Action ()
+-- ifLoggedIn thenRoute elseRoute = readSession >>= \case
+--   Session { currentUser = Just _ } -> thenRoute
+--   _ -> elseRoute
 
-welcomeAction :: Action ()
-welcomeAction = redirect "/github/login"
+-- welcomeAction :: Action ()
+-- welcomeAction = redirect "/github/login"
 
 homeAction :: Action ()
 homeAction = do
-  suites <- recentCheckSuites 50
+  renderLayout "CheckSuites"
+    $ BarePage
+    $ "home"
+{-
+  let suites = []
   renderLayout "CheckSuites"
     $ BarePage
     $ renderCheckSuites suites
@@ -93,6 +94,7 @@ homeAction = do
           $ limit_ n
           $ orderBy_ (desc_ . checksuiteId)
           $ all_ (dbCheckSuites db)
+-}
 
 data Layout
   = WithNavigation [Html ()] (Html ())
@@ -147,6 +149,7 @@ renderLayout title layout =
  --    ul_ [class_ "navbar-nav mr-auto"] $ forM_ links $ \(href, name) ->
  --      li_ [class_ "nav-item"] $ a_ [href_ href, class_ "nav-link"] name
 
+{-
 renderCheckSuites :: [CheckSuite] -> Html ()
 renderCheckSuites []   = p_ [class_ "text-secondary"] "No jobs available."
 renderCheckSuites ss = div_ [class_ "card"] $ do
@@ -172,6 +175,7 @@ renderCheckSuites ss = div_ [class_ "card"] $ do
             Just GH.Failure   -> td_ [class_ "text-danger"]  "Failure"
             Just GH.Cancelled -> td_ [class_ "text-warning"] "Cancelled"
             _                 -> td_ [class_ "text-warning"] "Complete"
+-}
 
 formatUTCTime :: UTCTime -> String
 formatUTCTime = formatTime defaultTimeLocale "%c"

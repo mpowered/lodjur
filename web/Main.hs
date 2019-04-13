@@ -13,7 +13,6 @@ import           Options.Applicative
 import           Config
 import qualified Lodjur.Core                   as Core
 import qualified Lodjur.GitHub                 as GH
-import qualified Lodjur.Manager                as Work
 import           Web
 import           Base
 

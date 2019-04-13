@@ -5,8 +5,7 @@ import           Data.Pool
 import           Data.Text                      ( Text )
 import qualified Database.PostgreSQL.Simple    as Pg
 import qualified Lodjur.Core                   as Core
-import           Lodjur.GitHub
-import qualified Lodjur.Manager                as Work
+import qualified Lodjur.GitHub                 as GH
 import qualified Network.HTTP.Client           as HTTP
 import           URI.ByteString
 import           User
@@ -17,7 +16,7 @@ data Env = Env
   , envGithubSecretToken                :: !ByteString
   , envGithubAppId                      :: !Int
   , envGithubInstallationId             :: !Int
-  , envGithubInstallationAccessToken    :: !GitHubToken
+  , envGithubInstallationAccessToken    :: !GH.GitHubToken
   , envHttpManager                      :: !HTTP.Manager
   , envDbPool                           :: !(Pool Pg.Connection)
   , envCore                             :: !Core.Core
