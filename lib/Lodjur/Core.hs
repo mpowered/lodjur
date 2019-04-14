@@ -4,6 +4,7 @@ module Lodjur.Core
   ( startCore
   , cancelCore
   , submit
+  , subscribe
   , module Lodjur.Core.Types
   )where
 
@@ -33,6 +34,7 @@ startCore :: GH.GitHubToken -> HTTP.Manager -> Pool Connection -> IO Core
 startCore envGithubInstallationAccessToken envHttpManager envDbPool = do
   envJobQueue   <- newTQueueIO
   envReplyQueue <- newTQueueIO
+  envEventChan  <- newBroadcastTChanIO
   let coreEnv = Env { .. }
   coreReplyHandler <- async (replyHandler coreEnv)
   let coreWebSocketApp = WS.serverApp coreEnv
@@ -53,6 +55,15 @@ replyHandler env = forever $
 submit :: Core -> Maybe Int32 -> Job.Request -> IO ()
 submit core parent job = runCore (coreEnv core) $ createJob parent job
 
+subscribe :: Core -> IO (TChan Event)
+subscribe core = atomically $ dupTChan $ envEventChan $ coreEnv core
+
+notify :: Event -> CoreM ()
+notify event = do
+  Env {..} <- getEnv
+  liftIO $ atomically $
+    writeTChan envEventChan event
+
 createJob :: Maybe Int32 -> Job.Request -> CoreM ()
 createJob parent req = do
   let Job.Request {..}    = req
@@ -61,18 +72,21 @@ createJob parent req = do
   Env {..} <- getEnv
   now      <- liftIO getCurrentTime
   [job]    <- database $ runInsertReturningList (jobs db) $ insertExpressions
-    [ JobT { jobId          = default_
-           , jobName        = val_ (untagName name)
-           , jobSrcSha      = val_ (untagSha sha)
-           , jobSrcOwner    = val_ (untagName simpleOwnerLogin)
-           , jobSrcRepo     = val_ (untagName repo)
-           , jobAction      = val_ (toJSON action)
-           , jobStatus      = val_ (DbEnum Job.Queued)
-           , jobConclusion  = val_ Nothing
-           , jobCreatedAt   = val_ now
-           , jobStartedAt   = val_ Nothing
-           , jobCompletedAt = val_ Nothing
-           , jobParent      = val_ (JobKey parent)
+    [ JobT { jobId           = default_
+           , jobName         = val_ (untagName name)
+           , jobSrcSha       = val_ (untagSha sha)
+           , jobSrcBranch    = val_ branch
+           , jobSrcOwner     = val_ (untagName simpleOwnerLogin)
+           , jobSrcRepo      = val_ (untagName repo)
+           , jobSrcMessage   = val_ (GH.eventCheckSuiteCommitMessage <$> commit)
+           , jobSrcCommitter = val_ (GH.eventCheckSuiteUserName <$> (GH.eventCheckSuiteCommitCommitter =<< commit))
+           , jobAction       = val_ (toJSON action)
+           , jobStatus       = val_ (DbEnum Job.Queued)
+           , jobConclusion   = val_ Nothing
+           , jobCreatedAt    = val_ now
+           , jobStartedAt    = val_ Nothing
+           , jobCompletedAt  = val_ Nothing
+           , jobParent       = val_ (JobKey parent)
            }
     ]
   let lodjurJobId = jobId job
@@ -82,7 +96,9 @@ createJob parent req = do
       , GH.newCheckRunExternalId = Just (toExternalId lodjurJobId)
       }
   liftIO $ atomically $ writeTQueue envJobQueue (req, Associated { .. })
-  where toExternalId = Text.pack . show
+  notify JobSubmitted
+ where
+  toExternalId = Text.pack . show
 
 handleReply :: Reply -> Associated -> CoreM ()
 handleReply rep Associated {..} = do
@@ -129,3 +145,4 @@ handleReply rep Associated {..} = do
             , GH.updateCheckRunOutput      = output
             }
       mapM_ (createJob (Just lodjurJobId)) dependencies
+  notify JobUpdated

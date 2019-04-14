@@ -2,6 +2,7 @@ module Lodjur.Core.Types
   ( Core(..)
   , Env(..)
   , Associated(..)
+  , Event(..)
   , CoreM
   , CoreException(..)
   , runCore
@@ -19,7 +20,7 @@ module Lodjur.Core.Types
 where
 
 import           Control.Concurrent.Async
-import           Control.Concurrent.STM         ( TQueue )
+import           Control.Concurrent.STM         ( TQueue, TChan )
 import           Control.Exception
 import           Control.Monad.Reader
 import           Data.Int                       ( Int32 )
@@ -43,7 +44,11 @@ data Env = Env
   , envDbPool                           :: !(Pool Connection)
   , envJobQueue                         :: !(TQueue (Job.Request, Associated))
   , envReplyQueue                       :: !(TQueue (Job.Reply, Associated))
+  , envEventChan                        :: !(TChan Event)
   }
+
+data Event = JobSubmitted | JobUpdated
+  deriving (Show, Eq, Ord)
 
 data Associated
   = Associated
@@ -51,7 +56,7 @@ data Associated
     , githubRun     :: GH.CheckRun
     , githubSource  :: GH.Source
     }
-  deriving (Show)
+  deriving (Show, Eq, Ord)
 
 data ConnectInfo = ConnectInfo
   { connectSecure       :: Bool     -- Use TLS
@@ -59,13 +64,14 @@ data ConnectInfo = ConnectInfo
   , connectPort         :: PortNumber
   , connectPath         :: String
   }
+  deriving (Show, Eq, Ord)
 
 type CoreM = ReaderT Env IO
 
 data CoreException
   = GithubError GH.Error
   | WebsocketError
-  deriving Show
+  deriving (Show)
 
 instance Exception CoreException
 

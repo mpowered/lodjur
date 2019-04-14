@@ -43,8 +43,11 @@ data JobT f = JobT
   { jobId               :: C f Int32
   , jobName             :: C f Text
   , jobSrcSha           :: C f Text
+  , jobSrcBranch        :: C f (Maybe Text)
   , jobSrcOwner         :: C f Text
   , jobSrcRepo          :: C f Text
+  , jobSrcMessage       :: C f (Maybe Text)
+  , jobSrcCommitter     :: C f (Maybe Text)
   , jobAction           :: C f Value
   , jobStatus           :: C f (DbEnum Status)
   , jobConclusion       :: C f (Maybe (DbEnum Conclusion))
