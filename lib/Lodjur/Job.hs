@@ -14,6 +14,7 @@ import           GHC.Generics
 import           Lodjur.Database.Enum
 import qualified Lodjur.GitHub                 as GH
 import qualified Lodjur.Internal.JSON          as JSON
+import           Lodjur.RSpec
 
 data Request = Request
   { name            :: !(GH.Name GH.CheckRun)
@@ -30,7 +31,9 @@ instance FromJSON Request where
 
 data Reply
   = Started
-  | Concluded Result
+  | Requeued
+  | LogOutput !Text
+  | Concluded !Result
   deriving (Show, Eq, Ord, Generic)
 
 instance ToJSON Reply where
@@ -43,6 +46,7 @@ data Result = Result
   { conclusion      :: !Conclusion
   , output          :: !(Maybe GH.CheckRunOutput)
   , dependencies    :: ![Request]
+  , rspecResult     :: !(Maybe RSpecResult)
   }
   deriving (Show, Eq, Ord, Generic)
 

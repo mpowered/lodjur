@@ -64,7 +64,7 @@ library                 lodjur-lib
                       , Lodjur.Internal.JSON
                       , Lodjur.GitHub
                       , Lodjur.Job
-                      , Lodjur.Logging
+                      , Lodjur.RSpec
     build-depends:      base                  >= 4.11 && < 5
                       , aeson                 >= 1.3.1 && < 1.4
                       , async                 >= 2.2 && < 2.3
@@ -94,6 +94,7 @@ library                 lodjur-lib
                       , transformers          >= 0.5.5 && < 0.6
                       , unordered-containers  >= 0.2.9 && < 0.3
                       , uuid                  >= 1.3.13 && < 1.4
+                      , vector                >= 0.12 && < 0.13
                       , websockets            >= 0.12 && < 0.13
 
 executable              lodjur
@@ -165,7 +166,6 @@ executable              lodjur-worker
                       , Env
                       , Git
                       , RSpec
-                      , RSpec.Results
                       , Types
                       , Paths_lodjur
     build-depends:      base                  >= 4.11 && < 5

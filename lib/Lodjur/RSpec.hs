@@ -1,15 +1,15 @@
 {-# LANGUAGE RecordWildCards   #-}
 {-# LANGUAGE OverloadedStrings #-}
 
-module RSpec.Results where
+module Lodjur.RSpec where
 
 import           Data.Aeson
 import           Data.Text
 
 data RSpecResult = RSpecResult
-  { rspecExamples       :: [TestResult]
-  , rspecSummary        :: RSpecSummary
-  } deriving (Show, Eq)
+  { rspecExamples       :: ![TestResult]
+  , rspecSummary        :: !RSpecSummary
+  } deriving (Show, Eq, Ord)
 
 instance FromJSON RSpecResult where
   parseJSON = withObject "RSpecResult" $ \o -> do
@@ -30,11 +30,11 @@ instance Monoid RSpecResult where
   mappend = (<>)
 
 data RSpecSummary = RSpecSummary
-  { rspecDuration       :: Float
-  , rspecExampleCount   :: Int
-  , rspecFailureCount   :: Int
-  , rspecPendingCount   :: Int
-  } deriving (Show, Eq)
+  { rspecDuration       :: !Double
+  , rspecExampleCount   :: !Int
+  , rspecFailureCount   :: !Int
+  , rspecPendingCount   :: !Int
+  } deriving (Show, Eq, Ord)
 
 instance FromJSON RSpecSummary where
   parseJSON = withObject "RSpecSummary" $ \o -> do
@@ -63,13 +63,13 @@ instance Monoid RSpecSummary where
   mappend = (<>)
 
 data TestResult = TestResult
-  { testDescription     :: Text
-  , testFullDescription :: Text
-  , testStatus          :: Text
-  , testFilePath        :: Text
-  , testLineNumber      :: Integer
-  , testException       :: Maybe Value
-  } deriving (Show, Eq)
+  { testDescription     :: !Text
+  , testFullDescription :: !Text
+  , testStatus          :: !Text
+  , testFilePath        :: !Text
+  , testLineNumber      :: !Int
+  , testException       :: !(Maybe TestException)
+  } deriving (Show, Eq, Ord)
 
 instance FromJSON TestResult where
   parseJSON = withObject "TestResult" $ \o -> do
@@ -89,4 +89,24 @@ instance ToJSON TestResult where
     , "file_path"        .= testFilePath
     , "line_number"      .= testLineNumber
     , "exception"        .= testException
+    ]
+
+data TestException = TestException
+  { exceptionClass     :: !Text
+  , exceptionMessage   :: !Text
+  , exceptionBacktrace :: ![Text]
+  } deriving (Show, Eq, Ord)
+
+instance FromJSON TestException where
+  parseJSON = withObject "TestException" $ \o -> do
+    exceptionClass     <- o .: "class"
+    exceptionMessage   <- o .: "message"
+    exceptionBacktrace <- o .: "backtrace"
+    return TestException { .. }
+
+instance ToJSON TestException where
+  toJSON TestException {..} = object
+    [ "class"     .= exceptionClass
+    , "message"   .= exceptionMessage
+    , "backtrace" .= exceptionBacktrace
     ]

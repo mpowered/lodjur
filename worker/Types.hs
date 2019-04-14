@@ -1,10 +1,10 @@
 module Types where
 
-import           Control.Monad.Log
+-- import           Control.Monad.Log
 import           Control.Monad.Reader
 
 import           Env
-import           Lodjur.Logging
+-- import           Lodjur.Logging
 
 -- type Worker = ReaderT Env (LoggingT LogMsg IO)
 

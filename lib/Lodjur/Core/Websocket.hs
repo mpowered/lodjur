@@ -71,14 +71,21 @@ accept :: PendingConnection -> Env -> IO ()
 accept pending Env {..} = do
   conn <- acceptRequest pending
   serverHandshake conn
+  putStrLn "Worker connected"
   forkPingThread conn 30
   inprogress <- newEmptyTMVarIO
   catch
     (concurrently_ (sendloop conn inprogress) (recvloop conn inprogress))
-    (\ConnectionClosed -> return ())
+    (\(SomeException e) -> putStrLn $ "Exception in worker server: " ++ show e)
+  putStrLn "Worker disconnected"
   atomically $ do
-    req <- tryTakeTMVar inprogress
-    forM_ req (unGetTQueue envJobQueue)
+    r <- tryTakeTMVar inprogress
+    case r of
+      Just req@(_, a) -> do
+        unGetTQueue envJobQueue req
+        writeTQueue envReplyQueue (Requeued, a)
+      Nothing ->
+        return ()
  where
   sendloop conn inprogress = forever $ do
     req <- atomically $ do
@@ -150,7 +157,7 @@ runClient ci handler =
     req <- takeMVar r
     rep <- handler req `catch` \(e :: IOException) -> do
       putStrLn $ "Worker threw an excaption: " ++ show e
-      return $ Job.Result Job.Failure Nothing []
+      return $ Job.Result Job.Failure Nothing [] Nothing
     putMVar s rep
 
   networking conn s r _a = concurrently_ (sendloop conn s) (recvloop conn r)

@@ -7,35 +7,22 @@
 
 module Main where
 
-import           Control.Concurrent
-import           Control.Concurrent.Async
 import           Control.Monad
-import           Control.Error
-import           Control.Monad.Catch          (MonadMask, bracket, onException)
+import           Control.Monad.Catch          (MonadMask, bracket)
 import           Control.Monad.IO.Class
-import           Control.Monad.Log
+-- import           Control.Monad.Log
 import           Control.Monad.Reader
-import           Data.Aeson                   hiding (Options, Success)
-import           Data.Aeson.Encode.Pretty     (encodePretty)
-import           Data.ByteString              (ByteString)
-import qualified Data.ByteString.Lazy         as ByteString
 import           Data.Text                    (Text)
 import qualified Data.Text                    as Text
-import qualified Data.Text.Encoding           as Text
 import           Data.Text.Prettyprint.Doc
-import qualified Data.UUID                    as UUID
-import qualified Data.UUID.V4                 as UUID
-import qualified Data.Vector                  as Vec
-import           GHC.Generics
 import           Options.Applicative          hiding (Success, Failure)
 import           System.Directory
 import           Prelude                      hiding (lookup)
 
 import           Network.Socket               (withSocketsDo)
-import           Network.WebSockets
 
 import qualified Lodjur.GitHub                as GH
-import           Lodjur.Logging
+-- import           Lodjur.Logging
 import           Lodjur.Core.Websocket        as WS
 import qualified Lodjur.Job                   as Job
 
@@ -44,7 +31,6 @@ import           Env
 import qualified Build
 import qualified Git
 import qualified RSpec
-import qualified RSpec.Results                as RSpec
 import           Types
 
 default (Text)
@@ -111,7 +97,7 @@ handler (Job.Request _name src act) = do
           _ -> return res
 
     _ ->
-      return (Job.Result Job.Failure Nothing [])
+      return $ Job.Result Job.Failure Nothing [] Nothing
 
 withWorkDir
   :: (MonadIO io, MonadMask io)

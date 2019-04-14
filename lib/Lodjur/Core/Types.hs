@@ -47,7 +47,10 @@ data Env = Env
   , envEventChan                        :: !(TChan Event)
   }
 
-data Event = JobSubmitted | JobUpdated
+data Event
+  = JobSubmitted
+  | JobUpdated
+  | LogsUpdated Int32
   deriving (Show, Eq, Ord)
 
 data Associated

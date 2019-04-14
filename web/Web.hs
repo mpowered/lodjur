@@ -110,7 +110,7 @@ recentRoots n conn =
       $ limit_ n
       $ orderBy_ (desc_ . jobId)
       $ filter_ (\j -> jobParent j ==. val_ (JobKey Nothing))
-      $ all_ (jobs db)
+      $ all_ (dbJobs db)
 
 jobTree :: DB.Connection -> Job -> IO (Tree Job)
 jobTree conn p = do
@@ -119,7 +119,7 @@ jobTree conn p = do
     $ select
       $ orderBy_ (asc_ . jobId)
     $ filter_ (\j -> jobParent j ==. val_ (JobKey (Just (jobId p))))
-      $ all_ (jobs db)
+      $ all_ (dbJobs db)
   childForest <- mapM (jobTree conn) children
   return (Node p childForest)
 
@@ -196,7 +196,7 @@ renderJobTree (Node job children) = do
   sortAsc = List.sortOn (jobId . rootLabel)
 
 renderJob :: Job -> Html ()
-renderJob JobT{..} =
+renderJob Job{..} =
   div_ [class_ "card-body p-0"] $ do
     div_ [class_ "row m-0 p-1"] $ do
       case unDbEnum jobStatus of
@@ -246,13 +246,19 @@ instance ToJSON JobEvent where
 
 streamJobUpdates :: Pool DB.Connection -> TChan Core.Event -> StreamingBody
 streamJobUpdates dbpool chan write flush = forever $ do
-  _event <- atomically $ readTChan chan
-  jobs <- withResource dbpool $ recentJobs 10
-  let content = LT.toStrict $ renderText $ renderJobs jobs
+  event <- atomically $ readTChan chan
+  case event of
+    Core.JobSubmitted -> go
+    Core.JobUpdated   -> go
+    _ -> return ()
+ where
+  go = do
+    jobs <- withResource dbpool $ recentJobs 10
+    let content = LT.toStrict $ renderText $ renderJobs jobs
 
-  write $ B.fromByteString "event: update\n"
-  let event = JobEvent { jobeventHtml = content }
-  write $ B.fromLazyByteString
-    ("data: " <> encode event <> "\n")
-  write $ B.fromByteString "\n"
-  flush
+    write $ B.fromByteString "event: update\n"
+    let event = JobEvent { jobeventHtml = content }
+    write $ B.fromLazyByteString
+      ("data: " <> encode event <> "\n")
+    write $ B.fromByteString "\n"
+    flush

@@ -6,7 +6,8 @@ module Lodjur.Core
   , submit
   , subscribe
   , module Lodjur.Core.Types
-  )where
+  )
+where
 
 import           Control.Concurrent.Async
 import           Control.Concurrent.STM
@@ -18,6 +19,7 @@ import           Data.Int                       ( Int32 )
 import           Data.Pool
 import qualified Data.Text                     as Text
 import           Data.Time.Clock                ( getCurrentTime )
+import           Database.Beam.Postgres
 import           Lodjur.Core.Types
 import           Lodjur.Core.Util
 import qualified Lodjur.Core.Websocket         as WS
@@ -28,6 +30,7 @@ import           Lodjur.GitHub                  ( untagName
                                                 )
 import qualified Lodjur.GitHub                 as GH
 import           Lodjur.Job                    as Job
+import           Lodjur.RSpec                  as RSpec
 import qualified Network.HTTP.Client           as HTTP
 
 startCore :: GH.GitHubToken -> HTTP.Manager -> Pool Connection -> IO Core
@@ -44,13 +47,12 @@ cancelCore :: Core -> IO ()
 cancelCore core = cancel (coreReplyHandler core)
 
 replyHandler :: Env -> IO ()
-replyHandler env = forever $
-  catch
-    ( runCore env $ do
-        (rep, assoc) <- liftIO $ atomically $ readTQueue (envReplyQueue env)
-        handleReply rep assoc
-    )
-    ( \(SomeException e) -> putStrLn $ "Exception in replyHandler: " ++ show e )
+replyHandler env = forever $ catch
+  (runCore env $ do
+    (rep, assoc) <- liftIO $ atomically $ readTQueue (envReplyQueue env)
+    handleReply rep assoc
+  )
+  (\(SomeException e) -> putStrLn $ "Exception in replyHandler: " ++ show e)
 
 submit :: Core -> Maybe Int32 -> Job.Request -> IO ()
 submit core parent job = runCore (coreEnv core) $ createJob parent job
@@ -61,8 +63,7 @@ subscribe core = atomically $ dupTChan $ envEventChan $ coreEnv core
 notify :: Event -> CoreM ()
 notify event = do
   Env {..} <- getEnv
-  liftIO $ atomically $
-    writeTChan envEventChan event
+  liftIO $ atomically $ writeTChan envEventChan event
 
 createJob :: Maybe Int32 -> Job.Request -> CoreM ()
 createJob parent req = do
@@ -71,23 +72,24 @@ createJob parent req = do
       GH.SimpleOwner {..} = owner
   Env {..} <- getEnv
   now      <- liftIO getCurrentTime
-  [job]    <- database $ runInsertReturningList (jobs db) $ insertExpressions
-    [ JobT { jobId           = default_
-           , jobName         = val_ (untagName name)
-           , jobSrcSha       = val_ (untagSha sha)
-           , jobSrcBranch    = val_ branch
-           , jobSrcOwner     = val_ (untagName simpleOwnerLogin)
-           , jobSrcRepo      = val_ (untagName repo)
-           , jobSrcMessage   = val_ (GH.eventCheckSuiteCommitMessage <$> commit)
-           , jobSrcCommitter = val_ (GH.eventCheckSuiteUserName <$> (GH.eventCheckSuiteCommitCommitter =<< commit))
-           , jobAction       = val_ (toJSON action)
-           , jobStatus       = val_ (DbEnum Job.Queued)
-           , jobConclusion   = val_ Nothing
-           , jobCreatedAt    = val_ now
-           , jobStartedAt    = val_ Nothing
-           , jobCompletedAt  = val_ Nothing
-           , jobParent       = val_ (JobKey parent)
-           }
+  [job]    <- database $ runInsertReturningList (dbJobs db) $ insertExpressions
+    [ Job
+        { jobId           = default_
+        , jobName         = val_ (untagName name)
+        , jobSrcSha       = val_ (untagSha sha)
+        , jobSrcBranch    = val_ branch
+        , jobSrcOwner     = val_ (untagName simpleOwnerLogin)
+        , jobSrcRepo      = val_ (untagName repo)
+        , jobSrcMessage   = val_ (GH.eventCheckSuiteCommitMessage <$> commit)
+        , jobSrcCommitter = val_ (GH.eventCheckSuiteUserName <$> (GH.eventCheckSuiteCommitCommitter =<< commit))
+        , jobAction       = val_ (toJSON action)
+        , jobStatus       = val_ (DbEnum Job.Queued)
+        , jobConclusion   = val_ Nothing
+        , jobCreatedAt    = val_ now
+        , jobStartedAt    = val_ Nothing
+        , jobCompletedAt  = val_ Nothing
+        , jobParent       = val_ (JobKey parent)
+        }
     ]
   let lodjurJobId = jobId job
   githubRun <-
@@ -97,8 +99,7 @@ createJob parent req = do
       }
   liftIO $ atomically $ writeTQueue envJobQueue (req, Associated { .. })
   notify JobSubmitted
- where
-  toExternalId = Text.pack . show
+  where toExternalId = Text.pack . show
 
 handleReply :: Reply -> Associated -> CoreM ()
 handleReply rep Associated {..} = do
@@ -109,7 +110,7 @@ handleReply rep Associated {..} = do
   case rep of
     Started -> do
       database $ runUpdate $ update
-        (jobs db)
+        (dbJobs db)
         (\j ->
           [ jobStatus j <-. val_ (DbEnum Job.InProgress)
           , jobStartedAt j <-. val_ (Just now)
@@ -118,29 +119,81 @@ handleReply rep Associated {..} = do
         (\j -> jobId j ==. val_ lodjurJobId)
       github_
         $ GH.updateCheckRunR simpleOwnerLogin repo checkRunId
-        $ GH.emptyUpdateCheckRun
-            { GH.updateCheckRunStatus    = Just GH.InProgress
-            , GH.updateCheckRunStartedAt = Just now
-            }
-    Concluded Result{..} -> do
+        $ GH.emptyUpdateCheckRun { GH.updateCheckRunStatus = Just GH.InProgress
+                                 , GH.updateCheckRunStartedAt = Just now
+                                 }
+    Requeued -> do
       database $ runUpdate $ update
-        (jobs db)
+        (dbJobs db)
         (\j ->
-          [ jobStatus j <-. val_ (DbEnum Job.Completed)
-          , jobConclusion j <-. val_ (Just (DbEnum conclusion))
-          , jobCompletedAt j <-. val_ (Just now)
+          [ jobStatus j <-. val_ (DbEnum Job.Queued)
+          , jobStartedAt j <-. val_ Nothing
           ]
         )
         (\j -> jobId j ==. val_ lodjurJobId)
       github_
         $ GH.updateCheckRunR simpleOwnerLogin repo checkRunId
+        $ GH.emptyUpdateCheckRun { GH.updateCheckRunStatus    = Just GH.Queued
+                                 , GH.updateCheckRunStartedAt = Nothing
+                                 }
+    LogOutput txt -> do
+      database $ runInsert $ insert (dbLogs db) $ insertExpressions
+        [ Log { logId        = default_
+              , logJob       = val_ (JobKey lodjurJobId)
+              , logCreatedAt = val_ now
+              , logText      = val_ txt
+              }
+        ]
+      notify $ LogsUpdated lodjurJobId
+    Concluded Result {..} -> do
+      database $ do
+        runUpdate $ update
+          (dbJobs db)
+          (\j ->
+            [ jobStatus j <-. val_ (DbEnum Job.Completed)
+            , jobConclusion j <-. val_ (Just (DbEnum conclusion))
+            , jobCompletedAt j <-. val_ (Just now)
+            ]
+          )
+          (\j -> jobId j ==. val_ lodjurJobId)
+        forM_ rspecResult $ \RSpecResult {..} -> do
+          [rspec] <- runInsertReturningList (dbRspecs db) $ insertExpressions
+            [ RSpec
+                { rspecId           = default_
+                , rspecJob          = val_ (JobKey lodjurJobId)
+                , rspecDuration     = val_ (RSpec.rspecDuration rspecSummary)
+                , rspecExampleCount = val_ (RSpec.rspecExampleCount rspecSummary)
+                , rspecFailureCount = val_ (RSpec.rspecFailureCount rspecSummary)
+                , rspecPendingCount = val_ (RSpec.rspecPendingCount rspecSummary)
+                }
+            ]
+          runInsert $ insert (dbRspecTests db) $ insertExpressions $ map
+            (\t ->
+              let e = RSpec.testException t
+              in
+                RSpecTest
+                  { rspectestId                 = default_
+                  , rspectestRSpec              = val_ (RSpecKey (rspecId rspec))
+                  , rspectestDescription        = val_ (RSpec.testDescription t)
+                  , rspectestFullDescription    = val_ (RSpec.testFullDescription t)
+                  , rspectestStatus             = val_ (RSpec.testStatus t)
+                  , rspectestFilePath           = val_ (RSpec.testFilePath t)
+                  , rspectestLineNumber         = val_ (RSpec.testLineNumber t)
+                  , rspectestExceptionClass     = val_ (RSpec.exceptionClass <$> e)
+                  , rspectestExceptionMessage   = val_ (RSpec.exceptionMessage <$> e)
+                  , rspectestExceptionBacktrace = val_ (Text.unlines . RSpec.exceptionBacktrace <$> e)
+                  }
+            )
+            rspecExamples
+      github_
+        $ GH.updateCheckRunR simpleOwnerLogin repo checkRunId
         $ GH.emptyUpdateCheckRun
             { GH.updateCheckRunStatus      = Just GH.Completed
             , GH.updateCheckRunConclusion  = Just $ case conclusion of
-                                              Job.Success   -> GH.Success
-                                              Job.Failure   -> GH.Failure
-                                              Job.Neutral   -> GH.Neutral
-                                              Job.Cancelled -> GH.Cancelled
+                                               Job.Success   -> GH.Success
+                                               Job.Failure   -> GH.Failure
+                                               Job.Neutral   -> GH.Neutral
+                                               Job.Cancelled -> GH.Cancelled
             , GH.updateCheckRunCompletedAt = Just now
             , GH.updateCheckRunOutput      = output
             }

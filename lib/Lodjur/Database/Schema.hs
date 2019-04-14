@@ -27,9 +27,10 @@ beam = runBeamPostgres
     -- runBeamPostgresDebug putStrLn
 
 data DB f = DB
-  { jobs        :: f (TableEntity JobT)
-  , rspecs      :: f (TableEntity RSpecT)
-  , rspecsTests :: f (TableEntity RSpecTestT)
+  { dbJobs       :: f (TableEntity JobT)
+  , dbRspecs     :: f (TableEntity RSpecT)
+  , dbRspecTests :: f (TableEntity RSpecTestT)
+  , dbLogs       :: f (TableEntity LogT)
   } deriving Generic
 
 instance Database be DB
@@ -39,7 +40,7 @@ db = defaultDbSettings
 
 -- Jobs
 
-data JobT f = JobT
+data JobT f = Job
   { jobId               :: C f Int32
   , jobName             :: C f Text
   , jobSrcSha           :: C f Text
@@ -70,6 +71,7 @@ deriving instance Show (PrimaryKey JobT (Nullable Identity))
 
 data RSpecT f = RSpec
   { rspecId             :: C f Int32
+  , rspecJob            :: PrimaryKey JobT f
   , rspecDuration       :: C f Double
   , rspecExampleCount   :: C f Int
   , rspecFailureCount   :: C f Int
@@ -85,14 +87,16 @@ deriving instance Show RSpec
 deriving instance Show (PrimaryKey RSpecT Identity)
 
 data RSpecTestT f = RSpecTest
-  { rspectestId                :: C f Int64
-  , rspectestRSpec             :: PrimaryKey RSpecT f
-  , rspectestDescription       :: C f Text
-  , rspectestFullDescription   :: C f Text
-  , rspectestStatus            :: C f Text
-  , rspectestFilePath          :: C f Text
-  , rspectestLineNumber        :: C f Int
-  , rspectestException         :: C f Value
+  { rspectestId                 :: C f Int64
+  , rspectestRSpec              :: PrimaryKey RSpecT f
+  , rspectestDescription        :: C f Text
+  , rspectestFullDescription    :: C f Text
+  , rspectestStatus             :: C f Text
+  , rspectestFilePath           :: C f Text
+  , rspectestLineNumber         :: C f Int
+  , rspectestExceptionClass     :: C f (Maybe Text)
+  , rspectestExceptionMessage   :: C f (Maybe Text)
+  , rspectestExceptionBacktrace :: C f (Maybe Text)
   } deriving (Generic, Beamable)
 
 instance Table RSpecTestT where
@@ -101,3 +105,20 @@ instance Table RSpecTestT where
 
 type RSpecTest = RSpecTestT Identity
 deriving instance Show RSpecTest
+
+-- Log output
+
+data LogT f = Log
+  { logId            :: C f Int64
+  , logJob           :: PrimaryKey JobT f
+  , logCreatedAt     :: C f UTCTime
+  , logText          :: C f Text
+  } deriving (Generic, Beamable)
+
+instance Table LogT where
+  data PrimaryKey LogT f = LogKey (C f Int64) deriving (Generic, Beamable)
+  primaryKey = LogKey <$> logId
+
+type Log = LogT Identity
+deriving instance Show Log
+deriving instance Show (PrimaryKey LogT Identity)

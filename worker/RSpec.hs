@@ -14,8 +14,8 @@ import           System.Exit
 
 import qualified Lodjur.GitHub           as GH
 import qualified Lodjur.Job              as Job
+import           Lodjur.RSpec
 
-import           RSpec.Results
 import           Types
 
 runRSpec :: CreateProcess -> IO ExitCode
@@ -40,7 +40,7 @@ rspec d app = liftIO $ do
     ExitSuccess -> do
       r <- parseCheckResults (d </> checkOutput)
       case r of
-        Just RSpecResult{..} -> do
+        Just result@RSpecResult{..} -> do
           let RSpecSummary{..} = rspecSummary
           if rspecFailureCount > 0
            then do
@@ -54,7 +54,7 @@ rspec d app = liftIO $ do
                           , checkRunOutputText        = Nothing
                           , checkRunOutputAnnotations = []
                           }
-            return $ Job.Result Job.Failure (Just output) []
+            return $ Job.Result Job.Failure (Just output) [] (Just result)
            else do
             let output = GH.CheckRunOutput
                           { checkRunOutputTitle       = "RSpec"
@@ -66,7 +66,7 @@ rspec d app = liftIO $ do
                           , checkRunOutputText        = Nothing
                           , checkRunOutputAnnotations = []
                           }
-            return $ Job.Result Job.Success (Just output) []
+            return $ Job.Result Job.Success (Just output) [] (Just result)
         Nothing -> do
           let output = GH.CheckRunOutput
                         { checkRunOutputTitle       = "RSpec"
@@ -74,10 +74,10 @@ rspec d app = liftIO $ do
                         , checkRunOutputText        = Nothing
                         , checkRunOutputAnnotations = []
                         }
-          return $ Job.Result Job.Failure (Just output) []
+          return $ Job.Result Job.Failure (Just output) [] Nothing
     ExitFailure code
       | code < 0 ->             -- exited due to signal
-          return $ Job.Result Job.Cancelled Nothing []
+          return $ Job.Result Job.Cancelled Nothing [] Nothing
       | otherwise -> do
           let output = GH.CheckRunOutput
                         { checkRunOutputTitle       = "RSpec"
@@ -85,7 +85,7 @@ rspec d app = liftIO $ do
                         , checkRunOutputText        = Nothing
                         , checkRunOutputAnnotations = []
                         }
-          return $ Job.Result Job.Failure (Just output) []
+          return $ Job.Result Job.Failure (Just output) [] Nothing
  where
   checkOutput = "lodjur-check"
   showText = Text.pack . show

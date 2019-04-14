@@ -41,10 +41,10 @@ runBuild p = liftIO $ do
                      , checkRunOutputText        = Nothing
                      , checkRunOutputAnnotations = []
                      }
-      return $ Job.Result Job.Success (Just output) []
+      return $ Job.Result Job.Success (Just output) [] Nothing
     ExitFailure code
       | code < 0 ->             -- exited due to signal
-          return $ Job.Result Job.Cancelled Nothing []
+          return $ Job.Result Job.Cancelled Nothing [] Nothing
       | otherwise -> do
           let txt = Text.pack $ unlines $ reverse $
                        take 50 (reverse $ lines stdout) ++
@@ -55,7 +55,7 @@ runBuild p = liftIO $ do
                         , checkRunOutputText        = Just txt
                         , checkRunOutputAnnotations = []
                         }
-          return $ Job.Result Job.Failure (Just output) []
+          return $ Job.Result Job.Failure (Just output) [] Nothing
 
 nixBuild :: BuildConfig -> [String] -> CreateProcess
 nixBuild BuildConfig{..} = proc buildCmd
