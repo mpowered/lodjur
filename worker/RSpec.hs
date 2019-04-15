@@ -3,12 +3,17 @@
 
 module RSpec where
 
+import           Control.Concurrent
+import           Control.Concurrent.Async
+import           Control.Exception
 import           Control.Monad
 import           Control.Monad.IO.Class
 import           Data.Aeson
 import qualified Data.Text               as Text
 import           System.Directory
 import           System.FilePath
+import           System.IO                ( Handle, hGetLine )
+import           System.IO.Error          ( isEOFError )
 import           System.Process
 import           System.Exit
 
@@ -18,13 +23,34 @@ import           Lodjur.RSpec
 
 import           Types
 
-runRSpec :: CreateProcess -> IO ExitCode
-runRSpec p = do
+logh :: Chan Job.Reply -> Handle -> IO ()
+logh chan h = go
+ where
+  go = do
+    l <- try $ hGetLine h
+    case l of
+      Left e
+        | isEOFError e -> return ()
+        | otherwise    -> go
+      Right line -> do
+        writeChan chan (Job.LogOutput (Text.pack line))
+        go
+
+process :: Chan Job.Reply -> CreateProcess -> IO ExitCode
+process chan cp = do
+  let cp_opts = cp { std_in = NoStream, std_out = CreatePipe, std_err = CreatePipe }
+  (_, Just hout, Just herr, ph) <- createProcess cp_opts
+  out <- async $ logh chan hout
+  err <- async $ logh chan herr
+  code <- waitForProcess ph
+  _ <- wait out
+  _ <- wait err
+  return code
+
+runRSpec :: Chan Job.Reply -> CreateProcess -> IO ExitCode
+runRSpec chan p = do
   putStrLn $ "RSPEC: " ++ show (cmdspec p)
-  (exitcode, stdout, stderr) <- readCreateProcessWithExitCode p ""
-  mapM_ putStrLn [ "> " <> l | l <- lines stdout ]
-  mapM_ putStrLn [ ">> " <> l | l <- lines stderr ]
-  return exitcode
+  process chan p
 
 rspecCmd :: [String] -> CreateProcess
 rspecCmd = proc ".lodjur/rspec"
@@ -32,10 +58,10 @@ rspecCmd = proc ".lodjur/rspec"
 withCwd :: FilePath -> CreateProcess -> CreateProcess
 withCwd d p = p { cwd = Just d }
 
-rspec :: FilePath -> String -> Worker Job.Result
-rspec d app = liftIO $ do
+rspec :: Chan Job.Reply -> FilePath -> String -> Worker Job.Result
+rspec chan d app = liftIO $ do
   createDirectoryIfMissing True (d </> checkOutput)
-  exitcode <- runRSpec $ withCwd d $ rspecCmd [app, checkOutput]
+  exitcode <- runRSpec chan $ withCwd d $ rspecCmd [app, checkOutput]
   case exitcode of
     ExitSuccess -> do
       r <- parseCheckResults (d </> checkOutput)

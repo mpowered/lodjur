@@ -7,6 +7,7 @@
 
 module Main where
 
+import           Control.Concurrent
 import           Control.Monad
 import           Control.Monad.Catch          (MonadMask, bracket)
 import           Control.Monad.IO.Class
@@ -63,16 +64,16 @@ start Options{..} = do
   Config{..} <- readConfiguration configFile
   gitEnv <- Git.setupEnv gitCfg
   -- let logTarget = maybe LogStdout LogFile logFile
-  withSocketsDo $ WS.runClient managerCI (runWorker Env{..} . handler)
+  withSocketsDo $ WS.runClient managerCI (\r c -> runWorker Env{..} (handler r c))
 
-handler :: Job.Request -> Worker Job.Result
-handler (Job.Request _name src act) = do
+handler :: Job.Request -> Chan Job.Reply -> Worker Job.Result
+handler (Job.Request _name src act) chan = do
   let GH.Source{..} = src
   env@Env{..} <- ask
   case act of
     Job.Build doCheck -> do
       res <- withWorkDir env (GH.RepoRef owner repo) sha $ \workdir ->
-        Build.build workdir ".lodjur/build.nix"
+        Build.build chan workdir ".lodjur/build.nix"
       if doCheck && (Job.conclusion res == Job.Success)
        then do
         let checkdeps =
@@ -91,9 +92,9 @@ handler (Job.Request _name src act) = do
 
     Job.Check app ->
       withWorkDir env (GH.RepoRef owner repo) sha $ \workdir -> do
-        res <- Build.build workdir ".lodjur/build.nix"
+        res <- Build.build chan workdir ".lodjur/build.nix"
         case Job.conclusion res of
-          Job.Success -> RSpec.rspec workdir (Text.unpack app)
+          Job.Success -> RSpec.rspec chan workdir (Text.unpack app)
           _ -> return res
 
     _ ->

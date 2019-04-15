@@ -13,10 +13,12 @@ import           Control.Monad
 import           Data.Aeson
 import qualified Data.Binary.Builder           as B
 import qualified Data.List                     as List
+import           Data.Int                      (Int32, Int64)
 import           Data.Maybe
 import           Data.Ord                      (Down(..))
 import           Data.Pool
 import           Data.Text                     (Text)
+import qualified Data.Text                     as Text
 import qualified Data.Text.Lazy                as LT
 import           Data.Time.Clock               (UTCTime)
 import           Data.Time.Format              (defaultTimeLocale, formatTime)
@@ -72,6 +74,9 @@ runServer port env githubOauth = do
     -- Routes
     -- get "/" (ifLoggedIn homeAction welcomeAction)
     get "/" homeAction
+    get ("job" <//> var) showJobAction
+    get ("job" <//> var <//> "card") streamJobCardAction
+    get ("job" <//> var <//> "logs") streamJobLogsAction
     get "/jobs" streamJobUpdatesAction
 
     -- requireLoggedIn $ do
@@ -96,6 +101,24 @@ homeAction = do
     $ BarePage
     $ div_ [id_ "jobs"]
     $ renderJobs jobs
+
+showJobAction :: Int32 -> Action ()
+showJobAction jobid = do
+  job <- runQuery $ lookupJob jobid
+  renderLayout "jobs"
+    $ BarePage
+    $ div_ $ do
+      div_ [id_ "job", data_ "job-id" (Text.pack $ show jobid)] $
+        maybe (p_ "Job not found") renderJob job
+      div_ [id_ "logs", data_ "job-id" (Text.pack $ show jobid)] ""
+
+lookupJob :: Int32 -> DB.Connection -> IO (Maybe Job)
+lookupJob jobid conn =
+  beam conn
+    $ runSelectReturningOne
+    $ select
+      $ filter_ (\j -> jobId j ==. val_ jobid)
+      $ all_ (dbJobs db)
 
 recentJobs :: Integer -> DB.Connection -> IO (Forest Job)
 recentJobs n conn = do
@@ -122,6 +145,17 @@ jobTree conn p = do
       $ all_ (dbJobs db)
   childForest <- mapM (jobTree conn) children
   return (Node p childForest)
+
+recentLogs :: Int32 -> Int64 -> DB.Connection -> IO ([Text], Int64)
+recentLogs jobid logid conn = do
+  logs <- beam conn
+    $ runSelectReturningList
+    $ select
+      $ orderBy_ (asc_ . logId)
+    $ filter_ (\l -> logJob l ==. val_ (JobKey jobid) &&. logId l >. val_ logid)
+      $ all_ (dbLogs db)
+  let n = maximum (logid : map logId logs)
+  return (map logText logs, n)
 
 data Layout
   = WithNavigation [Html ()] (Html ())
@@ -197,7 +231,7 @@ renderJobTree (Node job children) = do
 
 renderJob :: Job -> Html ()
 renderJob Job{..} =
-  div_ [class_ "card-body p-0"] $ do
+  div_ [class_ "card-body p-0"] $
     div_ [class_ "row m-0 p-1"] $ do
       case unDbEnum jobStatus of
         Job.Queued     -> div_ [class_ "col-1 badge badge-secondary"]   "Queued"
@@ -211,7 +245,8 @@ renderJob Job{..} =
             _                  -> div_ [class_ "col-1 badge badge-warning"]   "Complete"
       div_ [class_ "col-1 card-text"] (toHtml jobName)
       div_ [class_ "col-4 card-text"] (toHtml $ jobSrcOwner <> " / " <> jobSrcRepo <> " / " <> fromMaybe jobSrcSha jobSrcBranch)
-      div_ [class_ "col-1 card-text"] (toHtml $ show jobId)
+      div_ [class_ "col-1 card-text"] $
+        a_ [href_ ("/job/" <> Text.pack (show jobId))] (toHtml $ show jobId)
       div_ [class_ "col-1 card-text"] (toHtml $ fromMaybe "" jobSrcCommitter)
       div_ [class_ "col-3 card-text"] (toHtml $ fromMaybe "" jobSrcMessage)
       case fromJSON jobAction of
@@ -233,7 +268,25 @@ streamJobUpdatesAction = do
   setHeader "Content-Type"      "text/event-stream"
   setHeader "Cache-Control"     "no-cache"
   setHeader "X-Accel-Buffering" "no"
-  stream (streamJobUpdates envDbPool chan)
+  stream (streamJobUpdates chan (action envDbPool))
+ where
+  action pool = do
+    jobs <- withResource pool $ recentJobs 10
+    return $ LT.toStrict $ renderText $ renderJobs jobs
+
+streamJobCardAction :: Int32 -> Action ()
+streamJobCardAction jobid = do
+  Env{..} <- getState
+  chan <- liftIO $ Core.subscribe envCore
+  setHeader "Content-Type"      "text/event-stream"
+  setHeader "Cache-Control"     "no-cache"
+  setHeader "X-Accel-Buffering" "no"
+  stream (streamJobUpdates chan (action envDbPool))
+ where
+  action pool = do
+    job <- withResource pool $ lookupJob jobid
+    return $ LT.toStrict $ renderText $
+      maybe (p_ "Job not found") renderJob job
 
 data JobEvent
   = JobEvent
@@ -244,8 +297,8 @@ instance ToJSON JobEvent where
   toJSON JobEvent{..} =
     object [ "html" .= jobeventHtml ]
 
-streamJobUpdates :: Pool DB.Connection -> TChan Core.Event -> StreamingBody
-streamJobUpdates dbpool chan write flush = forever $ do
+streamJobUpdates :: TChan Core.Event -> IO Text -> StreamingBody
+streamJobUpdates chan action write flush = forever $ do
   event <- atomically $ readTChan chan
   case event of
     Core.JobSubmitted -> go
@@ -253,8 +306,7 @@ streamJobUpdates dbpool chan write flush = forever $ do
     _ -> return ()
  where
   go = do
-    jobs <- withResource dbpool $ recentJobs 10
-    let content = LT.toStrict $ renderText $ renderJobs jobs
+    content <- action
 
     write $ B.fromByteString "event: update\n"
     let event = JobEvent { jobeventHtml = content }
@@ -262,3 +314,40 @@ streamJobUpdates dbpool chan write flush = forever $ do
       ("data: " <> encode event <> "\n")
     write $ B.fromByteString "\n"
     flush
+
+streamJobLogsAction :: Int32 -> Action ()
+streamJobLogsAction jobid = do
+  Env{..} <- getState
+  chan <- liftIO $ Core.subscribe envCore
+  setHeader "Content-Type"      "text/event-stream"
+  setHeader "Cache-Control"     "no-cache"
+  setHeader "X-Accel-Buffering" "no"
+  stream (streamJobLogs envDbPool chan jobid)
+
+data LogEvent
+  = LogEvent
+    { logData :: ![Text]
+    }
+
+instance ToJSON LogEvent where
+  toJSON LogEvent{..} =
+    object [ "data" .= logData ]
+
+streamJobLogs :: Pool DB.Connection -> TChan Core.Event -> Int32 -> StreamingBody
+streamJobLogs dbpool chan jobid write flush = go 0
+ where
+  go n = do
+    (logs, n') <- withResource dbpool $ recentLogs jobid n
+    unless (null logs) $ do
+      write $ B.fromByteString "event: logs\n"
+      let event = LogEvent { logData = logs }
+      write $ B.fromLazyByteString
+        ("data: " <> encode event <> "\n")
+      write $ B.fromByteString "\n"
+      flush
+    next n'
+  next n = do
+    event <- atomically $ readTChan chan
+    case event of
+      Core.LogsUpdated jobid' | jobid == jobid' -> go n
+      _ -> next n

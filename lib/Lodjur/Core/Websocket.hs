@@ -97,9 +97,14 @@ accept pending Env {..} = do
 
   recvloop conn inprogress = forever $ do
     res <- recvMsg conn
-    atomically $ do
-      (_, a) <- takeTMVar inprogress
-      writeTQueue envReplyQueue (Concluded res, a)
+    atomically $
+      case res of
+        Concluded{} -> do
+          (_, a) <- takeTMVar inprogress
+          writeTQueue envReplyQueue (res, a)
+        _ -> do
+          (_, a) <- readTMVar inprogress
+          writeTQueue envReplyQueue (res, a)
 
 serverHandshake :: WS.Connection -> IO ()
 serverHandshake conn = do
@@ -141,7 +146,7 @@ makeConnectionStream conn = makeStream r s
   s Nothing   = NC.connectionClose conn `catch` \(_ :: IOException) -> return ()
   s (Just bs) = NC.connectionPut conn (LB.toStrict bs)
 
-runClient :: ConnectInfo -> (Job.Request -> IO Job.Result) -> IO ()
+runClient :: ConnectInfo -> (Job.Request -> Chan Job.Reply -> IO Job.Result) -> IO ()
 runClient ci handler =
   catch
     (runClientApp ci clientApp)
@@ -149,16 +154,16 @@ runClient ci handler =
  where
   clientApp conn = do
     clientHandshake conn
-    s <- newEmptyMVar
+    s <- newChan
     r <- newEmptyMVar
     withAsync (clientloop s r) (networking conn s r)
 
   clientloop s r = forever $ do
     req <- takeMVar r
-    rep <- handler req `catch` \(e :: IOException) -> do
+    rep <- handler req s `catch` \(e :: IOException) -> do
       putStrLn $ "Worker threw an excaption: " ++ show e
       return $ Job.Result Job.Failure Nothing [] Nothing
-    putMVar s rep
+    writeChan s (Concluded rep)
 
   networking conn s r _a = concurrently_ (sendloop conn s) (recvloop conn r)
 
@@ -167,5 +172,5 @@ runClient ci handler =
     putMVar r req
 
   sendloop conn s = forever $ do
-    rep <- takeMVar s
+    rep <- readChan s
     sendMsg conn rep

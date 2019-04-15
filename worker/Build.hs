@@ -3,9 +3,13 @@
 
 module Build where
 
+import           Control.Concurrent
+import           Control.Concurrent.Async
 import           Control.Exception
 import           Control.Monad.Reader
 import qualified Data.Text               as Text
+import           System.IO                ( Handle, hGetLine )
+import           System.IO.Error          ( isEOFError )
 import           System.Process
 import           System.Exit
 
@@ -24,19 +28,40 @@ instance Show BuildError where
 instance Exception BuildError where
   displayException (BuildError code _ _) = "BuildError: build exited with code " <> show code
 
-runBuild :: CreateProcess -> Worker Job.Result
-runBuild p = liftIO $ do
+logh :: Chan Job.Reply -> Handle -> IO ()
+logh chan h = go
+ where
+  go = do
+    l <- try $ hGetLine h
+    case l of
+      Left e
+        | isEOFError e -> return ()
+        | otherwise    -> go
+      Right line -> do
+        writeChan chan (Job.LogOutput (Text.pack line))
+        go
+
+process :: Chan Job.Reply -> CreateProcess -> IO ExitCode
+process chan cp = do
+  let cp_opts = cp { std_in = NoStream, std_out = CreatePipe, std_err = CreatePipe }
+  (_, Just hout, Just herr, ph) <- createProcess cp_opts
+  out <- async $ logh chan hout
+  err <- async $ logh chan herr
+  code <- waitForProcess ph
+  _ <- wait out
+  _ <- wait err
+  return code
+
+runBuild :: Chan Job.Reply -> CreateProcess -> Worker Job.Result
+runBuild chan p = liftIO $ do
   putStrLn $ "GIT: " <> show (cmdspec p)
-  (exitcode, stdout, stderr) <- readCreateProcessWithExitCode p ""
-  mapM_ putStrLn [ "> " <> l | l <- lines stdout ]
-  mapM_ putStrLn [ ">> " <> l | l <- lines stderr ]
+  exitcode <- process chan p
   case exitcode of
     ExitSuccess -> do
       let output = GH.CheckRunOutput
                      { checkRunOutputTitle       = "Build"
                      , checkRunOutputSummary     = Text.unlines
                         [ "nix-build completed successfully"
-                        , "`" <> Text.pack (last $ lines stdout) <> "`"
                         ]
                      , checkRunOutputText        = Nothing
                      , checkRunOutputAnnotations = []
@@ -46,13 +71,10 @@ runBuild p = liftIO $ do
       | code < 0 ->             -- exited due to signal
           return $ Job.Result Job.Cancelled Nothing [] Nothing
       | otherwise -> do
-          let txt = Text.pack $ unlines $ reverse $
-                       take 50 (reverse $ lines stdout) ++
-                       take 50 (reverse $ lines stderr)
           let output = GH.CheckRunOutput
                         { checkRunOutputTitle       = "Build"
                         , checkRunOutputSummary     = "nix-build exited with code " <> Text.pack (show code)
-                        , checkRunOutputText        = Just txt
+                        , checkRunOutputText        = Nothing   -- TODO
                         , checkRunOutputAnnotations = []
                         }
           return $ Job.Result Job.Failure (Just output) [] Nothing
@@ -63,7 +85,7 @@ nixBuild BuildConfig{..} = proc buildCmd
 withCwd :: FilePath -> CreateProcess -> CreateProcess
 withCwd d p = p { cwd = Just d }
 
-build :: FilePath -> FilePath -> Worker Job.Result
-build d file = do
+build :: Chan Job.Reply -> FilePath -> FilePath -> Worker Job.Result
+build chan d file = do
   cfg <- asks Env.buildCfg
-  runBuild $ withCwd d $ nixBuild cfg [file]
+  runBuild chan $ withCwd d $ nixBuild cfg [file]

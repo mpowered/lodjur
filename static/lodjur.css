@@ -9,3 +9,13 @@
 .child-card {
   margin: 0 auto;
 }
+
+.line {
+  font-family: monospace;
+  white-space: pre;
+  overflow: auto;
+}
+
+.line:hover {
+  background: #eee;
+}
