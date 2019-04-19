@@ -72,7 +72,7 @@ createJob parent req = do
       GH.SimpleOwner {..} = owner
   Env {..} <- getEnv
   now      <- liftIO getCurrentTime
-  [job]    <- database $ runInsertReturningList (dbJobs db) $ insertExpressions
+  [job]    <- database $ runInsertReturningList $ insert (dbJobs db) $ insertExpressions
     [ Job
         { jobId           = default_
         , jobName         = val_ (untagName name)
@@ -111,7 +111,7 @@ handleReply rep Associated {..} = do
     Started -> do
       database $ runUpdate $ update
         (dbJobs db)
-        (\j ->
+        (\j -> mconcat
           [ jobStatus j <-. val_ (DbEnum Job.InProgress)
           , jobStartedAt j <-. val_ (Just now)
           ]
@@ -125,7 +125,7 @@ handleReply rep Associated {..} = do
     Requeued -> do
       database $ runUpdate $ update
         (dbJobs db)
-        (\j ->
+        (\j -> mconcat
           [ jobStatus j <-. val_ (DbEnum Job.Queued)
           , jobStartedAt j <-. val_ Nothing
           ]
@@ -149,7 +149,7 @@ handleReply rep Associated {..} = do
       database $ do
         runUpdate $ update
           (dbJobs db)
-          (\j ->
+          (\j -> mconcat
             [ jobStatus j <-. val_ (DbEnum Job.Completed)
             , jobConclusion j <-. val_ (Just (DbEnum conclusion))
             , jobCompletedAt j <-. val_ (Just now)
@@ -157,7 +157,7 @@ handleReply rep Associated {..} = do
           )
           (\j -> jobId j ==. val_ lodjurJobId)
         forM_ rspecResult $ \RSpecResult {..} -> do
-          [rspec] <- runInsertReturningList (dbRspecs db) $ insertExpressions
+          [rspec] <- runInsertReturningList $ insert (dbRspecs db) $ insertExpressions
             [ RSpec
                 { rspecId           = default_
                 , rspecJob          = val_ (JobKey lodjurJobId)

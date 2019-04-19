@@ -1,5 +1,5 @@
 let
-  shell = (import ./lodjur.nix {}).lodjur-shell-with;
-  devpkgs = p: [ p.brittany ];
+  shell = (import ./lodjur.nix).lodjur-shell-with;
+  devpkgs = p: [ ]; # p.brittany ];
 in
   shell devpkgs

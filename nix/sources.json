@@ -1,0 +1,48 @@
+{
+    "Spock": {
+        "homepage": "https://www.spock.li",
+        "url": "https://github.com/agrafix/Spock/archive/1ba2ac810321eacdf11fc99eed1c0a83e14e79d0.tar.gz",
+        "owner": "agrafix",
+        "branch": "master",
+        "url_template": "https://github.com/<owner>/<repo>/archive/<rev>.tar.gz",
+        "repo": "Spock",
+        "type": "tarball",
+        "sha256": "0b4yacnz25392bb6mlp5binj4kzrxn4gqa5vwg9l937ijp4g4kk8",
+        "description": "Another Haskell web framework for rapid development",
+        "rev": "1ba2ac810321eacdf11fc99eed1c0a83e14e79d0"
+    },
+    "nixpkgs": {
+        "url": "https://github.com/NixOS/nixpkgs-channels/archive/7b36963e7a7363f1b40ac0a829c4644923dda909.tar.gz",
+        "owner": "NixOS",
+        "branch": "nixos-19.03",
+        "url_template": "https://github.com/<owner>/<repo>/archive/<rev>.tar.gz",
+        "repo": "nixpkgs-channels",
+        "type": "tarball",
+        "sha256": "00ni9yca0pyy8xc949sck5ppgprzcl8bbhl15l09wp03pxr90va5",
+        "description": "Nixpkgs/NixOS branches that track the Nixpkgs/NixOS channels",
+        "rev": "7b36963e7a7363f1b40ac0a829c4644923dda909"
+    },
+    "beam": {
+        "url": "https://github.com/tathougies/beam/archive/7f22ce0528c0739497ec8ab6380bc7c2df3824be.tar.gz",
+        "owner": "tathougies",
+        "branch": "master",
+        "url_template": "https://github.com/<owner>/<repo>/archive/<rev>.tar.gz",
+        "repo": "beam",
+        "type": "tarball",
+        "sha256": "1zrgxxlw54fn7x6014x7r3v1xr7399qq01nrgrjafrhasj60gx3m",
+        "description": "A type-safe, non-TH Haskell SQL library and ORM",
+        "rev": "7f22ce0528c0739497ec8ab6380bc7c2df3824be"
+    },
+    "niv": {
+        "homepage": "https://github.com/nmattia/niv",
+        "url": "https://github.com/nmattia/niv/archive/a489b65a5c3a29983701069d1ce395b23d9bde64.tar.gz",
+        "owner": "nmattia",
+        "branch": "master",
+        "url_template": "https://github.com/<owner>/<repo>/archive/<rev>.tar.gz",
+        "repo": "niv",
+        "type": "tarball",
+        "sha256": "0mvh2x4l4f3nbgzzygk317nkzbyj3xgnczivgdra4q82dg8x77ka",
+        "description": "Easy dependency management for Nix projects",
+        "rev": "a489b65a5c3a29983701069d1ce395b23d9bde64"
+    }
+}

@@ -12,6 +12,7 @@ import           Data.Text                      ( Text )
 import qualified Data.Text                     as Text
 import           Database.Beam
 import           Database.Beam.Backend.SQL
+import           Database.Beam.Backend.Types
 import           Database.Beam.Postgres
 import           Database.PostgreSQL.Simple.FromField
 import           Database.PostgreSQL.Simple.ToField
@@ -33,7 +34,7 @@ instance TextEnum a => ToField (DbEnum a) where
 instance (TextEnum a, HasSqlValueSyntax be Text) => HasSqlValueSyntax be (DbEnum a) where
   sqlValueSyntax = sqlValueSyntax . enumToText . unDbEnum
 
-instance (BackendFromField be (DbEnum a), BeamBackend be) => FromBackendRow be (DbEnum a)
+instance (Typeable a, BackendFromField be (DbEnum a), BeamBackend be) => FromBackendRow be (DbEnum a)
 
 -- Class for types able to map their values to text
 
