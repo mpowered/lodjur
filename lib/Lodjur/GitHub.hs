@@ -35,7 +35,6 @@ data Source
   , owner       :: !SimpleOwner
   , repo        :: !(Name Repo)
   , branch      :: !(Maybe Text)
-  , commit      :: !(Maybe EventCheckSuiteCommit)
   }
   deriving (Show, Eq, Ord, Generic)
 

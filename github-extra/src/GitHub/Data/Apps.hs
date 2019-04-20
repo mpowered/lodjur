@@ -29,15 +29,6 @@ data App = App
 instance NFData App where rnf = genericRnf
 instance Binary App
 
-data AppRef = AppRef
-    { appRefId    :: !(Id App)
-    , appRefName  :: !(Name App)
-    }
-  deriving (Show, Data, Typeable, Eq, Ord, Generic)
-
-instance NFData AppRef where rnf = genericRnf
-instance Binary AppRef
-
 data AccessToken = AccessToken
     { accessToken          :: !Token
     , accessTokenExpiresAt :: !(Maybe UTCTime)
@@ -70,13 +61,7 @@ instance ToJSON App where
         , "updated_at"    .= appUpdatedAt
         ]
 
-instance FromJSON AppRef where
-    parseJSON = withObject "AppRef" $ \o -> AppRef
-        <$> o .: "id"
-        <*> o .: "name"
-
 instance FromJSON AccessToken where
     parseJSON = withObject "AccessToken" $ \o -> AccessToken
         <$> (encodeUtf8 <$> o .: "token")
         <*> o .:? "expires_at"
-

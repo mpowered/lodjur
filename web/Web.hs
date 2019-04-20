@@ -1,52 +1,129 @@
-{-# LANGUAGE FlexibleContexts  #-}
-{-# LANGUAGE NamedFieldPuns    #-}
-{-# LANGUAGE OverloadedStrings #-}
-{-# LANGUAGE RecordWildCards   #-}
-{-# LANGUAGE TypeFamilies      #-}
+{-# LANGUAGE DataKinds              #-}
+{-# LANGUAGE DeriveGeneric          #-}
+{-# LANGUAGE FlexibleContexts       #-}
+{-# LANGUAGE FlexibleInstances      #-}
+{-# LANGUAGE MultiParamTypeClasses  #-}
+{-# LANGUAGE NamedFieldPuns         #-}
+{-# LANGUAGE OverloadedStrings      #-}
+{-# LANGUAGE RankNTypes             #-}
+{-# LANGUAGE TypeFamilies           #-}
+{-# LANGUAGE TypeOperators          #-}
+
 module Web
   ( runServer
   )
 where
 
-import           Control.Concurrent.STM
-import           Control.Monad
-import           Data.Aeson
-import qualified Data.Binary.Builder           as B
-import qualified Data.List                     as List
-import           Data.Int                      (Int32, Int64)
-import           Data.Maybe
-import           Data.Ord                      (Down(..))
-import           Data.Pool
+import           Control.Monad.Reader
 import           Data.Text                     (Text)
-import qualified Data.Text                     as Text
-import qualified Data.Text.Lazy                as LT
-import           Data.Time.Clock               (UTCTime)
-import           Data.Time.Format              (defaultTimeLocale, formatTime)
-import           Data.Tree                     (Tree(..), Forest)
-import           Lucid.Base                    (Html, toHtml, renderText)
--- import           Lucid.Bootstrap
-import           Lucid.Html5
+import           GHC.Generics
+import           Lucid
 import           Network.OAuth.OAuth2
-import           Network.Wai
 import qualified Network.Wai.Handler.Warp      as Warp
-import           Network.Wai.Handler.WebSockets
-import           Network.Wai.Middleware.Static
-import           Network.WebSockets      hiding ( runServer )
-import           Web.Spock               hiding ( static )
-import           Web.Spock.Config
-import           Web.Spock.Lucid
+import           Servant
+import           Servant.API.WebSocket
+import           Servant.JS
+import           Servant.HTML.Lucid
 
-import           Auth.GitHub
 import           Base
-import           WebHook
-
 import qualified Lodjur.Core                   as Core
-import           Lodjur.Database               as DB hiding ( div_ )
-import           Lodjur.Database.Enum
-import qualified Lodjur.Job                    as Job
+import qualified Lodjur.Core.Websocket         as Websocket
+import           Lodjur.GitHub.Events
+import           Lodjur.GitHub.Webhook
 
 import           Paths_lodjur
 
+type AppM = ReaderT AppCtx Handler
+
+data AppCtx = AppCtx
+  { appConfig               :: Config
+  }
+
+data Config = Config
+  { cfgGithubAppId          :: !Int
+  } deriving (Generic, Show)
+
+type App
+    = "github-event" :> Webhook
+ :<|> "js" :> "api.js" :> Get '[PlainText] Text
+ :<|> "static" :> Raw
+ :<|> "websocket" :> WebSocketPending
+ :<|> Api
+ :<|> Web
+
+type Web
+    = Get '[HTML] (Html ())
+ :<|> "job" :> Capture "jobid" Int :> Get '[HTML] (Html ())
+
+type Api = "api" :>
+ (    "start"  :> Post '[JSON] ()
+ :<|> "action" :> ReqBody '[JSON] () :> Post '[JSON] ()
+ )
+
+type Webhook
+    = GitHubCheckEvent '[ 'WebhookCheckSuiteEvent ] :> GitHubSignedReqBody '[JSON] (EventWithHookRepo CheckSuiteEvent) :> Post '[JSON] ()
+ :<|> GitHubCheckEvent '[ 'WebhookCheckRunEvent   ] :> GitHubSignedReqBody '[JSON] (EventWithHookRepo CheckRunEvent  ) :> Post '[JSON] ()
+
+app :: Core.Env -> FilePath -> ServerT App AppM
+app env static
+      = webhook
+  :<|> apijs
+  :<|> serveDirectoryFileServer static
+  :<|> websocket
+  :<|> api
+  :<|> web
+
+web :: ServerT Web AppM
+web
+    = home
+ :<|> job
+
+home :: AppM (Html ())
+home = return $
+  return ()
+
+job :: Int -> AppM (Html ())
+job _ = return $
+  return ()
+
+api :: ServerT Api AppM
+api
+    = start
+ :<|> act
+
+start :: AppM ()
+start = return ()
+
+act :: () -> AppM ()
+act _ = return ()
+
+apijs :: AppM Text
+apijs = return $ jsForAPI (Proxy :: Proxy Api) jquery
+
+websocket :: ServerT WebSocketPending AppM
+websocket = undefined
+
+webhook :: ServerT Webhook AppM
+webhook = checkSuiteEvent :<|> checkRunEvent
+
+checkSuiteEvent :: RepoWebhookCheckEvent -> ((), EventWithHookRepo CheckSuiteEvent) -> AppM ()
+checkSuiteEvent _ _ = return ()
+
+checkRunEvent :: RepoWebhookCheckEvent -> ((), EventWithHookRepo CheckRunEvent) -> AppM ()
+checkRunEvent _ _ = return ()
+
+runServer :: Int -> Env -> OAuth2 -> IO ()
+runServer port env githubOauth = do
+  static <- getDataFileName "static"
+  let key = gitHubKey (pure $ envGithubSecretToken env)
+  let ctx = AppCtx undefined
+  putStrLn $ "Serving on port " ++ show port ++ ", static from " ++ show static
+  Warp.run port $
+    serveWithContext (Proxy :: Proxy App) (key :. EmptyContext) $
+      hoistServerWithContext (Proxy :: Proxy App) (Proxy :: Proxy '[GitHubKey]) (flip runReaderT ctx) $
+        app (Core.coreEnv $ envCore env) static
+
+{-}
 runServer :: Int -> Env -> OAuth2 -> IO ()
 runServer port env githubOauth = do
   cfg    <- defaultSpockCfg emptySession (PCPool $ envDbPool env) env
@@ -255,11 +332,11 @@ renderJob Job{..} =
         Success (Job.Check app)   -> div_ [class_ "col-1 card-text"] (toHtml $ "Check " <> app)
         _                         -> div_ [class_ "col-1 card-text"] ""
 
-formatUTCTime :: UTCTime -> String
-formatUTCTime = formatTime defaultTimeLocale "%c"
+-- formatUTCTime :: UTCTime -> String
+-- formatUTCTime = formatTime defaultTimeLocale "%c"
 
-renderUTCTime :: UTCTime -> Html ()
-renderUTCTime = toHtml . formatUTCTime
+-- renderUTCTime :: UTCTime -> Html ()
+-- renderUTCTime = toHtml . formatUTCTime
 
 streamJobUpdatesAction :: Action ()
 streamJobUpdatesAction = do
@@ -351,3 +428,5 @@ streamJobLogs dbpool chan jobid write flush = go 0
     case event of
       Core.LogsUpdated jobid' | jobid == jobid' -> go n
       _ -> next n
+
+-}

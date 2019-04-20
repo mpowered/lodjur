@@ -7,9 +7,8 @@ import qualified Database.PostgreSQL.Simple    as Pg
 import qualified Lodjur.Core                   as Core
 import qualified Lodjur.GitHub                 as GH
 import qualified Network.HTTP.Client           as HTTP
-import           URI.ByteString
-import           User
-import           Web.Spock
+-- import           URI.ByteString
+-- import           Web.Spock
 
 data Env = Env
   { envGithubRepos                      :: ![Text]
@@ -22,6 +21,7 @@ data Env = Env
   , envCore                             :: !Core.Core
   }
 
+{-}
 data Session = Session
   { currentUser :: !(Maybe User)
   , continueTo  :: !(Maybe (URIRef Relative))
@@ -31,5 +31,7 @@ data Session = Session
 emptySession :: Session
 emptySession = Session Nothing Nothing Nothing
 
-type App = SpockM Pg.Connection Session Env
-type Action = SpockAction Pg.Connection Session Env
+-- type App = SpockM Pg.Connection Session Env
+-- type Action = SpockAction Pg.Connection Session Env
+
+-}

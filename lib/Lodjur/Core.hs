@@ -22,7 +22,6 @@ import           Data.Time.Clock                ( getCurrentTime )
 import           Database.Beam.Postgres
 import           Lodjur.Core.Types
 import           Lodjur.Core.Util
-import qualified Lodjur.Core.Websocket         as WS
 import           Lodjur.Database               as DB
 import           Lodjur.Database.Enum          as DB
 import           Lodjur.GitHub                  ( untagName
@@ -40,7 +39,6 @@ startCore envGithubInstallationAccessToken envHttpManager envDbPool = do
   envEventChan  <- newBroadcastTChanIO
   let coreEnv = Env { .. }
   coreReplyHandler <- async (replyHandler coreEnv)
-  let coreWebSocketApp = WS.serverApp coreEnv
   return Core { .. }
 
 cancelCore :: Core -> IO ()
@@ -80,8 +78,8 @@ createJob parent req = do
         , jobSrcBranch    = val_ branch
         , jobSrcOwner     = val_ (untagName simpleOwnerLogin)
         , jobSrcRepo      = val_ (untagName repo)
-        , jobSrcMessage   = val_ (GH.eventCheckSuiteCommitMessage <$> commit)
-        , jobSrcCommitter = val_ (GH.eventCheckSuiteUserName <$> (GH.eventCheckSuiteCommitCommitter =<< commit))
+        , jobSrcMessage   = val_ Nothing  -- FIXME
+        , jobSrcCommitter = val_ Nothing  -- FIXME
         , jobAction       = val_ (toJSON action)
         , jobStatus       = val_ (DbEnum Job.Queued)
         , jobConclusion   = val_ Nothing

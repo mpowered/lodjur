@@ -6,7 +6,8 @@
 {-# LANGUAGE RecordWildCards       #-}
 {-# LANGUAGE TypeFamilies          #-}
 
-module WebHook
+module WebHook where
+{-
   ( webhookAction
   )
 where
@@ -29,7 +30,6 @@ import qualified Lodjur.GitHub                 as GH
 import qualified Lodjur.Job                    as Job
 
 import           Base
-import           WebHook.Events
 
 ignoreEvent :: Action ()
 ignoreEvent = text "Event ignored"
@@ -131,3 +131,5 @@ validateApp app = do
 
   unless (envGithubAppId == GH.untagId (GH.appId app))
     $ text "Event ignored, different AppId"
+
+-}

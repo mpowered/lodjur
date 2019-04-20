@@ -34,7 +34,6 @@ import           Network.WebSockets             ( ServerApp )
 
 data Core = Core
   { coreReplyHandler    :: Async ()
-  , coreWebSocketApp    :: ServerApp
   , coreEnv             :: Env
   }
 
