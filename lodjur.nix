@@ -32,5 +32,9 @@ in rec
   lodjur-shell-with = devpkgs: haskellPackages.shellFor {
     packages = p: [drv];
     buildInputs = devpkgs haskellPackages;
+    withHoogle = true;
+    shellHook = ''
+        export HIE_HOOGLE_DATABASE="$(cat $(which hoogle) | sed -n -e 's|.*--database \(.*\.hoo\).*|\1|p')"
+      '';
   };
 }

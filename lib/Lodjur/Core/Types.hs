@@ -7,9 +7,6 @@ module Lodjur.Core.Types
   , CoreException(..)
   , runCore
 
-    -- Database
-  , Connection
-
     -- Server
   , ServerApp
 

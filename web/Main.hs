@@ -5,21 +5,24 @@ module Main where
 
 import           Data.Pool
 import           Data.Semigroup                 ( (<>) )
+import           Data.String.Conversions
 import qualified Database.PostgreSQL.Simple    as Pg
 import qualified Network.HTTP.Client           as Http
 import qualified Network.HTTP.Client.TLS       as Http
 import           Options.Applicative
+import qualified Web.JWT                       as JWT
 
 import           Config
-import qualified Lodjur.Core                   as Core
+import           Lodjur.Core
 import qualified Lodjur.GitHub                 as GH
 import           Web
-import           Base
 
 import           GitHub.Data.Id
 
+import           Paths_lodjur
+
 newtype LodjurOptions = LodjurOptions
-  { configFile          :: FilePath
+  { configFile :: FilePath
   }
 
 lodjur :: Parser LodjurOptions
@@ -27,40 +30,58 @@ lodjur = LodjurOptions <$> strOption
   (  long "config-file"
   <> metavar "PATH"
   <> short 'c'
-  <> value "lodjur.toml"
+  <> value "lodjur.dhall"
   <> help "Path to Lodjur configuration file"
   )
 
 main :: IO ()
-main = start =<< execParser opts
+main = app =<< execParser opts
  where
   opts = info
     (lodjur <**> helper)
-    (fullDesc <> progDesc "Lodjur" <> header
-      "Mpowered's Nixops Deployment Frontend"
-    )
+    (fullDesc <> progDesc "Lodjur" <> header "Lodjur CI and Deployment Server")
 
-start :: LodjurOptions -> IO ()
-start LodjurOptions {..} = do
-  Config
-    { githubRepos = envGithubRepos
-    , githubSecretToken = envGithubSecretToken
-    , githubAppId = envGithubAppId
-    , githubInstallationId = envGithubInstallationId
-    , .. } <- readConfiguration configFile
+app :: LodjurOptions -> IO ()
+app LodjurOptions {..} = do
+  Config {..} <- readConfig configFile
+  let HttpConfig {..}   = cfgHttp
+      GithubConfig {..} = cfgGithub
 
-  envHttpManager  <- Http.newManager Http.tlsManagerSettings
-  envDbPool       <- createPool (Pg.connect databaseConnectInfo)
-                                 Pg.close
-                                 1 60 16
-  envGithubInstallationAccessToken <- GH.installationToken
-    envHttpManager
-    (Id envGithubAppId)
-    githubAppSigner
-    (Id envGithubInstallationId)
+  staticDir   <- maybe (getDataFileName "static") (return . cs) httpStaticDir
 
-  envCore <- Core.startCore envGithubInstallationAccessToken envHttpManager envDbPool
+  httpManager <- Http.newManager Http.tlsManagerSettings
 
-  let env = Env { .. }
+  dbPool <- createPool (Pg.connect (pgConnectInfo cfgDatabase)) Pg.close 1 60 32
 
-  runServer httpPort env githubOauth
+  signer      <- parsePrivateKey (cs githubAppPrivateKey)
+  accessToken <- GH.installationToken httpManager
+                                      (ghid githubAppId)
+                                      signer
+                                      (ghid githubInstId)
+
+  core <- startCore accessToken httpManager dbPool
+
+  runServer (int httpPort)
+            staticDir
+            (int githubAppId)
+            (cs githubWebhookSecret)
+            dbPool
+            core
+
+ where
+  pgConnectInfo DbConfig {..} = Pg.ConnectInfo
+    { connectHost     = cs dbHost
+    , connectPort     = int dbPort
+    , connectDatabase = cs dbName
+    , connectUser     = cs dbUser
+    , connectPassword = cs dbPassword
+    }
+
+  int :: (Integral a, Num b) => a -> b
+  int = fromInteger . toInteger
+
+  ghid = Id . int
+
+  parsePrivateKey key =
+    maybe (fail "Invalid RSA secret.") (return . JWT.RSAPrivateKey)
+      $ JWT.readRsaSecret key
