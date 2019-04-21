@@ -20,8 +20,6 @@ import           Control.Exception
 import qualified Network.Connection            as NC
 import           Network.WebSockets            as WS
 import           Network.WebSockets.Stream
-import           Servant                       (Server)
-import           Servant.API.WebSocket
 
 import           Lodjur.Core.Types
 import qualified Lodjur.Internal.JSON          as JSON
@@ -59,9 +57,6 @@ sendMsg :: (ToJSON a, MonadIO m) => WS.Connection -> a -> m ()
 sendMsg conn msg = liftIO $ do
   sendTextData conn $ encode msg
   putStrLn $ "-> " ++ C8.unpack (encode msg)
-
-server :: Env -> Server WebSocketPending
-server env = liftIO . serverApp env
 
 serverApp :: Env -> ServerApp
 serverApp env pending = if validRequest (pendingRequest pending)

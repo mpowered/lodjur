@@ -37,6 +37,7 @@ type AppM = ReaderT AppCtx Handler
 
 data AppCtx = AppCtx
   { appConfig               :: Config
+  , appCore                 :: Core.Core
   }
 
 data Config = Config
@@ -101,7 +102,11 @@ apijs :: AppM Text
 apijs = return $ jsForAPI (Proxy :: Proxy Api) jquery
 
 websocket :: ServerT WebSocketPending AppM
-websocket = undefined
+websocket = server
+ where
+  server pc = do
+    core <- asks appCore
+    liftIO $ Websocket.serverApp (Core.coreEnv core) pc
 
 webhook :: ServerT Webhook AppM
 webhook = checkSuiteEvent :<|> checkRunEvent
@@ -116,7 +121,7 @@ runServer :: Int -> Env -> OAuth2 -> IO ()
 runServer port env githubOauth = do
   static <- getDataFileName "static"
   let key = gitHubKey (pure $ envGithubSecretToken env)
-  let ctx = AppCtx undefined
+  let ctx = AppCtx undefined undefined
   putStrLn $ "Serving on port " ++ show port ++ ", static from " ++ show static
   Warp.run port $
     serveWithContext (Proxy :: Proxy App) (key :. EmptyContext) $
