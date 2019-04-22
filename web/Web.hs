@@ -12,11 +12,13 @@
 module Web where
 
 import           Data.Aeson
+import           Data.Int                      (Int32)
 import qualified Data.List                     as List
 import           Data.Maybe
 import           Data.Ord
 import           Data.String.Conversions
 import           Data.Text                     (Text)
+import qualified Data.Text                     as Text
 import           Data.Tree
 import           Lucid
 import           Servant
@@ -30,7 +32,7 @@ import           Types
 
 type Web
     = Get '[HTML] (Html ())
- :<|> "job" :> Capture "jobid" Int :> Get '[HTML] (Html ())
+ :<|> "job" :> Capture "jobid" Int32 :> Get '[HTML] (Html ())
 
 web :: ServerT Web AppM
 web
@@ -55,6 +57,32 @@ home = do
       body_ [class_ "bare-page"] $ div_ [class_ "container-fluid"] $
         div_ [id_ "jobs"] $
           renderJobs jobs
+
+viaShow :: Show a => a -> Text
+viaShow = Text.pack . show
+
+job :: Int32 -> AppM (Html ())
+job jobid = do
+  j <- runDb $ lookupJob jobid
+  return $ doctypehtml_ $ html_ $
+    head_ $ do
+      title_ "Job"
+      link_ [rel_ "stylesheet", href_ "/static/bootstrap/css/bootstrap.min.css"]
+      link_ [rel_ "stylesheet", href_ "/static/lodjur.css"]
+      deferredScript "/static/jquery-3.0.0.slim.min.js"
+      deferredScript "/static/bootstrap/js/bootstrap.bundle.min.js"
+      deferredScript "/static/job.js"
+      body_ [class_ "bare-page"] $ div_ [class_ "container-fluid"] $ do
+        div_ [id_ "job", data_ "job-id" (viaShow jobid)] $
+          maybe (p_ "Job not found") renderJob j
+        div_ [id_ "logs", data_ "job-id" (viaShow jobid)] ""
+
+lookupJob :: Int32 -> Pg (Maybe Job)
+lookupJob jobid =
+  runSelectReturningOne
+    $ select
+      $ filter_ (\j -> jobId j ==. val_ jobid)
+      $ all_ (dbJobs db)
 
 recentJobs :: Integer -> Pg (Forest Job)
 recentJobs n = do
@@ -124,7 +152,3 @@ renderJob Job{..} =
         Success (Job.Build True)  -> div_ [class_ "col-1 card-text"] "Build and Check"
         Success (Job.Check x)     -> div_ [class_ "col-1 card-text"] (toHtml $ "Check " <> x)
         _                         -> div_ [class_ "col-1 card-text"] ""
-
-job :: Int -> AppM (Html ())
-job _ = return $
-  return ()
