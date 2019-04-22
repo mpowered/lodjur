@@ -2,7 +2,7 @@
 
 module WebSocket where
 
-import           Control.Monad.Reader
+import           Control.Monad.IO.Class
 import           Lodjur.Core
 import qualified Lodjur.Core.Websocket         as Websocket
 import           Servant
@@ -13,5 +13,5 @@ websocket :: ServerT WebSocketPending AppM
 websocket = server
  where
   server pc = do
-    core <- asks envCore
+    core <- getEnv envCore
     liftIO $ Websocket.serverApp (coreEnv core) pc
