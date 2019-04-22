@@ -67,7 +67,6 @@ createJob :: Maybe Int32 -> Job.Request -> CoreM ()
 createJob parent req = do
   let Job.Request {..}    = req
       GH.Source {..}      = githubSource
-      GH.SimpleOwner {..} = owner
   Env {..} <- getEnv
   now      <- liftIO getCurrentTime
   [job]    <- database $ runInsertReturningList $ insert (dbJobs db) $ insertExpressions
@@ -75,8 +74,8 @@ createJob parent req = do
         { jobId           = default_
         , jobName         = val_ (untagName name)
         , jobSrcSha       = val_ (untagSha sha)
-        , jobSrcBranch    = val_ branch
-        , jobSrcOwner     = val_ (untagName simpleOwnerLogin)
+        , jobSrcBranch    = val_ Nothing  -- FIXME
+        , jobSrcOwner     = val_ (untagName owner)
         , jobSrcRepo      = val_ (untagName repo)
         , jobSrcMessage   = val_ Nothing  -- FIXME
         , jobSrcCommitter = val_ Nothing  -- FIXME
@@ -91,7 +90,7 @@ createJob parent req = do
     ]
   let lodjurJobId = jobId job
   githubRun <-
-    github $ GH.createCheckRunR simpleOwnerLogin repo $ (GH.newCheckRun name sha)
+    github $ GH.createCheckRunR owner repo $ (GH.newCheckRun name sha)
       { GH.newCheckRunStatus     = Just GH.Queued
       , GH.newCheckRunExternalId = Just (toExternalId lodjurJobId)
       }
@@ -103,7 +102,6 @@ handleReply :: Reply -> Associated -> CoreM ()
 handleReply rep Associated {..} = do
   let GH.Source {..}      = githubSource
       GH.CheckRun {..}    = githubRun
-      GH.SimpleOwner {..} = owner
   now <- liftIO getCurrentTime
   case rep of
     Started -> do
@@ -116,7 +114,7 @@ handleReply rep Associated {..} = do
         )
         (\j -> jobId j ==. val_ lodjurJobId)
       github_
-        $ GH.updateCheckRunR simpleOwnerLogin repo checkRunId
+        $ GH.updateCheckRunR owner repo checkRunId
         $ GH.emptyUpdateCheckRun { GH.updateCheckRunStatus = Just GH.InProgress
                                  , GH.updateCheckRunStartedAt = Just now
                                  }
@@ -130,7 +128,7 @@ handleReply rep Associated {..} = do
         )
         (\j -> jobId j ==. val_ lodjurJobId)
       github_
-        $ GH.updateCheckRunR simpleOwnerLogin repo checkRunId
+        $ GH.updateCheckRunR owner repo checkRunId
         $ GH.emptyUpdateCheckRun { GH.updateCheckRunStatus    = Just GH.Queued
                                  , GH.updateCheckRunStartedAt = Nothing
                                  }
@@ -184,7 +182,7 @@ handleReply rep Associated {..} = do
             )
             rspecExamples
       github_
-        $ GH.updateCheckRunR simpleOwnerLogin repo checkRunId
+        $ GH.updateCheckRunR owner repo checkRunId
         $ GH.emptyUpdateCheckRun
             { GH.updateCheckRunStatus      = Just GH.Completed
             , GH.updateCheckRunConclusion  = Just $ case conclusion of

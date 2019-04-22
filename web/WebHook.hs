@@ -3,36 +3,14 @@
 {-# LANGUAGE FlexibleContexts      #-}
 {-# LANGUAGE FlexibleInstances     #-}
 {-# LANGUAGE MultiParamTypeClasses #-}
-{-# LANGUAGE NamedFieldPuns        #-}
+{-# LANGUAGE OverloadedStrings     #-}
+{-# LANGUAGE RecordWildCards       #-}
 {-# LANGUAGE TypeFamilies          #-}
 {-# LANGUAGE TypeOperators         #-}
 
 module WebHook where
 
-import           Servant
-import           Types
-import           Lodjur.GitHub.Events
-import           Lodjur.GitHub.Webhook
-
-type Webhook
-    = GitHubCheckEvent '[ 'WebhookCheckSuiteEvent ] :> GitHubSignedReqBody '[JSON] (EventWithHookRepo CheckSuiteEvent) :> Post '[JSON] ()
- :<|> GitHubCheckEvent '[ 'WebhookCheckRunEvent   ] :> GitHubSignedReqBody '[JSON] (EventWithHookRepo CheckRunEvent  ) :> Post '[JSON] ()
-
-webhook :: ServerT Webhook AppM
-webhook = checkSuiteEvent :<|> checkRunEvent
-
-checkSuiteEvent :: RepoWebhookCheckEvent -> ((), EventWithHookRepo CheckSuiteEvent) -> AppM ()
-checkSuiteEvent _ _ = return ()
-
-checkRunEvent :: RepoWebhookCheckEvent -> ((), EventWithHookRepo CheckRunEvent) -> AppM ()
-checkRunEvent _ _ = return ()
-
 {-
-  ( webhookAction
-  )
-where
-
-import           Control.Monad
 import           Control.Monad.IO.Class         ( liftIO )
 import           Control.Monad.Reader
 import           Crypto.Hash
@@ -48,108 +26,69 @@ import           Web.Spock
 import qualified Lodjur.Core                   as Core
 import qualified Lodjur.GitHub                 as GH
 import qualified Lodjur.Job                    as Job
+-}
 
-import           Base
+import           Control.Monad
+import           Control.Monad.IO.Class         ( liftIO )
+import           Servant
 
-ignoreEvent :: Action ()
-ignoreEvent = text "Event ignored"
+import           Lodjur.Core
+import           Lodjur.GitHub
+import           Lodjur.GitHub.Events
+import           Lodjur.GitHub.Payload
+import           Lodjur.GitHub.Webhook
+import           Lodjur.Job
+import           Types
 
-webhookAction :: Action ()
-webhookAction = do
-  _delivery   <- header "X-GitHub-Delivery"
-  githubEvent <- requiredHeader "X-GitHub-Event"
-  event       <- secureJsonData
-  case githubEvent of
-    "check_suite" -> checkSuiteEvent =<< parseEvent event
-    "check_run"   -> checkRunEvent =<< parseEvent event
-    _             -> ignoreEvent
-  text "Event received"
- where
-  parseEvent e = case fromJSON e of
-    Success a -> return a
-    Error   x -> raise $ "event - no parse: " <> Text.pack x
+type Webhook
+    = GitHubCheckEvent '[ 'WebhookCheckSuiteEvent ] :> GitHubSignedReqBody '[JSON] (EventWithHookRepo CheckSuiteEvent) :> Post '[JSON] ()
+ :<|> GitHubCheckEvent '[ 'WebhookCheckRunEvent   ] :> GitHubSignedReqBody '[JSON] (EventWithHookRepo CheckRunEvent  ) :> Post '[JSON] ()
 
-checkSuiteEvent :: CheckSuiteEvent -> Action ()
-checkSuiteEvent CheckSuiteEvent {..} = do
-  let action = checkSuiteEventAction
-      repo   = checkSuiteEventRepository
-      suite  = checkSuiteEventCheckSuite
-      app    = GH.eventCheckSuiteApp suite
+webhook :: ServerT Webhook AppM
+webhook = checkSuiteEvent :<|> checkRunEvent
 
-  validateApp app
-
-  -- updateCheckSuite suite repo
+checkSuiteEvent :: RepoWebhookCheckEvent -> ((), EventWithHookRepo CheckSuiteEvent) -> AppM ()
+checkSuiteEvent _ (_, e) = do
+  let CheckSuiteEvent {..} = eventOf e
+      action = evCheckSuiteAction
+      repo   = evCheckSuiteRepository
+      suite  = evCheckSuiteCheckSuite
+      
+  validateApp (whCheckSuiteApp suite)
 
   case action of
     "requested"   -> checkRequested suite repo
     "rerequested" -> checkRequested suite repo
     "completed"   -> return ()
-    _             -> raise "Unknown check_suite action received"
+    _             -> throwError err422 { errBody = "Unknown check_suite action received" }
 
-checkRunEvent :: CheckRunEvent -> Action ()
-checkRunEvent CheckRunEvent {..} = do
-  let action = checkRunEventAction
-      run    = checkRunEventCheckRun
-      suite  = GH.eventCheckRunCheckSuite run
-      app    = GH.eventCheckSuiteApp suite
+checkRunEvent :: RepoWebhookCheckEvent -> ((), EventWithHookRepo CheckRunEvent) -> AppM ()
+checkRunEvent _ (_, e) = do
+  let CheckRunEvent {..} = eventOf e
+      action = evCheckRunAction
+      run    = evCheckRunCheckRun
+      suite  = whCheckRunCheckSuite run
 
-  validateApp app
-
-  -- updateCheckRun run
+  validateApp (whCheckSuiteApp suite)
 
   case action of
-    "created"          -> return ()
-    "rerequested"      -> ignoreEvent   -- TODO: rerun
-    "requested_action" -> ignoreEvent
-    "completed"        -> return ()
-    _                  -> raise "Unknown check_run action received"
+    "created"          -> return () -- return ()
+    "rerequested"      -> return () -- ignoreEvent   -- TODO: rerun
+    "requested_action" -> return () -- ignoreEvent
+    "completed"        -> return () -- return ()
+    _                  -> throwError err422 { errBody = "Unknown check_run action received" }
 
-checkRequested :: GH.EventCheckSuite -> GH.Repo -> Action ()
-checkRequested GH.EventCheckSuite{..} GH.Repo{..} = do
-  Env{..} <- getState
-  let src = GH.Source eventCheckSuiteHeadSha repoOwner repoName (Just eventCheckSuiteHeadBranch) eventCheckSuiteHeadCommit
-  liftIO $ Core.submit envCore Nothing (Job.Request "build" src (Job.Build { doCheck = True}))
+checkRequested :: HookCheckSuite -> HookRepository -> AppM ()
+checkRequested HookCheckSuite{..} HookRepository{..} = do
+  owner <- either (const $ throwError err422 { errBody = "Unknown check_suite action received" })
+                  (return . whUserLogin)
+                  whRepoOwner
+  let src = Source (Sha whCheckSuiteHeadSha) (N owner) (N whRepoName)
+  core <- getEnv envCore
+  liftIO $ submit core Nothing (Request "build" src (Build { doCheck = True}))
 
-raise :: MonadIO m => Text -> ActionCtxT ctx m b
-raise msg = do
-  setStatus status400
-  text msg
-
-secureJsonData :: FromJSON a => Action a
-secureJsonData = do
-  key     <- envGithubSecretToken <$> getState
-  message <- body
-  xhubsig <- requiredHeader "X-HUB-SIGNATURE"
-  sig     <- maybe (raise "Github X-HUB-SIGNATURE didn't start with 'sha1='")
-                   return
-                   (Text.stripPrefix "sha1=" xhubsig)
-  digest <- maybe
-    (raise "Invalid SHA1 digest sent in X-HUB-SIGNATURE")
-    return
-    (digestFromByteString $ fst $ Base16.decode $ Text.encodeUtf8 sig)
-  unless (hmac key message == HMAC (digest :: Digest SHA1))
-    $ raise "Signatures don't match"
-  either
-    (\e ->
-      raise
-        $  "jsonData - no parse: "
-        <> Text.pack e
-        <> ". Data was:"
-        <> Text.decodeUtf8 message
-    )
-    return
-    (eitherDecodeStrict message)
-
-requiredHeader :: MonadIO m => Text -> ActionCtxT ctx m Text
-requiredHeader hdr = header hdr >>= \case
-  Just bs -> return bs
-  Nothing -> raise $ "Missing required header " <> hdr
-
-validateApp :: GH.App -> Action ()
-validateApp app = do
-  Env {..} <- getState
-
-  unless (envGithubAppId == GH.untagId (GH.appId app))
-    $ text "Event ignored, different AppId"
-
--}
+validateApp :: HookApp -> AppM ()
+validateApp a = do
+  appId <- getEnv envGithubAppId
+  unless (appId == whAppId a) $
+    throwError err412 { errBody = "Incorrect AppId" }

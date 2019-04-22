@@ -28,31 +28,31 @@ type CheckStatus = Text
 type CheckConclusion = Text
 
 data HookCheckSuite = HookCheckSuite
-  { whSuiteId                   :: !Int
-  , whSuiteHeadBranch           :: !Text
-  , whSuiteHeadSha              :: !Text
-  , whSuiteHeadCommit           :: !HookCommit
-  , whSuiteStatus               :: !CheckStatus
-  , whSuiteConclusion           :: !(Maybe CheckConclusion)
-  , whSuiteUrl                  :: !URL
-  , whSuiteApp                  :: !HookApp
+  { whCheckSuiteId              :: !Int
+  , whCheckSuiteHeadBranch      :: !Text
+  , whCheckSuiteHeadSha         :: !Text
+  , whCheckSuiteHeadCommit      :: !HookCommit
+  , whCheckSuiteStatus          :: !CheckStatus
+  , whCheckSuiteConclusion      :: !(Maybe CheckConclusion)
+  , whCheckSuiteUrl             :: !URL
+  , whCheckSuiteApp             :: !HookApp
   } deriving (Eq, Show, Typeable, Data, Generic)
 
 instance NFData HookCheckSuite where rnf = genericRnf
 
 data HookCheckRun = HookCheckRun
-  { whRunId                     :: !Int
-  , whRunName                   :: !Text
-  , whRunApp                    :: !HookApp
-  , whRunCheckSuite             :: !HookCheckSuite
-  , whRunHeadSha                :: !Text
-  , whRunStatus                 :: !CheckStatus
-  , whRunDetailsUrl             :: !(Maybe URL)
-  , whRunExternalId             :: !(Maybe Text)
-  , whRunStartedAt              :: !(Maybe UTCTime)
-  , whRunConclusion             :: !(Maybe CheckConclusion)
-  , whRunCompletedAt            :: !(Maybe UTCTime)
-  , whRunOutput                 :: !(Maybe HookOutput)
+  { whCheckRunId                :: !Int
+  , whCheckRunName              :: !Text
+  , whCheckRunApp               :: !HookApp
+  , whCheckRunCheckSuite        :: !HookCheckSuite
+  , whCheckRunHeadSha           :: !Text
+  , whCheckRunStatus            :: !CheckStatus
+  , whCheckRunDetailsUrl        :: !(Maybe URL)
+  , whCheckRunExternalId        :: !(Maybe Text)
+  , whCheckRunStartedAt         :: !(Maybe UTCTime)
+  , whCheckRunConclusion        :: !(Maybe CheckConclusion)
+  , whCheckRunCompletedAt       :: !(Maybe UTCTime)
+  , whCheckRunOutput            :: !(Maybe HookOutput)
   } deriving (Eq, Show, Typeable, Data, Generic)
 
 instance NFData HookCheckRun where rnf = genericRnf

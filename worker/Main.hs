@@ -68,11 +68,10 @@ start Options{..} = do
 
 handler :: Job.Request -> Chan Job.Reply -> Worker Job.Result
 handler (Job.Request _name src act) chan = do
-  let GH.Source{..} = src
   env@Env{..} <- ask
   case act of
     Job.Build doCheck -> do
-      res <- withWorkDir env (GH.RepoRef owner repo) sha $ \workdir ->
+      res <- withWorkDir env src $ \workdir ->
         Build.build chan workdir ".lodjur/build.nix"
       if doCheck && (Job.conclusion res == Job.Success)
        then do
@@ -91,7 +90,7 @@ handler (Job.Request _name src act) chan = do
         return res
 
     Job.Check app ->
-      withWorkDir env (GH.RepoRef owner repo) sha $ \workdir -> do
+      withWorkDir env src $ \workdir -> do
         res <- Build.build chan workdir ".lodjur/build.nix"
         case Job.conclusion res of
           Job.Success -> RSpec.rspec chan workdir (Text.unpack app)
@@ -103,11 +102,10 @@ handler (Job.Request _name src act) chan = do
 withWorkDir
   :: (MonadIO io, MonadMask io)
   => Env
-  -> GH.RepoRef
-  -> GH.Sha
+  -> GH.Source
   -> (FilePath -> io a)
   -> io a
-withWorkDir Env {..} repo sha
+withWorkDir Env{..} src
   = bracket
-    (liftIO $ Git.checkout gitEnv repo sha)
+    (liftIO $ Git.checkout gitEnv src)
     (liftIO . removeDirectoryRecursive)

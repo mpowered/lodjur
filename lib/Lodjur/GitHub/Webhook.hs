@@ -3,7 +3,6 @@
 {-# LANGUAGE FlexibleInstances      #-}
 {-# LANGUAGE GADTs                  #-}
 {-# LANGUAGE InstanceSigs           #-}
-{-# LANGUAGE KindSignatures         #-}
 {-# LANGUAGE MultiParamTypeClasses  #-}
 {-# LANGUAGE OverloadedStrings      #-}
 {-# LANGUAGE PolyKinds              #-}
@@ -25,7 +24,7 @@ import           Data.Aeson
 import qualified Data.ByteString        as BS
 import           Data.ByteString.Lazy     (toStrict)
 import           Data.List                (intercalate)
-import           Data.Maybe               (catMaybes)
+import           Data.Maybe               (mapMaybe)
 import           Data.String.Conversions  (cs)
 import           Network.Wai              (requestHeaders)
 import           Servant
@@ -54,7 +53,7 @@ instance ToJSON RepoWebhookCheckEvent where
   toJSON WebhookCheckSuiteEvent = String "check_suite"
   toJSON WebhookCheckRunEvent = String "check_run"
 
-data GitHubCheckEvent (events :: [RepoWebhookCheckEvent]) where
+data GitHubCheckEvent (events :: [RepoWebhookCheckEvent])
 
 instance
   (Reflect events, HasServer sublayout context)
@@ -87,11 +86,11 @@ instance
       eventNames = intercalate ", " $ (cs . encode) <$> events
 
       go :: DelayedIO RepoWebhookCheckEvent
-      go = withRequest $ \req -> do
+      go = withRequest $ \req ->
         case lookupGHEvent (requestHeaders req) of
           Nothing -> delayedFail err401
-          Just h -> do
-            case catMaybes $ map (`matchCheckEvent` h) events of
+          Just h ->
+            case mapMaybe (`matchCheckEvent` h) events of
               [] -> delayedFail err404
                 { errBody = cs $ "supported events: " <> eventNames }
               (event:_) -> pure event

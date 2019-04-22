@@ -15,8 +15,7 @@ import           System.FilePath
 import           System.Process
 import           System.Exit
 
-import qualified GitHub                     as GH
-import qualified GitHub.Extra               as GH
+import qualified Lodjur.GitHub              as GH
 
 newtype GitError = GitError Int
 
@@ -81,41 +80,44 @@ name = Text.unpack . GH.untagName . GH.repoRefRepo
 shaStr :: GH.Sha -> String
 shaStr = Text.unpack .GH.untagSha
 
-githubUrlFor :: Env -> GH.RepoRef -> String
-githubUrlFor _ repo = "https://github.com/" <> login repo <> "/" <> name repo <> ".git"
+nameStr :: GH.Name a -> String
+nameStr = Text.unpack .GH.untagName
 
-cachePathFor :: Env -> GH.RepoRef -> FilePath
-cachePathFor Env{..} repo = gitCache </> login repo </> name repo
+githubUrlFor :: Env -> GH.Source -> String
+githubUrlFor _ GH.Source{..} = "https://github.com/" <> nameStr owner <> "/" <> nameStr repo <> ".git"
 
-cacheClone :: Env -> GH.RepoRef -> IO ()
-cacheClone env@Env{..} repo =
+cachePathFor :: Env -> GH.Source -> FilePath
+cachePathFor Env{..} GH.Source{..} = gitCache </> nameStr owner </> nameStr repo
+
+cacheClone :: Env -> GH.Source -> IO ()
+cacheClone env@Env{..} src =
   runGit env
-    $ git env ["clone", githubUrlFor env repo, "--mirror", cachePathFor env repo]
+    $ git env ["clone", githubUrlFor env src, "--mirror", cachePathFor env src]
 
-cacheUpdate :: Env -> GH.RepoRef -> IO ()
-cacheUpdate env repo =
+cacheUpdate :: Env -> GH.Source -> IO ()
+cacheUpdate env src =
   runGit env
-    $ withCwd (cachePathFor env repo)
+    $ withCwd (cachePathFor env src)
     $ git env ["remote", "update", "--prune"]
 
-cacheGetRepo :: Env -> GH.RepoRef -> IO FilePath
-cacheGetRepo env repo = do
-  let repoPath = cachePathFor env repo
+cacheGetRepo :: Env -> GH.Source -> IO FilePath
+cacheGetRepo env src = do
+  let repoPath = cachePathFor env src
   exists <- doesPathExist repoPath
   if exists
-    then cacheUpdate env repo
-    else cacheClone env repo
+    then cacheUpdate env src
+    else cacheClone env src
   return repoPath
 
-checkout :: Env -> GH.RepoRef -> GH.Sha -> IO FilePath
-checkout env repo sha = do
-  workdir <- createNewWorkDir env (shaStr sha)
-  repoPath <- cacheGetRepo env repo
+checkout :: Env -> GH.Source -> IO FilePath
+checkout env src = do
+  workdir <- createNewWorkDir env (shaStr $ GH.sha src)
+  repoPath <- cacheGetRepo env src
   runGit env
     $ git env ["clone", repoPath, workdir]
   runGit env
     $ withCwd workdir
-    $ git env ["checkout", "--detach", shaStr sha]
+    $ git env ["checkout", "--detach", (shaStr $ GH.sha src)]
   return workdir
 
 createNewWorkDir :: Env -> String -> IO FilePath

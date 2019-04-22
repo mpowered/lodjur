@@ -24,6 +24,7 @@ import           Network.HTTP.Client            ( Manager )
 import qualified Web.JWT                       as JWT
 
 import           GitHub                        as GH
+import           GitHub.Data.Name              as GH
 import           GitHub.Extra                  as GH
 import           GitHub.Endpoints.Apps         as GH
 import           GitHub.Endpoints.Checks       as GH
@@ -32,9 +33,8 @@ import qualified Lodjur.Internal.JSON          as JSON
 data Source
   = Source
   { sha         :: !Sha
-  , owner       :: !SimpleOwner
+  , owner       :: !(Name Owner)
   , repo        :: !(Name Repo)
-  , branch      :: !(Maybe Text)
   }
   deriving (Show, Eq, Ord, Generic)
 
