@@ -1,32 +1,65 @@
-{-# LANGUAGE OverloadedStrings #-}
-{-# LANGUAGE RecordWildCards   #-}
+{-# LANGUAGE DataKinds              #-}
+{-# LANGUAGE FlexibleContexts       #-}
+{-# LANGUAGE FlexibleInstances      #-}
+{-# LANGUAGE MultiParamTypeClasses  #-}
+{-# LANGUAGE NamedFieldPuns         #-}
+{-# LANGUAGE OverloadedStrings      #-}
+{-# LANGUAGE RankNTypes             #-}
+{-# LANGUAGE RecordWildCards        #-}
+{-# LANGUAGE TypeFamilies           #-}
+{-# LANGUAGE TypeOperators          #-}
 
 module Main where
 
-import           Data.Pool
-import           Data.Semigroup                 ( (<>) )
-import           Data.String.Conversions
+import           Data.String.Conversions       (cs)
+import           Data.Text                     (Text)
 import qualified Database.PostgreSQL.Simple    as Pg
+import           GitHub.Data.Id                (Id(..))
 import qualified Network.HTTP.Client           as Http
 import qualified Network.HTTP.Client.TLS       as Http
+import qualified Network.Wai.Handler.Warp      as Warp
 import           Options.Applicative
+import           Servant
+import           Servant.API.WebSocket
 import qualified Web.JWT                       as JWT
 
-import           Config
 import           Lodjur.Core
+import           Lodjur.Database
 import qualified Lodjur.GitHub                 as GH
-import           Web
+import           Lodjur.GitHub.Webhook
 
-import           GitHub.Data.Id
+import           Api
+import           Config
+import           Types
+import           Web
+import           WebHook
+import           WebSocket
 
 import           Paths_lodjur
+
+type App
+    = "github-event" :> Webhook
+ :<|> "js" :> "api.js" :> Get '[PlainText] Text
+ :<|> "static" :> Raw
+ :<|> "websocket" :> WebSocketPending
+ :<|> Api
+ :<|> Web
+
+app :: FilePath -> ServerT App AppM
+app static
+      = webhook
+  :<|> apijs
+  :<|> serveDirectoryFileServer static
+  :<|> websocket
+  :<|> api
+  :<|> web
 
 newtype LodjurOptions = LodjurOptions
   { configFile :: FilePath
   }
 
-lodjur :: Parser LodjurOptions
-lodjur = LodjurOptions <$> strOption
+lodjurOpts :: Parser LodjurOptions
+lodjurOpts = LodjurOptions <$> strOption
   (  long "config-file"
   <> metavar "PATH"
   <> short 'c'
@@ -35,14 +68,14 @@ lodjur = LodjurOptions <$> strOption
   )
 
 main :: IO ()
-main = app =<< execParser opts
+main = lodjur =<< execParser opts
  where
   opts = info
-    (lodjur <**> helper)
+    (lodjurOpts <**> helper)
     (fullDesc <> progDesc "Lodjur" <> header "Lodjur CI and Deployment Server")
 
-app :: LodjurOptions -> IO ()
-app LodjurOptions {..} = do
+lodjur :: LodjurOptions -> IO ()
+lodjur LodjurOptions {..} = do
   Config {..} <- readConfig configFile
   let HttpConfig {..}   = cfgHttp
       GithubConfig {..} = cfgGithub
@@ -61,26 +94,29 @@ app LodjurOptions {..} = do
 
   core <- startCore accessToken httpManager dbPool
 
-  runServer (int httpPort)
-            staticDir
-            (int githubAppId)
-            (cs githubWebhookSecret)
-            dbPool
-            core
+  let key = gitHubKey (pure (cs githubWebhookSecret))
+      env = Types.Env { envGithubAppId = ci githubAppId, envCore = core, envDbPool = dbPool }
+
+  putStrLn $ "Serving on port " ++ show httpPort ++ ", static from " ++ show staticDir
+
+  Warp.run (ci httpPort) $
+    serveWithContext (Proxy :: Proxy App) (key :. EmptyContext) $
+      hoistServerWithContext (Proxy :: Proxy App) (Proxy :: Proxy '[GitHubKey]) (runApp env) $
+        app staticDir
 
  where
   pgConnectInfo DbConfig {..} = Pg.ConnectInfo
     { connectHost     = cs dbHost
-    , connectPort     = int dbPort
+    , connectPort     = ci dbPort
     , connectDatabase = cs dbName
     , connectUser     = cs dbUser
     , connectPassword = cs dbPassword
     }
 
-  int :: (Integral a, Num b) => a -> b
-  int = fromInteger . toInteger
+  ci :: (Integral a, Num b) => a -> b
+  ci = fromInteger . toInteger
 
-  ghid = Id . int
+  ghid = Id . ci
 
   parsePrivateKey key =
     maybe (fail "Invalid RSA secret.") (return . JWT.RSAPrivateKey)

@@ -1,12 +1,34 @@
+{-# LANGUAGE DataKinds             #-}
 {-# LANGUAGE DuplicateRecordFields #-}
 {-# LANGUAGE FlexibleContexts      #-}
-{-# LANGUAGE LambdaCase            #-}
+{-# LANGUAGE FlexibleInstances     #-}
+{-# LANGUAGE MultiParamTypeClasses #-}
 {-# LANGUAGE NamedFieldPuns        #-}
-{-# LANGUAGE OverloadedStrings     #-}
 {-# LANGUAGE RecordWildCards       #-}
+{-# LANGUAGE OverloadedStrings     #-}
 {-# LANGUAGE TypeFamilies          #-}
+{-# LANGUAGE TypeOperators         #-}
 
 module WebHook where
+
+import           Servant
+import           Types
+import           Lodjur.GitHub.Events
+import           Lodjur.GitHub.Webhook
+
+type Webhook
+    = GitHubCheckEvent '[ 'WebhookCheckSuiteEvent ] :> GitHubSignedReqBody '[JSON] (EventWithHookRepo CheckSuiteEvent) :> Post '[JSON] ()
+ :<|> GitHubCheckEvent '[ 'WebhookCheckRunEvent   ] :> GitHubSignedReqBody '[JSON] (EventWithHookRepo CheckRunEvent  ) :> Post '[JSON] ()
+
+webhook :: ServerT Webhook AppM
+webhook = checkSuiteEvent :<|> checkRunEvent
+
+checkSuiteEvent :: RepoWebhookCheckEvent -> ((), EventWithHookRepo CheckSuiteEvent) -> AppM ()
+checkSuiteEvent _ _ = return ()
+
+checkRunEvent :: RepoWebhookCheckEvent -> ((), EventWithHookRepo CheckRunEvent) -> AppM ()
+checkRunEvent _ _ = return ()
+
 {-
   ( webhookAction
   )

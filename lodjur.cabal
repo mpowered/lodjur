@@ -112,9 +112,11 @@ executable              lodjur
     ghc-options:        -Wall -threaded -O2 -rtsopts -with-rtsopts=-N -I0
     default-language:   Haskell2010
     other-modules:      Config
-                      , Base
+                      , Api
+                      , Types
                       , Web
                       , WebHook
+                      , WebSocket
                       , Paths_lodjur
     build-depends:      base                  >= 4.11 && < 5
                       , lodjur-lib
