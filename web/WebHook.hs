@@ -10,24 +10,6 @@
 
 module WebHook where
 
-{-
-import           Control.Monad.IO.Class         ( liftIO )
-import           Control.Monad.Reader
-import           Crypto.Hash
-import           Crypto.MAC.HMAC
-import           Data.Aeson              hiding ( json )
-import qualified Data.ByteString.Base16        as Base16
-import           Data.Text                      ( Text )
-import qualified Data.Text                     as Text
-import qualified Data.Text.Encoding            as Text
-import           Network.HTTP.Types.Status
-import           Web.Spock
-
-import qualified Lodjur.Core                   as Core
-import qualified Lodjur.GitHub                 as GH
-import qualified Lodjur.Job                    as Job
--}
-
 import           Control.Monad
 import           Control.Monad.IO.Class         ( liftIO )
 import           Servant

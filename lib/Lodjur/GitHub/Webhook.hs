@@ -62,7 +62,7 @@ instance
   type ServerT (GitHubCheckEvent events :> sublayout) m
     = RepoWebhookCheckEvent -> ServerT sublayout m
 
-  hoistServerWithContext _ _ f s = \p -> hoistServerWithContext p1 p2 f (s p) where
+  hoistServerWithContext _ _ f s = hoistServerWithContext p1 p2 f . s where
     p1 = Proxy :: Proxy sublayout
     p2 = Proxy :: Proxy context
 
@@ -83,7 +83,7 @@ instance
       events = reflect (Proxy :: Proxy events)
 
       eventNames :: String
-      eventNames = intercalate ", " $ (cs . encode) <$> events
+      eventNames = intercalate ", " $ cs . encode <$> events
 
       go :: DelayedIO RepoWebhookCheckEvent
       go = withRequest $ \req ->

@@ -117,7 +117,7 @@ checkout env src = do
     $ git env ["clone", repoPath, workdir]
   runGit env
     $ withCwd workdir
-    $ git env ["checkout", "--detach", (shaStr $ GH.sha src)]
+    $ git env ["checkout", "--detach", shaStr $ GH.sha src]
   return workdir
 
 createNewWorkDir :: Env -> String -> IO FilePath
