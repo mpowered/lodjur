@@ -1,13 +1,4 @@
-{-# LANGUAGE DataKinds             #-}
-{-# LANGUAGE DuplicateRecordFields #-}
 {-# LANGUAGE FlexibleContexts      #-}
-{-# LANGUAGE FlexibleInstances     #-}
-{-# LANGUAGE MultiParamTypeClasses #-}
-{-# LANGUAGE NamedFieldPuns        #-}
-{-# LANGUAGE RecordWildCards       #-}
-{-# LANGUAGE OverloadedStrings     #-}
-{-# LANGUAGE TypeFamilies          #-}
-{-# LANGUAGE TypeOperators         #-}
 
 module WebSocket where
 
@@ -16,7 +7,7 @@ import           Lodjur.Core
 import qualified Lodjur.Core.Websocket         as Websocket
 import           Servant
 import           Servant.API.WebSocket
-import Types
+import           Types
 
 websocket :: ServerT WebSocketPending AppM
 websocket = server

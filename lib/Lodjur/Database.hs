@@ -8,6 +8,7 @@ module Lodjur.Database
   , module Database.Beam.Backend.SQL.BeamExtensions
   , Connection
   , ConnectInfo(..)
+  , Pg
   , DbPool
   , withConnection
   )
@@ -17,7 +18,7 @@ import           Data.Pool
 import           Database.Beam
 import           Database.Beam.Backend.SQL
 import           Database.Beam.Backend.SQL.BeamExtensions
-import           Database.Beam.Postgres         ( Connection, ConnectInfo(..) )
+import           Database.Beam.Postgres         ( Connection, ConnectInfo(..), Pg )
 import           Control.Monad.Trans.Control
 import           Lodjur.Database.Schema
 

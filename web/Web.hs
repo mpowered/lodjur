@@ -12,7 +12,6 @@
 module Web where
 
 import           Data.Aeson
-import           Control.Monad.Reader
 import qualified Data.List                     as List
 import           Data.Maybe
 import           Data.Ord
@@ -42,14 +41,9 @@ deferredScript :: Text -> Html ()
 deferredScript src =
   script_ [src_ src, defer_ "defer"] ("" :: Text)
 
-runQuery :: (Connection -> IO a) -> AppM a
-runQuery q = do
-  pool <- asks Types.envDbPool
-  liftIO $ withConnection pool q
-
 home :: AppM (Html ())
 home = do
-  jobs <- runQuery $ recentJobs 10
+  jobs <- runDb $ recentJobs 10
   return $ doctypehtml_ $ html_ $
     head_ $ do
       title_ "Jobs"
@@ -62,30 +56,28 @@ home = do
         div_ [id_ "jobs"] $
           renderJobs jobs
 
-recentJobs :: Integer -> Connection -> IO (Forest Job)
-recentJobs n conn = do
-  roots <- recentRoots n conn
-  mapM (jobTree conn) roots
+recentJobs :: Integer -> Pg (Forest Job)
+recentJobs n = do
+  roots <- recentRoots n
+  mapM jobTree roots
 
-recentRoots :: Integer -> Connection -> IO [Job]
-recentRoots n conn =
-  beam conn
-    $ runSelectReturningList
+recentRoots :: Integer -> Pg [Job]
+recentRoots n =
+  runSelectReturningList
     $ select
       $ limit_ n
       $ orderBy_ (desc_ . jobId)
       $ filter_ (\j -> jobParent j ==. val_ (JobKey Nothing))
       $ all_ (dbJobs db)
 
-jobTree :: Connection -> Job -> IO (Tree Job)
-jobTree conn p = do
-  children <- beam conn
-    $ runSelectReturningList
-    $ select
-      $ orderBy_ (asc_ . jobId)
-    $ filter_ (\j -> jobParent j ==. val_ (JobKey (Just (jobId p))))
-      $ all_ (dbJobs db)
-  childForest <- mapM (jobTree conn) children
+jobTree :: Job -> Pg (Tree Job)
+jobTree p = do
+  children <- runSelectReturningList
+                $ select
+                  $ orderBy_ (asc_ . jobId)
+                $ filter_ (\j -> jobParent j ==. val_ (JobKey (Just (jobId p))))
+                  $ all_ (dbJobs db)
+  childForest <- mapM jobTree children
   return (Node p childForest)
 
 renderJobs :: Forest Job -> Html ()
