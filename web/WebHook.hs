@@ -35,7 +35,7 @@ checkSuiteEvent _ (_, e) = do
       action = evCheckSuiteAction
       repo   = evCheckSuiteRepository
       suite  = evCheckSuiteCheckSuite
-      
+
   validateApp (whCheckSuiteApp suite)
 
   case action of

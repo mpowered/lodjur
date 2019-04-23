@@ -15,6 +15,7 @@ import           Control.Exception
 import           Control.Monad
 import           Control.Monad.IO.Class         ( liftIO )
 import           Data.Aeson
+import           Data.Bifunctor
 import           Data.Int                       ( Int32 )
 import           Data.Pool
 import qualified Data.Text                     as Text
@@ -45,12 +46,17 @@ cancelCore :: Core -> IO ()
 cancelCore core = cancel (coreReplyHandler core)
 
 replyHandler :: Env -> IO ()
-replyHandler env = forever $ catch
-  (runCore env $ do
-    (rep, assoc) <- liftIO $ atomically $ readTQueue (envReplyQueue env)
-    handleReply rep assoc
-  )
-  (\(SomeException e) -> putStrLn $ "Exception in replyHandler: " ++ show e)
+replyHandler env = do
+  r <- try $ forever $
+    runCore env $ do
+      (rep, assoc) <- liftIO $ atomically $ readTQueue (envReplyQueue env)
+      handleReply rep assoc
+  case first fromException r of
+    Left (Just AsyncCancelled) -> return ()
+    Left e -> do
+      putStrLn $ "Exception in replyHandler: " ++ show e
+      replyHandler env
+    Right () -> return ()
 
 submit :: Core -> Maybe Int32 -> Job.Request -> IO ()
 submit core parent job = runCore (coreEnv core) $ createJob parent job
@@ -118,6 +124,7 @@ handleReply rep Associated {..} = do
         $ GH.emptyUpdateCheckRun { GH.updateCheckRunStatus = Just GH.InProgress
                                  , GH.updateCheckRunStartedAt = Just now
                                  }
+      notify JobUpdated
     Requeued -> do
       database $ runUpdate $ update
         (dbJobs db)
@@ -132,6 +139,7 @@ handleReply rep Associated {..} = do
         $ GH.emptyUpdateCheckRun { GH.updateCheckRunStatus    = Just GH.Queued
                                  , GH.updateCheckRunStartedAt = Nothing
                                  }
+      notify JobUpdated
     LogOutput txt -> do
       database $ runInsert $ insert (dbLogs db) $ insertExpressions
         [ Log { logId        = default_
@@ -194,4 +202,4 @@ handleReply rep Associated {..} = do
             , GH.updateCheckRunOutput      = output
             }
       mapM_ (createJob (Just lodjurJobId)) dependencies
-  notify JobUpdated
+      notify JobUpdated

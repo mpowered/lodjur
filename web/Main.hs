@@ -11,6 +11,7 @@
 
 module Main where
 
+import           Control.Exception
 import           Data.String.Conversions       (cs)
 import           Data.Text                     (Text)
 import qualified Database.PostgreSQL.Simple    as Pg
@@ -92,17 +93,16 @@ lodjur LodjurOptions {..} = do
                                       signer
                                       (ghid githubInstId)
 
-  core <- startCore accessToken httpManager dbPool
+  bracket (startCore accessToken httpManager dbPool) cancelCore $ \core -> do
+    let key = gitHubKey (pure (cs githubWebhookSecret))
+        env = Types.Env { envGithubAppId = ci githubAppId, envCore = core, envDbPool = dbPool }
 
-  let key = gitHubKey (pure (cs githubWebhookSecret))
-      env = Types.Env { envGithubAppId = ci githubAppId, envCore = core, envDbPool = dbPool }
+    putStrLn $ "Serving on port " ++ show httpPort ++ ", static from " ++ show staticDir
 
-  putStrLn $ "Serving on port " ++ show httpPort ++ ", static from " ++ show staticDir
-
-  Warp.run (ci httpPort) $
-    serveWithContext (Proxy :: Proxy App) (key :. EmptyContext) $
-      hoistServerWithContext (Proxy :: Proxy App) (Proxy :: Proxy '[GitHubKey]) (runApp env) $
-        app staticDir
+    Warp.run (ci httpPort) $
+      serveWithContext (Proxy :: Proxy App) (key :. EmptyContext) $
+        hoistServerWithContext (Proxy :: Proxy App) (Proxy :: Proxy '[GitHubKey]) (runApp env) $
+          app staticDir
 
  where
   pgConnectInfo DbConfig {..} = Pg.ConnectInfo
