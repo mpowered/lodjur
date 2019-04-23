@@ -43,39 +43,37 @@ deferredScript :: Text -> Html ()
 deferredScript src =
   script_ [src_ src, defer_ "defer"] ("" :: Text)
 
-home :: AppM (Html ())
-home = do
-  jobs <- runDb $ recentJobs 10
-  return $ doctypehtml_ $ html_ $
+lpage :: Html () -> Html () -> Html ()
+lpage title content =
+  doctypehtml_ $ html_ $
     head_ $ do
-      title_ "Jobs"
+      title_ title
       link_ [rel_ "stylesheet", href_ "/static/bootstrap/css/bootstrap.min.css"]
       link_ [rel_ "stylesheet", href_ "/static/lodjur.css"]
       deferredScript "/static/jquery-3.0.0.slim.min.js"
       deferredScript "/static/bootstrap/js/bootstrap.bundle.min.js"
       deferredScript "/static/job.js"
-      body_ [class_ "bare-page"] $ div_ [class_ "container-fluid"] $
-        div_ [id_ "jobs"] $
-          renderJobs jobs
+      body_ $
+        div_ [class_ "container-fluid"]
+          content
 
-viaShow :: Show a => a -> Text
-viaShow = Text.pack . show
+home :: AppM (Html ())
+home = do
+  jobs <- runDb $ recentJobs 10
+  return $ lpage "Jobs" $
+    div_ [id_ "jobs"] $
+      renderJobs jobs
 
 job :: Int32 -> AppM (Html ())
 job jobid = do
   j <- runDb $ lookupJob jobid
-  return $ doctypehtml_ $ html_ $
-    head_ $ do
-      title_ "Job"
-      link_ [rel_ "stylesheet", href_ "/static/bootstrap/css/bootstrap.min.css"]
-      link_ [rel_ "stylesheet", href_ "/static/lodjur.css"]
-      deferredScript "/static/jquery-3.0.0.slim.min.js"
-      deferredScript "/static/bootstrap/js/bootstrap.bundle.min.js"
-      deferredScript "/static/job.js"
-      body_ [class_ "bare-page"] $ div_ [class_ "container-fluid"] $ do
-        div_ [id_ "job", data_ "job-id" (viaShow jobid)] $
-          maybe (p_ "Job not found") renderJob j
-        div_ [id_ "logs", data_ "job-id" (viaShow jobid)] ""
+  return $ lpage "Job" $ do
+    div_ [id_ "job", data_ "job-id" (viaShow jobid)] $
+      maybe (p_ "Job not found") renderJob j
+    div_ [id_ "logs", data_ "job-id" (viaShow jobid)] ""
+
+viaShow :: Show a => a -> Text
+viaShow = Text.pack . show
 
 lookupJob :: Int32 -> Pg (Maybe Job)
 lookupJob jobid =

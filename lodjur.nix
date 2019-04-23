@@ -2,7 +2,6 @@ let
   sources = import nix/sources.nix;
   nixpkgs = import sources.nixpkgs { config.allowBroken = true; };
   beamPkg = x: haskellPackages.callCabal2nix x "${sources.beam}/${x}";
-  spockPkg = x: haskellPackages.callCabal2nix x "${sources.Spock}/${x}";
 
   inherit (nixpkgs) pkgs;
   inherit (pkgs.haskell.lib) doJailbreak dontCheck;
@@ -12,8 +11,6 @@ let
       beam-core = beamPkg "beam-core" {};
       beam-postgres = dontCheck (beamPkg "beam-postgres" {});
       beam-migrate = beamPkg "beam-migrate" {};
-      Spock = spockPkg "Spock" {};
-      Spock-core = spockPkg "Spock-core" {};
       github = pkgs.haskell.lib.doJailbreak (
                pkgs.haskell.lib.dontHaddock (
                  self.callPackage ./github {}

@@ -31,7 +31,7 @@ data-files:
 
 library                 github-extra
     hs-source-dirs:     github-extra/src
-    ghc-options:        -Wall -O2
+    ghc-options:        -Wall -O
     default-language:   Haskell2010
     exposed-modules:    GitHub.Extra
                       , GitHub.Data.Apps
@@ -50,7 +50,7 @@ library                 github-extra
 
 library                 lodjur-lib
     hs-source-dirs:     lib
-    ghc-options:        -Wall -O2
+    ghc-options:        -Wall -O
     default-language:   Haskell2010
     exposed-modules:    Lodjur.Core
                       , Lodjur.Core.Types
@@ -109,7 +109,7 @@ library                 lodjur-lib
 executable              lodjur
     hs-source-dirs:     web
     main-is:            Main.hs
-    ghc-options:        -Wall -threaded -O2 -rtsopts -with-rtsopts=-N -I0
+    ghc-options:        -Wall -threaded -O -rtsopts -with-rtsopts=-N -I0
     default-language:   Haskell2010
     other-modules:      Config
                       , Api
@@ -169,14 +169,11 @@ executable              lodjur
                       , wai-websockets        >= 3.0 && < 3.1
                       , warp                  >= 3.2 && < 3.3
                       , websockets            >= 0.12 && < 0.13
-                      , Spock
-                      , Spock-core
-                      , Spock-lucid
 
 executable              lodjur-worker
     hs-source-dirs:     worker
     main-is:            Main.hs
-    ghc-options:        -Wall -threaded -O2 -rtsopts -with-rtsopts=-N -I0
+    ghc-options:        -Wall -threaded -O -rtsopts -with-rtsopts=-N -I0
     default-language:   Haskell2010
     other-modules:      Build
                       , Config

@@ -1,16 +1,4 @@
 {
-    "Spock": {
-        "homepage": "https://www.spock.li",
-        "url": "https://github.com/agrafix/Spock/archive/1ba2ac810321eacdf11fc99eed1c0a83e14e79d0.tar.gz",
-        "owner": "agrafix",
-        "branch": "master",
-        "url_template": "https://github.com/<owner>/<repo>/archive/<rev>.tar.gz",
-        "repo": "Spock",
-        "type": "tarball",
-        "sha256": "0b4yacnz25392bb6mlp5binj4kzrxn4gqa5vwg9l937ijp4g4kk8",
-        "description": "Another Haskell web framework for rapid development",
-        "rev": "1ba2ac810321eacdf11fc99eed1c0a83e14e79d0"
-    },
     "nixpkgs": {
         "url": "https://github.com/NixOS/nixpkgs-channels/archive/7b36963e7a7363f1b40ac0a829c4644923dda909.tar.gz",
         "owner": "NixOS",
