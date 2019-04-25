@@ -27,10 +27,12 @@ beam = runBeamPostgres
     -- runBeamPostgresDebug putStrLn
 
 data DB f = DB
-  { dbJobs       :: f (TableEntity JobT)
+  { dbCommits    :: f (TableEntity CommitT)
+  , dbJobs       :: f (TableEntity JobT)
   , dbRspecs     :: f (TableEntity RSpecT)
   , dbRspecTests :: f (TableEntity RSpecTestT)
   , dbLogs       :: f (TableEntity LogT)
+  , dbUsers      :: f (TableEntity UserT)
   } deriving Generic
 
 instance Database be DB
@@ -38,17 +40,36 @@ instance Database be DB
 db :: DatabaseSettings be DB
 db = defaultDbSettings
 
+-- Commits
+
+data CommitT f = Commit
+  { commitId                :: C f Int32
+  , commitSha               :: C f Text
+  , commitOwner             :: C f Text
+  , commitRepo              :: C f Text
+  , commitBranch            :: C f (Maybe Text)
+  , commitMessage           :: C f (Maybe Text)
+  , commitAuthor            :: C f (Maybe Text)
+  , commitAuthorEmail       :: C f (Maybe Text)
+  , commitCommitter         :: C f (Maybe Text)
+  , commitCommitterEmail    :: C f (Maybe Text)
+  , commitTimestamp         :: C f (Maybe UTCTime)
+  } deriving (Generic, Beamable)
+
+instance Table CommitT where
+  data PrimaryKey CommitT f = CommitKey (C f Int32) deriving (Generic, Beamable)
+  primaryKey = CommitKey <$> commitId
+
+type Commit = CommitT Identity
+deriving instance Show Commit
+deriving instance Show (PrimaryKey CommitT Identity)
+
 -- Jobs
 
 data JobT f = Job
   { jobId               :: C f Int32
   , jobName             :: C f Text
-  , jobSrcSha           :: C f Text
-  , jobSrcBranch        :: C f (Maybe Text)
-  , jobSrcOwner         :: C f Text
-  , jobSrcRepo          :: C f Text
-  , jobSrcMessage       :: C f (Maybe Text)
-  , jobSrcCommitter     :: C f (Maybe Text)
+  , jobCommit           :: PrimaryKey CommitT f
   , jobAction           :: C f Value
   , jobStatus           :: C f (DbEnum Status)
   , jobConclusion       :: C f (Maybe (DbEnum Conclusion))
@@ -122,3 +143,24 @@ instance Table LogT where
 type Log = LogT Identity
 deriving instance Show Log
 deriving instance Show (PrimaryKey LogT Identity)
+
+-- GitHub Users
+
+data UserT f = User
+  { userId           :: C f Int32
+  , userLogin        :: C f Text
+  , userName         :: C f (Maybe Text)
+  , userEmail        :: C f (Maybe Text)
+  , userCompany      :: C f (Maybe Text)
+  , userLocation     :: C f (Maybe Text)
+  , userAvatarUrl    :: C f Text
+  , userCreatedAt    :: C f UTCTime
+  } deriving (Generic, Beamable)
+
+instance Table UserT where
+  data PrimaryKey UserT f = UserKey (C f Int32) deriving (Generic, Beamable)
+  primaryKey = UserKey <$> userId
+
+type User = UserT Identity
+deriving instance Show User
+deriving instance Show (PrimaryKey UserT Identity)

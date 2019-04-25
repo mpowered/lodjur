@@ -1,7 +1,7 @@
 {-# LANGUAGE DeriveGeneric #-}
 
 module Lodjur.GitHub
-  ( Source(..)
+  ( GitHubCommit(..)
   , GitHubToken(..)
   , staticToken
   , installationToken
@@ -30,18 +30,25 @@ import           GitHub.Endpoints.Apps         as GH
 import           GitHub.Endpoints.Checks       as GH
 import qualified Lodjur.Internal.JSON          as JSON
 
-data Source
-  = Source
-  { sha         :: !Sha
-  , owner       :: !(Name Owner)
-  , repo        :: !(Name Repo)
+data GitHubCommit
+  = GitHubCommit
+  { ghcSha            :: !Text
+  , ghcOwner          :: !Text
+  , ghcRepo           :: !Text
+  , ghcBranch         :: !(Maybe Text)
+  , ghcMessage        :: !(Maybe Text)
+  , ghcAuthor         :: !(Maybe Text)
+  , ghcAuthorEmail    :: !(Maybe Text)
+  , ghcCommitter      :: !(Maybe Text)
+  , ghcCommitterEmail :: !(Maybe Text)
+  , ghcTimestamp      :: !(Maybe UTCTime)
   }
   deriving (Show, Eq, Ord, Generic)
 
-instance ToJSON Source where
+instance ToJSON GitHubCommit where
   toEncoding = genericToEncoding JSON.options
 
-instance FromJSON Source where
+instance FromJSON GitHubCommit where
   parseJSON = genericParseJSON JSON.options
 
 data GitHubToken

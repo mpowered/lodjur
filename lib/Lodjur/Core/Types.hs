@@ -53,7 +53,7 @@ data Associated
   = Associated
     { lodjurJobId   :: Int32
     , githubRun     :: GH.CheckRun
-    , githubSource  :: GH.Source
+    , githubCommit  :: GH.GitHubCommit
     }
   deriving (Show, Eq, Ord)
 

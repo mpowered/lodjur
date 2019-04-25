@@ -65,9 +65,22 @@ checkRequested HookCheckSuite{..} HookRepository{..} = do
   owner <- either (const $ throwError err422 { errBody = "Unknown check_suite action received" })
                   (return . whUserLogin)
                   whRepoOwner
-  let src = Source (Sha whCheckSuiteHeadSha) (N owner) (N whRepoName)
+  let HookHeadCommit{..} = whCheckSuiteHeadCommit
+      commit =
+        GitHubCommit
+          { ghcSha = whCheckSuiteHeadSha
+          , ghcOwner = owner
+          , ghcRepo = whRepoName
+          , ghcBranch = Just whCheckSuiteHeadBranch
+          , ghcMessage = Just whCommitMessage
+          , ghcAuthor = Just (whSimplUserName whAuthor)
+          , ghcAuthorEmail = Just (whSimplUserEmail whAuthor)
+          , ghcCommitter = Just (whSimplUserName whCommitter)
+          , ghcCommitterEmail = Just (whSimplUserEmail whCommitter)
+          , ghcTimestamp = Just whTimestamp
+          }
   core <- getEnv envCore
-  liftIO $ submit core Nothing (Request "build" src (Build { doCheck = True}))
+  liftIO $ submit core Nothing (Request "build" commit (Build { doCheck = True}))
 
 validateApp :: HookApp -> AppM ()
 validateApp a = do

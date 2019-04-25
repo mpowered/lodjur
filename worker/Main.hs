@@ -102,10 +102,10 @@ handler (Job.Request _name src act) chan = do
 withWorkDir
   :: (MonadIO io, MonadMask io)
   => Env
-  -> GH.Source
+  -> GH.GitHubCommit
   -> (FilePath -> io a)
   -> io a
-withWorkDir Env{..} src
+withWorkDir Env{..} commit
   = bracket
-    (liftIO $ Git.checkout gitEnv src)
+    (liftIO $ Git.checkout gitEnv commit)
     (liftIO . removeDirectoryRecursive)

@@ -140,11 +140,14 @@ renderJob Job{..} =
             Just Job.Neutral   -> div_ [class_ "col-1 badge badge-info"]      "Neutral"
             _                  -> div_ [class_ "col-1 badge badge-warning"]   "Complete"
       div_ [class_ "col-1 card-text"] (toHtml jobName)
-      div_ [class_ "col-4 card-text"] (toHtml $ jobSrcOwner <> " / " <> jobSrcRepo <> " / " <> fromMaybe jobSrcSha jobSrcBranch)
+      -- div_ [class_ "col-4 card-text"] (toHtml $ jobSrcOwner <> " / " <> jobSrcRepo <> " / " <> fromMaybe jobSrcSha jobSrcBranch)
+      div_ [class_ "col-4 card-text"] (toHtml $ show jobCommit)
       div_ [class_ "col-1 card-text"] $
         a_ [href_ ("/job/" <> cs (show jobId))] (toHtml $ show jobId)
-      div_ [class_ "col-1 card-text"] (toHtml $ fromMaybe "" jobSrcCommitter)
-      div_ [class_ "col-3 card-text"] (toHtml $ fromMaybe "" jobSrcMessage)
+      -- div_ [class_ "col-1 card-text"] (toHtml $ fromMaybe "" jobSrcCommitter)
+      -- div_ [class_ "col-3 card-text"] (toHtml $ fromMaybe "" jobSrcMessage)
+      div_ [class_ "col-1 card-text"] "committer"
+      div_ [class_ "col-3 card-text"] "message"
       case fromJSON jobAction of
         Success (Job.Build False) -> div_ [class_ "col-1 card-text"] "Build"
         Success (Job.Build True)  -> div_ [class_ "col-1 card-text"] "Build and Check"

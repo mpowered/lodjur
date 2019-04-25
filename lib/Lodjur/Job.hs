@@ -17,8 +17,8 @@ import qualified Lodjur.Internal.JSON          as JSON
 import           Lodjur.RSpec
 
 data Request = Request
-  { name            :: !(GH.Name GH.CheckRun)
-  , githubSource    :: !GH.Source
+  { name            :: !Text
+  , githubCommit    :: !GH.GitHubCommit
   , action          :: !Action
   }
   deriving (Show, Eq, Ord, Generic)

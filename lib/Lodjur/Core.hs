@@ -21,13 +21,11 @@ import           Data.Pool
 import qualified Data.Text                     as Text
 import           Data.Time.Clock                ( getCurrentTime )
 import           Database.Beam.Postgres
+import qualified Database.Beam.Postgres.Full   as Pg
 import           Lodjur.Core.Types
 import           Lodjur.Core.Util
 import           Lodjur.Database               as DB
 import           Lodjur.Database.Enum          as DB
-import           Lodjur.GitHub                  ( untagName
-                                                , untagSha
-                                                )
 import qualified Lodjur.GitHub                 as GH
 import           Lodjur.Job                    as Job
 import           Lodjur.RSpec                  as RSpec
@@ -69,34 +67,59 @@ notify event = do
   Env {..} <- getEnv
   liftIO $ atomically $ writeTChan envEventChan event
 
+upsertCommit :: GH.GitHubCommit -> Pg [Commit]
+upsertCommit GH.GitHubCommit{..} =
+  Pg.runPgInsertReturningList $
+    Pg.insertReturning (dbCommits db)
+      ( insertExpressions
+        [ Commit
+            { commitId             = default_
+            , commitSha            = val_ ghcSha
+            , commitOwner          = val_ ghcOwner
+            , commitRepo           = val_ ghcRepo
+            , commitBranch         = val_ ghcBranch
+            , commitMessage        = val_ ghcMessage
+            , commitAuthor         = val_ ghcAuthor
+            , commitAuthorEmail    = val_ ghcAuthorEmail
+            , commitCommitter      = val_ ghcCommitter
+            , commitCommitterEmail = val_ ghcCommitterEmail
+            , commitTimestamp      = val_ ghcTimestamp
+            }
+        ]
+      )
+      ( Pg.onConflict (Pg.conflictingFields (\c -> (commitOwner c, commitRepo c, commitSha c))) $
+        Pg.onConflictUpdateInstead (\c -> (commitBranch c, commitMessage c, commitAuthor c, commitAuthorEmail c, commitCommitter c, commitCommitterEmail c, commitTimestamp c))
+        -- Pg.onConflictUpdateSet (\o c ->
+        --   coalesce_ [val_ ghcBranch] (current_ (commitBranch o))
+        -- )
+      )
+      ( Just id )
+
 createJob :: Maybe Int32 -> Job.Request -> CoreM ()
 createJob parent req = do
-  let Job.Request {..}    = req
-      GH.Source {..}      = githubSource
+  let Job.Request {..}     = req
+      GH.GitHubCommit {..} = githubCommit
   Env {..} <- getEnv
   now      <- liftIO getCurrentTime
-  [job]    <- database $ runInsertReturningList $ insert (dbJobs db) $ insertExpressions
-    [ Job
-        { jobId           = default_
-        , jobName         = val_ (untagName name)
-        , jobSrcSha       = val_ (untagSha sha)
-        , jobSrcBranch    = val_ Nothing  -- FIXME
-        , jobSrcOwner     = val_ (untagName owner)
-        , jobSrcRepo      = val_ (untagName repo)
-        , jobSrcMessage   = val_ Nothing  -- FIXME
-        , jobSrcCommitter = val_ Nothing  -- FIXME
-        , jobAction       = val_ (toJSON action)
-        , jobStatus       = val_ (DbEnum Job.Queued)
-        , jobConclusion   = val_ Nothing
-        , jobCreatedAt    = val_ now
-        , jobStartedAt    = val_ Nothing
-        , jobCompletedAt  = val_ Nothing
-        , jobParent       = val_ (JobKey parent)
-        }
-    ]
+  [job]    <- database $ do
+    [commit] <- upsertCommit githubCommit
+    runInsertReturningList $ insert (dbJobs db) $ insertExpressions
+      [ Job
+          { jobId           = default_
+          , jobName         = val_ name
+          , jobCommit       = val_ (pk commit)
+          , jobAction       = val_ (toJSON action)
+          , jobStatus       = val_ (DbEnum Job.Queued)
+          , jobConclusion   = val_ Nothing
+          , jobCreatedAt    = val_ now
+          , jobStartedAt    = val_ Nothing
+          , jobCompletedAt  = val_ Nothing
+          , jobParent       = val_ (JobKey parent)
+          }
+      ]
   let lodjurJobId = jobId job
   githubRun <-
-    github $ GH.createCheckRunR owner repo $ (GH.newCheckRun name sha)
+    github $ GH.createCheckRunR (GH.N ghcOwner) (GH.N ghcRepo) $ (GH.newCheckRun (GH.N name) (GH.Sha ghcSha))
       { GH.newCheckRunStatus     = Just GH.Queued
       , GH.newCheckRunExternalId = Just (toExternalId lodjurJobId)
       }
@@ -106,8 +129,8 @@ createJob parent req = do
 
 handleReply :: Reply -> Associated -> CoreM ()
 handleReply rep Associated {..} = do
-  let GH.Source {..}      = githubSource
-      GH.CheckRun {..}    = githubRun
+  let GH.GitHubCommit {..} = githubCommit
+      GH.CheckRun {..}     = githubRun
   now <- liftIO getCurrentTime
   case rep of
     Started -> do
@@ -120,7 +143,7 @@ handleReply rep Associated {..} = do
         )
         (\j -> jobId j ==. val_ lodjurJobId)
       github_
-        $ GH.updateCheckRunR owner repo checkRunId
+        $ GH.updateCheckRunR (GH.N ghcOwner) (GH.N ghcRepo) checkRunId
         $ GH.emptyUpdateCheckRun { GH.updateCheckRunStatus = Just GH.InProgress
                                  , GH.updateCheckRunStartedAt = Just now
                                  }
@@ -135,7 +158,7 @@ handleReply rep Associated {..} = do
         )
         (\j -> jobId j ==. val_ lodjurJobId)
       github_
-        $ GH.updateCheckRunR owner repo checkRunId
+        $ GH.updateCheckRunR (GH.N ghcOwner) (GH.N ghcRepo) checkRunId
         $ GH.emptyUpdateCheckRun { GH.updateCheckRunStatus    = Just GH.Queued
                                  , GH.updateCheckRunStartedAt = Nothing
                                  }
@@ -190,7 +213,7 @@ handleReply rep Associated {..} = do
             )
             rspecExamples
       github_
-        $ GH.updateCheckRunR owner repo checkRunId
+        $ GH.updateCheckRunR (GH.N ghcOwner) (GH.N ghcRepo) checkRunId
         $ GH.emptyUpdateCheckRun
             { GH.updateCheckRunStatus      = Just GH.Completed
             , GH.updateCheckRunConclusion  = Just $ case conclusion of

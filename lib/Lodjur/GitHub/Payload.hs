@@ -7,6 +7,7 @@ module Lodjur.GitHub.Payload
   , CheckConclusion
   , HookCheckSuite (..)
   , HookCheckRun (..)
+  , HookHeadCommit (..)
   , HookApp (..)
   , HookAnnotation (..)
   , HookOutput (..)
@@ -31,7 +32,7 @@ data HookCheckSuite = HookCheckSuite
   { whCheckSuiteId              :: !Int
   , whCheckSuiteHeadBranch      :: !Text
   , whCheckSuiteHeadSha         :: !Text
-  , whCheckSuiteHeadCommit      :: !HookCommit
+  , whCheckSuiteHeadCommit      :: !HookHeadCommit
   , whCheckSuiteStatus          :: !CheckStatus
   , whCheckSuiteConclusion      :: !(Maybe CheckConclusion)
   , whCheckSuiteUrl             :: !URL
@@ -56,6 +57,17 @@ data HookCheckRun = HookCheckRun
   } deriving (Eq, Show, Typeable, Data, Generic)
 
 instance NFData HookCheckRun where rnf = genericRnf
+
+data HookHeadCommit = HookHeadCommit
+  { whCommitId                  :: !Text
+  , whCommitTreeId              :: !Text
+  , whCommitMessage             :: !Text
+  , whTimestamp                 :: !UTCTime
+  , whAuthor                    :: !HookSimpleUser
+  , whCommitter                 :: !HookSimpleUser
+  } deriving (Eq, Show, Typeable, Data, Generic)
+
+instance NFData HookHeadCommit where rnf = genericRnf
 
 data HookApp = HookApp
   { whAppId                     :: !Int
@@ -118,6 +130,15 @@ instance FromJSON HookCheckRun where
     <*> o .:? "conclusion"
     <*> o .:? "completed_at"
     <*> o .:? "output"
+
+instance FromJSON HookHeadCommit where
+  parseJSON = withObject "HookHeadCommit" $ \o -> HookHeadCommit
+    <$> o .:  "id"
+    <*> o .:  "tree_id"
+    <*> o .:  "message"
+    <*> o .:  "timestamp"
+    <*> o .:  "author"
+    <*> o .:  "committer"
 
 instance FromJSON HookApp where
   parseJSON = withObject "HookApp" $ \o -> HookApp
