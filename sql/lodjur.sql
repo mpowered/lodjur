@@ -9,6 +9,7 @@ CREATE TABLE commits (
     author_email text NULL,
     committer text NULL,
     committer_email text NULL,
+    "timestamp" timestamp with time zone NULL,
     UNIQUE (owner, repo, sha)
 );
 

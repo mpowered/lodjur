@@ -71,7 +71,7 @@ instance NFData HookHeadCommit where rnf = genericRnf
 
 data HookApp = HookApp
   { whAppId                     :: !Int
-  , whAppOwner                  :: !(Either HookSimpleUser HookUser)
+  , whAppOwner                  :: !HookUser
   , whAppName                   :: !Text
   , whAppDescription            :: !(Maybe Text)
   , whAppExternalUrl            :: !(Maybe URL)
@@ -110,11 +110,11 @@ instance FromJSON HookCheckSuite where
     <$> o .:  "id"
     <*> o .:  "head_branch"
     <*> o .:  "head_sha"
+    <*> o .:  "head_commit"
     <*> o .:  "status"
     <*> o .:  "conclusion"
     <*> o .:  "url"
     <*> o .:  "app"
-    <*> o .:  "repository"
 
 instance FromJSON HookCheckRun where
   parseJSON = withObject "HookCheckRun" $ \o -> HookCheckRun

@@ -62,7 +62,7 @@ checkRunEvent _ (_, e) = do
 
 checkRequested :: HookCheckSuite -> HookRepository -> AppM ()
 checkRequested HookCheckSuite{..} HookRepository{..} = do
-  owner <- either (const $ throwError err422 { errBody = "Unknown check_suite action received" })
+  owner <- either (maybe (throwError err412 { errBody = "Can't locate repository owner login name" }) return . whSimplUserLogin)
                   (return . whUserLogin)
                   whRepoOwner
   let HookHeadCommit{..} = whCheckSuiteHeadCommit

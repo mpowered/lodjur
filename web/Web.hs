@@ -11,10 +11,9 @@
 
 module Web where
 
-import           Data.Aeson
+import qualified Data.Aeson                    as A
 import           Data.Int                      (Int32)
 import qualified Data.List                     as List
-import           Data.Maybe
 import           Data.Ord
 import           Data.String.Conversions
 import           Data.Text                     (Text)
@@ -26,7 +25,7 @@ import           Servant.HTML.Lucid
 
 import           Lodjur.Database               hiding (div_)
 import           Lodjur.Database.Enum
-import qualified Lodjur.Job                    as Job
+import           Lodjur.Job                    as Job
 
 import           Types
 
@@ -58,11 +57,12 @@ lpage title content =
           content
 
 home :: AppM (Html ())
-home = do
-  jobs <- runDb $ recentJobs 10
+home = jobs
+
+jobs :: AppM (Html ())
+jobs =
   return $ lpage "Jobs" $
-    div_ [id_ "jobs"] $
-      renderJobs jobs
+    div_ [id_ "recent-jobs"] ""
 
 job :: Int32 -> AppM (Html ())
 job jobid = do
@@ -130,14 +130,14 @@ renderJob Job{..} =
   div_ [class_ "card-body p-0"] $
     div_ [class_ "row m-0 p-1"] $ do
       case unDbEnum jobStatus of
-        Job.Queued     -> div_ [class_ "col-1 badge badge-secondary"]   "Queued"
-        Job.InProgress -> div_ [class_ "col-1 badge badge-primary"] "In Progress"
-        Job.Completed  ->
+        Queued     -> div_ [class_ "col-1 badge badge-secondary"]   "Queued"
+        InProgress -> div_ [class_ "col-1 badge badge-primary"] "In Progress"
+        Completed  ->
           case unDbEnum <$> jobConclusion of
-            Just Job.Success   -> div_ [class_ "col-1 badge badge-success"]   "Success"
-            Just Job.Failure   -> div_ [class_ "col-1 badge badge-danger"]    "Failure"
-            Just Job.Cancelled -> div_ [class_ "col-1 badge badge-warning"]   "Cancelled"
-            Just Job.Neutral   -> div_ [class_ "col-1 badge badge-info"]      "Neutral"
+            Just Success   -> div_ [class_ "col-1 badge badge-success"]   "Success"
+            Just Failure   -> div_ [class_ "col-1 badge badge-danger"]    "Failure"
+            Just Cancelled -> div_ [class_ "col-1 badge badge-warning"]   "Cancelled"
+            Just Neutral   -> div_ [class_ "col-1 badge badge-info"]      "Neutral"
             _                  -> div_ [class_ "col-1 badge badge-warning"]   "Complete"
       div_ [class_ "col-1 card-text"] (toHtml jobName)
       -- div_ [class_ "col-4 card-text"] (toHtml $ jobSrcOwner <> " / " <> jobSrcRepo <> " / " <> fromMaybe jobSrcSha jobSrcBranch)
@@ -148,8 +148,8 @@ renderJob Job{..} =
       -- div_ [class_ "col-3 card-text"] (toHtml $ fromMaybe "" jobSrcMessage)
       div_ [class_ "col-1 card-text"] "committer"
       div_ [class_ "col-3 card-text"] "message"
-      case fromJSON jobAction of
-        Success (Job.Build False) -> div_ [class_ "col-1 card-text"] "Build"
-        Success (Job.Build True)  -> div_ [class_ "col-1 card-text"] "Build and Check"
-        Success (Job.Check x)     -> div_ [class_ "col-1 card-text"] (toHtml $ "Check " <> x)
-        _                         -> div_ [class_ "col-1 card-text"] ""
+      case A.fromJSON jobAction of
+        A.Success (Build False) -> div_ [class_ "col-1 card-text"] "Build"
+        A.Success (Build True)  -> div_ [class_ "col-1 card-text"] "Build and Check"
+        A.Success (Check x)     -> div_ [class_ "col-1 card-text"] (toHtml $ "Check " <> x)
+        _                       -> div_ [class_ "col-1 card-text"] ""

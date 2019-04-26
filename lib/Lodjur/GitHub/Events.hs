@@ -23,7 +23,6 @@ data CheckSuiteEvent = CheckSuiteEvent
   { evCheckSuiteAction          :: !Text
   , evCheckSuiteCheckSuite      :: !HookCheckSuite
   , evCheckSuiteRepository      :: !HookRepository
-  , evCheckSuiteOrganization    :: !HookOrganization
   , evCheckSuiteSender          :: !HookUser
   } deriving (Eq, Show, Typeable, Data, Generic)
 
@@ -35,7 +34,6 @@ data CheckRunEvent = CheckRunEvent
   { evCheckRunAction            :: !Text
   , evCheckRunCheckRun          :: !HookCheckRun
   , evCheckRunRepository        :: !HookRepository
-  , evCheckRunOrganization      :: !HookOrganization
   , evCheckRunSender            :: !HookUser
   } deriving (Eq, Show, Typeable, Data, Generic)
 
@@ -48,7 +46,6 @@ instance FromJSON CheckSuiteEvent where
     <$> o .: "action"
     <*> o .: "check_suite"
     <*> o .: "repository"
-    <*> o .: "organization"
     <*> o .: "sender"
 
 instance FromJSON CheckRunEvent where
@@ -56,5 +53,4 @@ instance FromJSON CheckRunEvent where
     <$> o .: "action"
     <*> o .: "check_run"
     <*> o .: "repository"
-    <*> o .: "organization"
     <*> o .: "sender"

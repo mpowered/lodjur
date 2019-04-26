@@ -2,7 +2,7 @@
 
 log-file = "worker.log"
 work-dir = "/home/shaun/devel/mpowered/lodjur/mpowered-services"
-manager = "ws://neptune:4000/manager"
+manager = "ws://neptune:4000/websocket"
 
 [redis]
 host = "localhost"

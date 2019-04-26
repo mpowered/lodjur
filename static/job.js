@@ -30,13 +30,13 @@ function subscribeToLogs(logs) {
   if (jobid) {
     console.log("subscribing to log events");
     var stream = new EventSource('/job/' + jobid + '/logs');
-  
+
     stream.addEventListener('logs', function (e) {
       var data = JSON.parse(e.data);
       data.data.forEach(function (line) {
         var l = document.createElement('div');
         l.classList.add('line');
-	l.append(line)
+        l.append(line)
         logs.append(l);
       });
     });
