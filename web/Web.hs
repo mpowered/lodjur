@@ -5,28 +5,19 @@
 {-# LANGUAGE NamedFieldPuns         #-}
 {-# LANGUAGE OverloadedStrings      #-}
 {-# LANGUAGE RankNTypes             #-}
-{-# LANGUAGE RecordWildCards        #-}
 {-# LANGUAGE TypeFamilies           #-}
 {-# LANGUAGE TypeOperators          #-}
 
 module Web where
 
-import qualified Data.Aeson                    as A
 import           Data.Int                      (Int32)
-import qualified Data.List                     as List
-import           Data.Ord
-import           Data.String.Conversions
 import           Data.Text                     (Text)
 import qualified Data.Text                     as Text
-import           Data.Tree
 import           Lucid
 import           Servant
 import           Servant.HTML.Lucid
 
-import           Lodjur.Database               hiding (div_)
-import           Lodjur.Database.Enum
-import           Lodjur.Job                    as Job
-
+import           Job
 import           Types
 
 type Web
@@ -35,8 +26,8 @@ type Web
 
 web :: ServerT Web AppM
 web
-    = home
- :<|> job
+    = jobsP
+ :<|> jobP
 
 deferredScript :: Text -> Html ()
 deferredScript src =
@@ -56,100 +47,20 @@ lpage title content =
         div_ [class_ "container-fluid"]
           content
 
-home :: AppM (Html ())
-home = jobs
-
-jobs :: AppM (Html ())
-jobs =
+jobsP :: AppM (Html ())
+jobsP = do
+  jobs <- runDb $ recentRoots 20
   return $ lpage "Jobs" $
-    div_ [id_ "recent-jobs"] ""
+    div_ [id_ "recent-jobs"] $
+      mconcat (toHtml <$> jobs)
 
-job :: Int32 -> AppM (Html ())
-job jobid = do
+jobP :: Int32 -> AppM (Html ())
+jobP jobid = do
   j <- runDb $ lookupJob jobid
   return $ lpage "Job" $ do
     div_ [id_ "job", data_ "job-id" (viaShow jobid)] $
-      maybe (p_ "Job not found") renderJob j
+      maybe (p_ "Job not found") toHtml j
     div_ [id_ "logs", data_ "job-id" (viaShow jobid)] ""
 
 viaShow :: Show a => a -> Text
 viaShow = Text.pack . show
-
-lookupJob :: Int32 -> Pg (Maybe Job)
-lookupJob jobid =
-  runSelectReturningOne
-    $ select
-      $ filter_ (\j -> jobId j ==. val_ jobid)
-      $ all_ (dbJobs db)
-
-recentJobs :: Integer -> Pg (Forest Job)
-recentJobs n = do
-  roots <- recentRoots n
-  mapM jobTree roots
-
-recentRoots :: Integer -> Pg [Job]
-recentRoots n =
-  runSelectReturningList
-    $ select
-      $ limit_ n
-      $ orderBy_ (desc_ . jobId)
-      $ filter_ (\j -> jobParent j ==. val_ (JobKey Nothing))
-      $ all_ (dbJobs db)
-
-jobTree :: Job -> Pg (Tree Job)
-jobTree p = do
-  children <- runSelectReturningList
-                $ select
-                  $ orderBy_ (asc_ . jobId)
-                $ filter_ (\j -> jobParent j ==. val_ (JobKey (Just (jobId p))))
-                  $ all_ (dbJobs db)
-  childForest <- mapM jobTree children
-  return (Node p childForest)
-
-renderJobs :: Forest Job -> Html ()
-renderJobs jobs =
-  div_ [class_ "bg-secondary p-3"] $
-    mapM_ renderJobTree (sortDesc jobs)
- where
-  sortDesc = List.sortOn (Down . jobId . rootLabel)
-
-renderJobTree :: Tree Job -> Html ()
-renderJobTree (Node job' children) = do
-  let ty = case jobParent job' of
-            JobKey (Just _) -> "card p-1 my-0"
-            JobKey Nothing  -> "card p-2 my-3"
-  div_ [class_ ty] $ do
-    renderJob job'
-    div_ [class_ "ml-3"] $
-      mapM_ renderJobTree (sortAsc children)
- where
-  sortAsc = List.sortOn (jobId . rootLabel)
-
-renderJob :: Job -> Html ()
-renderJob Job{..} =
-  div_ [class_ "card-body p-0"] $
-    div_ [class_ "row m-0 p-1"] $ do
-      case unDbEnum jobStatus of
-        Queued     -> div_ [class_ "col-1 badge badge-secondary"]   "Queued"
-        InProgress -> div_ [class_ "col-1 badge badge-primary"] "In Progress"
-        Completed  ->
-          case unDbEnum <$> jobConclusion of
-            Just Success   -> div_ [class_ "col-1 badge badge-success"]   "Success"
-            Just Failure   -> div_ [class_ "col-1 badge badge-danger"]    "Failure"
-            Just Cancelled -> div_ [class_ "col-1 badge badge-warning"]   "Cancelled"
-            Just Neutral   -> div_ [class_ "col-1 badge badge-info"]      "Neutral"
-            _                  -> div_ [class_ "col-1 badge badge-warning"]   "Complete"
-      div_ [class_ "col-1 card-text"] (toHtml jobName)
-      -- div_ [class_ "col-4 card-text"] (toHtml $ jobSrcOwner <> " / " <> jobSrcRepo <> " / " <> fromMaybe jobSrcSha jobSrcBranch)
-      div_ [class_ "col-4 card-text"] (toHtml $ show jobCommit)
-      div_ [class_ "col-1 card-text"] $
-        a_ [href_ ("/job/" <> cs (show jobId))] (toHtml $ show jobId)
-      -- div_ [class_ "col-1 card-text"] (toHtml $ fromMaybe "" jobSrcCommitter)
-      -- div_ [class_ "col-3 card-text"] (toHtml $ fromMaybe "" jobSrcMessage)
-      div_ [class_ "col-1 card-text"] "committer"
-      div_ [class_ "col-3 card-text"] "message"
-      case A.fromJSON jobAction of
-        A.Success (Build False) -> div_ [class_ "col-1 card-text"] "Build"
-        A.Success (Build True)  -> div_ [class_ "col-1 card-text"] "Build and Check"
-        A.Success (Check x)     -> div_ [class_ "col-1 card-text"] (toHtml $ "Check " <> x)
-        _                       -> div_ [class_ "col-1 card-text"] ""
