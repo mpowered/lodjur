@@ -3,6 +3,7 @@
 .ghc.environment.*
 .stack-work/
 .cabal-sandbox
+cabal.project.local*
 cabal.sandbox.config
 .DS_Store
 *.swp
