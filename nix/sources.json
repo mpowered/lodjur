@@ -1,14 +1,14 @@
 {
     "nixpkgs": {
-        "url": "https://github.com/NixOS/nixpkgs-channels/archive/7b36963e7a7363f1b40ac0a829c4644923dda909.tar.gz",
+        "url": "https://github.com/NixOS/nixpkgs-channels/archive/cf3e277dd0bd710af0df667e9364f4bd80c72713.tar.gz",
         "owner": "NixOS",
         "branch": "nixos-19.03",
         "url_template": "https://github.com/<owner>/<repo>/archive/<rev>.tar.gz",
         "repo": "nixpkgs-channels",
         "type": "tarball",
-        "sha256": "00ni9yca0pyy8xc949sck5ppgprzcl8bbhl15l09wp03pxr90va5",
+        "sha256": "1abyadl3sxf67yi65758hq6hf2j07afgp1fmkk7kd94dadx6r6f4",
         "description": "Nixpkgs/NixOS branches that track the Nixpkgs/NixOS channels",
-        "rev": "7b36963e7a7363f1b40ac0a829c4644923dda909"
+        "rev": "cf3e277dd0bd710af0df667e9364f4bd80c72713"
     },
     "beam": {
         "url": "https://github.com/tathougies/beam/archive/7f22ce0528c0739497ec8ab6380bc7c2df3824be.tar.gz",

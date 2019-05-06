@@ -4,19 +4,23 @@ let
   beamPkg = x: haskellPackages.callCabal2nix x "${sources.beam}/${x}";
 
   inherit (nixpkgs) pkgs;
-  inherit (pkgs.haskell.lib) doJailbreak dontCheck;
+  inherit (pkgs.haskell.lib) doJailbreak dontCheck dontHaddock;
 
   haskellPackages = pkgs.haskellPackages.override {
     overrides = self: super: {
       beam-core = beamPkg "beam-core" {};
       beam-postgres = dontCheck (beamPkg "beam-postgres" {});
       beam-migrate = beamPkg "beam-migrate" {};
-      github = pkgs.haskell.lib.doJailbreak (
-               pkgs.haskell.lib.dontHaddock (
-                 self.callPackage ./github {}
-               ));
+      github = doJailbreak ( dontHaddock ( self.callPackage ./github {} ) );
       jwt = self.callPackage ./jwt.nix {};
       superbuffer = dontCheck super.superbuffer;
+
+      # Not on hackage yet
+      servant-event-stream = (import sources.servant-event-stream { inherit pkgs; }).servant-event-stream;
+
+      # For shell: bittany deps
+      multistate = dontCheck super.multistate;
+      brittany = doJailbreak super.brittany;
     };
   };
 

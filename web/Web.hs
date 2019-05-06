@@ -17,7 +17,6 @@ import           Lucid
 import           Servant
 import           Servant.HTML.Lucid
 
-import           Job
 import           Types
 
 type Web
@@ -26,8 +25,8 @@ type Web
 
 web :: ServerT Web AppM
 web
-    = jobsP
- :<|> jobP
+    = home
+ :<|> job
 
 deferredScript :: Text -> Html ()
 deferredScript src =
@@ -47,20 +46,15 @@ lpage title content =
         div_ [class_ "container-fluid"]
           content
 
-jobsP :: AppM (Html ())
-jobsP = do
-  jobs <- runDb $ recentRoots 20
+home :: AppM (Html ())
+home =
   return $ lpage "Jobs" $
-    div_ [id_ "recent-jobs"] $
-      mconcat (toHtml <$> jobs)
+    div_ [id_ "recent-jobs"] mempty
 
-jobP :: Int32 -> AppM (Html ())
-jobP jobid = do
-  j <- runDb $ lookupJob jobid
-  return $ lpage "Job" $ do
-    div_ [id_ "job", data_ "job-id" (viaShow jobid)] $
-      maybe (p_ "Job not found") toHtml j
-    div_ [id_ "logs", data_ "job-id" (viaShow jobid)] ""
+job :: Int32 -> AppM (Html ())
+job jobid =
+  return $ lpage "Job" $
+    div_ [id_ "job", data_ "job-id" (viaShow jobid)] mempty
 
 viaShow :: Show a => a -> Text
 viaShow = Text.pack . show

@@ -1,5 +1,5 @@
-function subscribeToJobs(jobs) {
-  console.log("subscribing to all job events");
+function subscribeToRecentJobs(jobs) {
+  console.log("subscribing to recent jobs");
   var stream = new EventSource('/jobs');
 
   stream.addEventListener('update', function (e) {
@@ -44,9 +44,9 @@ function subscribeToLogs(logs) {
 };
 
 $(document).ready(function() {
-  var jobs = $("#jobs");
-  if (jobs.length == 1) {
-    subscribeToJobs(jobs);
+  var recent = $("#recent-jobs");
+  if (recent.length == 1) {
+    subscribeToRecentJobs(recent);
   }
   var job = $("#job");
   if (job.length == 1) {
