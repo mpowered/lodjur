@@ -1,4 +1,5 @@
 {-# LANGUAGE DeriveGeneric          #-}
+{-# LANGUAGE FlexibleInstances      #-}
 {-# LANGUAGE OverloadedStrings      #-}
 {-# LANGUAGE RecordWildCards        #-}
 
@@ -77,6 +78,12 @@ instance ToHtml Job' where
           Build True  -> div_ [class_ "col-1 card-text"] "Build and Check"
           Check x     -> div_ [class_ "col-1 card-text"] (toHtml $ "Check " <> x)
           Deploy x    -> div_ [class_ "col-1 card-text"] (toHtml $ "Deploy " <> x)
+
+instance ToHtml [Job'] where
+  toHtmlRaw = toHtml
+  toHtml jobs =
+    div_ [id_ "recent-jobs"] $
+      mapM_ toHtml jobs
 
 job' :: Job -> Commit -> Job'
 job' Job{..} Commit{..} =
