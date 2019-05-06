@@ -12,6 +12,7 @@ module Api where
 import           Data.Int (Int32)
 import           Data.Text (Text)
 import           Servant
+import           Servant.EventStream
 import           Servant.HTML.Lucid
 import           Servant.JS
 

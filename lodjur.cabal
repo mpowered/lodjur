@@ -152,6 +152,7 @@ executable              lodjur
                       , process               >= 1.6.3 && < 1.7
                       , resource-pool         >= 0.2.3 && < 0.3
                       , servant               >= 0.15 && < 0.16
+                      , servant-event-stream
                       , servant-github-webhook>= 0.4 && < 0.5
                       , servant-js            >= 0.9 && < 0.10
                       , servant-lucid         >= 0.8 && < 0.9

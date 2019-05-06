@@ -10,7 +10,10 @@ packages:
   subdirs:
   - Spock
   - Spock-core
-
+- location:
+    git: https://github.com/bflyblue/servant-event-stream.git
+    commit: 31e51ad791bb2c2e6dd0328c7dcf1bc3253046fa
+  extra-dep: true
 
 extra-deps:
 - Spock-lucid-0.4.0.1
@@ -20,5 +23,6 @@ extra-deps:
 - primitive-extras-0.7.1
 - reroute-0.5.0.0
 - servant-github-webhook-0.4.1.0
+- servant-pipes-0.15
 - stm-containers-1.1.0.4
 - stm-hamt-1.2.0.2

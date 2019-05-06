@@ -21,6 +21,17 @@
         "description": "A type-safe, non-TH Haskell SQL library and ORM",
         "rev": "7f22ce0528c0739497ec8ab6380bc7c2df3824be"
     },
+    "servant-event-stream": {
+        "url": "https://github.com/bflyblue/servant-event-stream/archive/31e51ad791bb2c2e6dd0328c7dcf1bc3253046fa.tar.gz",
+        "owner": "bflyblue",
+        "branch": "master",
+        "url_template": "https://github.com/<owner>/<repo>/archive/<rev>.tar.gz",
+        "repo": "servant-event-stream",
+        "type": "tarball",
+        "sha256": "1v16wbwdv8scby31azzqkc21yrz4x4frpx3ipjizvlhmgxcdvmxh",
+        "description": "Servant support for ServerSent events",
+        "rev": "31e51ad791bb2c2e6dd0328c7dcf1bc3253046fa"
+    },
     "niv": {
         "homepage": "https://github.com/nmattia/niv",
         "url": "https://github.com/nmattia/niv/archive/a489b65a5c3a29983701069d1ce395b23d9bde64.tar.gz",
