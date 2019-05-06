@@ -14,8 +14,9 @@ import           Data.Aeson
 import qualified Data.Binary.Builder        as Builder
 import           Data.ByteString.Lazy       (ByteString)
 import           Data.Int (Int32)
+import           Data.Text                  (Text)
 import           Network.Wai.EventSource
-import           Pipes
+import           Pipes                      hiding (Proxy)
 import           Servant
 import           Servant.EventStream
 
@@ -26,6 +27,9 @@ import           Types
 
 type StreamApi = "api" :>
       "watch-jobs" :> ServerSentEvents
+
+streamapijs :: AppM Text
+streamapijs = return $ jsForAPI (Proxy :: Proxy StreamApi)
 
 streamapi :: ServerT StreamApi AppM
 streamapi  = watchJobs
