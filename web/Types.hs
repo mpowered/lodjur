@@ -1,3 +1,5 @@
+{-# LANGUAGE FlexibleInstances    #-}
+
 module Types where
 
 import Control.Monad.Reader   ( ReaderT , runReaderT , asks, liftIO )

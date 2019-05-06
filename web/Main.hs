@@ -31,6 +31,7 @@ import           Lodjur.GitHub.Webhook
 
 import           Api
 import           Config
+import           Stream
 import           Types
 import           Web
 import           WebHook
@@ -44,6 +45,7 @@ type App
  :<|> "static" :> Raw
  :<|> "websocket" :> WebSocketPending
  :<|> Api
+ :<|> StreamApi
  :<|> Web
 
 app :: FilePath -> ServerT App AppM
@@ -53,6 +55,7 @@ app static
   :<|> serveDirectoryFileServer static
   :<|> websocket
   :<|> api
+  :<|> streamapi
   :<|> web
 
 newtype LodjurOptions = LodjurOptions

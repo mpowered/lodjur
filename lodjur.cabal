@@ -114,6 +114,7 @@ executable              lodjur
     other-modules:      Config
                       , Api
                       , Job
+                      , Stream
                       , Types
                       , Web
                       , WebHook
@@ -149,6 +150,7 @@ executable              lodjur
                       , monad-control         >= 1.0.2 && < 1.1
                       , mtl                   >= 2.2.2 && < 2.3
                       , optparse-applicative  >= 0.14 && < 0.15
+                      , pipes                 >= 4.3.0 && < 4.4
                       , postgresql-simple     >= 0.5.4 && < 0.7
                       , process               >= 1.6.3 && < 1.7
                       , resource-pool         >= 0.2.3 && < 0.3
