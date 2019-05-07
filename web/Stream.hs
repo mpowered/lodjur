@@ -61,12 +61,12 @@ watchJobs = do
       jobs <- liftIO $ withConnection pool $ \conn -> beam conn (recentRoots 20)
       yield (jsonEvent jobs)
       waitJobEvent
-    
+
     waitJobEvent = do
       event <- liftIO $ atomically $ readTChan chan
       case event of
         Core.JobSubmitted -> return ()
         Core.JobUpdated   -> return ()
         _                 -> waitJobEvent
-    
+
   return $ eventSource go
