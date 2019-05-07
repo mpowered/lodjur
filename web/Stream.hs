@@ -11,16 +11,16 @@ module Stream where
 
 import           Control.Concurrent.STM
 import           Data.Aeson
-import qualified Data.Binary.Builder        as Builder
-import           Data.ByteString.Lazy       (ByteString)
-import           Data.Int (Int32)
-import           Data.Text                  (Text)
+import qualified Data.Binary.Builder           as Builder
+import           Data.ByteString.Lazy           ( ByteString )
+import           Data.Int                       ( Int32 )
+import           Data.Text                      ( Text )
 import           Network.Wai.EventSource
-import           Pipes                      hiding (Proxy)
+import           Pipes                   hiding ( Proxy )
 import           Servant
 import           Servant.EventStream
 
-import           Lodjur.Core                as Core
+import           Lodjur.Core                   as Core
 import           Lodjur.Database
 import           Job
 import           Types

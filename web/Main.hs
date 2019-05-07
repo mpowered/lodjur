@@ -12,10 +12,10 @@
 module Main where
 
 import           Control.Exception
-import           Data.String.Conversions       (cs)
-import           Data.Text                     (Text)
+import           Data.String.Conversions        ( cs )
+import           Data.Text                      ( Text )
 import qualified Database.PostgreSQL.Simple    as Pg
-import           GitHub.Data.Id                (Id(..))
+import           GitHub.Data.Id                 ( Id(..) )
 import qualified Network.HTTP.Client           as Http
 import qualified Network.HTTP.Client.TLS       as Http
 import qualified Network.Wai.Handler.Warp      as Warp
