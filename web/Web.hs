@@ -10,8 +10,8 @@
 
 module Web where
 
-import           Data.Int                      (Int32)
-import           Data.Text                     (Text)
+import           Data.Int                       ( Int32 )
+import           Data.Text                      ( Text )
 import qualified Data.Text                     as Text
 import           Lucid
 import           Servant

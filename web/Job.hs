@@ -7,15 +7,15 @@ module Job where
 
 import qualified Data.Aeson                    as A
 import qualified Data.Char                     as C
-import           Data.Int (Int32)
+import           Data.Int                       ( Int32 )
 import           Data.Maybe
 import           Data.String.Conversions
-import           Data.Text (Text)
+import           Data.Text                      ( Text )
 import           Data.Time.Clock                ( UTCTime )
 import           GHC.Generics
 import           Lucid
 
-import           Lodjur.Database               hiding (div_)
+import           Lodjur.Database         hiding ( div_ )
 import           Lodjur.Database.Enum
 import           Lodjur.Job
 
