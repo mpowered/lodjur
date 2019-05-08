@@ -28,8 +28,8 @@ import           Types
 type StreamApi = "api" :>
       "watch-jobs" :> ServerSentEvents
 
-streamapijs :: AppM Text
-streamapijs = return $ jsForAPI (Proxy :: Proxy StreamApi)
+streamapiAsJS :: Text
+streamapiAsJS = jsForAPI (Proxy :: Proxy StreamApi)
 
 streamapi :: ServerT StreamApi AppM
 streamapi  = watchJobs

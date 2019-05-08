@@ -23,8 +23,8 @@ type Api = "api" :>
  :<|> "job" :> Capture "jobId" Int32 :> Get '[JSON, HTML] Job'
  )
 
-apijs :: AppM Text
-apijs = return $ jsForAPI (Proxy :: Proxy Api) jquery
+apiAsJS :: Text
+apiAsJS = jsForAPI (Proxy :: Proxy Api) jquery
 
 api :: ServerT Api AppM
 api = recentJobs

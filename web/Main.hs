@@ -42,7 +42,6 @@ import           Paths_lodjur
 type App
     = "github-event" :> Webhook
  :<|> "js" :> "api.js" :> Get '[PlainText] Text
- :<|> "js" :> "stream.js" :> Get '[PlainText] Text
  :<|> "static" :> Raw
  :<|> "websocket" :> WebSocketPending
  :<|> Api
@@ -53,12 +52,14 @@ app :: FilePath -> ServerT App AppM
 app static
       = webhook
   :<|> apijs
-  :<|> streamapijs
   :<|> serveDirectoryFileServer static
   :<|> websocket
   :<|> api
   :<|> streamapi
   :<|> web
+
+apijs :: AppM Text
+apijs = return $ mconcat [ apiAsJS, streamapiAsJS ]
 
 newtype LodjurOptions = LodjurOptions
   { configFile :: FilePath
