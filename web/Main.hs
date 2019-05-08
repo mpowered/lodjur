@@ -14,8 +14,12 @@ module Main where
 import           Control.Exception
 import           Data.String.Conversions        ( cs )
 import           Data.Text                      ( Text )
+import qualified Data.Text                     as T
+import qualified Data.Text.Lazy                as LT
 import qualified Database.PostgreSQL.Simple    as Pg
 import           GitHub.Data.Id                 ( Id(..) )
+import qualified Language.JavaScript.Parser    as JS
+import qualified Language.JavaScript.Process.Minify as JS
 import qualified Network.HTTP.Client           as Http
 import qualified Network.HTTP.Client.TLS       as Http
 import qualified Network.Wai.Handler.Warp      as Warp
@@ -42,6 +46,7 @@ import           Paths_lodjur
 type App
     = "github-event" :> Webhook
  :<|> "js" :> "api.js" :> Get '[PlainText] Text
+ :<|> "js" :> "api.min.js" :> Get '[PlainText] Text
  :<|> "static" :> Raw
  :<|> "websocket" :> WebSocketPending
  :<|> Api
@@ -51,15 +56,21 @@ type App
 app :: FilePath -> ServerT App AppM
 app static
       = webhook
-  :<|> apijs
+  :<|> return apijs
+  :<|> return apijsMin
   :<|> serveDirectoryFileServer static
   :<|> websocket
   :<|> api
   :<|> streamapi
   :<|> web
 
-apijs :: AppM Text
-apijs = return $ mconcat [ apiAsJS, streamapiAsJS ]
+apijs :: Text
+apijs = mconcat [ apiAsJS, streamapiAsJS ]
+
+apijsMin :: Text
+apijsMin = minify apijs
+ where
+  minify = LT.toStrict . JS.renderToText . JS.minifyJS . JS.readJs . T.unpack
 
 newtype LodjurOptions = LodjurOptions
   { configFile :: FilePath
