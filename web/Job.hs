@@ -49,6 +49,19 @@ instance A.ToJSON Job' where
 instance A.FromJSON Job' where
   parseJSON = A.genericParseJSON options
 
+data LogLine
+  = LogLine
+    { log'Text                  :: Text
+    , log'Timestamp             :: UTCTime
+    }
+  deriving (Show, Generic)
+
+instance A.ToJSON LogLine where
+  toJSON = A.genericToJSON options
+
+instance A.FromJSON LogLine where
+  parseJSON = A.genericParseJSON options
+
 options :: A.Options
 options = A.defaultOptions { A.fieldLabelModifier = A.camelTo2 '_' . dropWhile (not . C.isUpper) }
 
@@ -82,8 +95,13 @@ instance ToHtml Job' where
 instance ToHtml [Job'] where
   toHtmlRaw = toHtml
   toHtml jobs =
-    div_ [id_ "recent-jobs"] $
+    div_ $
       mapM_ toHtml jobs
+
+instance ToHtml (Maybe Job') where
+  toHtmlRaw = toHtml
+  toHtml (Just job) = toHtml job
+  toHtml Nothing = div_ ""
 
 job' :: Job -> Commit -> Job'
 job' Job{..} Commit{..} =
@@ -115,18 +133,30 @@ job' Job{..} Commit{..} =
       A.Error _   -> d
   getJobId (JobKey i) = i
 
+instance ToHtml LogLine where
+  toHtmlRaw = toHtml
+  toHtml LogLine{..} = div_ $ toHtml log'Text
+
+instance ToHtml [LogLine] where
+  toHtmlRaw = toHtml
+  toHtml ls =
+    div_ $
+      mapM_ toHtml ls
+
 recentRoots :: Integer -> Pg [Job']
 recentRoots n = do
-  ps <- runSelectReturningList $ select $ do
-    j <- limit_ n $ orderBy_ (desc_ . jobId) $ filter_ (\j -> jobParent j ==. val_ (JobKey Nothing)) $ all_ (dbJobs db)
-    c <- all_ (dbCommits db)
-    guard_ (jobCommit j `references_` c)
-    pure (j, c)
+  ps <- runSelectReturningList $
+    select $ do
+      j <- limit_ n $ orderBy_ (desc_ . jobId) $ filter_ (\j -> jobParent j ==. val_ (JobKey Nothing)) $ all_ (dbJobs db)
+      c <- all_ (dbCommits db)
+      guard_ (jobCommit j `references_` c)
+      pure (j, c)
   return (uncurry job' <$> ps)
 
 lookupJob :: Int32 -> Pg (Maybe Job')
 lookupJob jobid = do
-  p <- runSelectReturningOne $ select $ do
+  p <- runSelectReturningOne $
+    select $ do
       j <- filter_ (\j -> jobId j ==. val_ jobid) $ all_ (dbJobs db)
       c <- all_ (dbCommits db)
       guard_ (jobCommit j `references_` c)
@@ -135,9 +165,20 @@ lookupJob jobid = do
 
 jobChildren :: Int32 -> Pg [Job']
 jobChildren jobid = do
-  ps <- runSelectReturningList $ select $ do
+  ps <- runSelectReturningList $
+    select $ do
       j <- filter_ (\j -> jobParent j ==. val_ (JobKey (Just jobid))) $ all_ (dbJobs db)
       c <- all_ (dbCommits db)
       guard_ (jobCommit j `references_` c)
       pure (j, c)
   return (uncurry job' <$> ps)
+
+jobLogsTail :: Int32 -> Pg [LogLine]
+jobLogsTail jobid = do
+  ls <- runSelectReturningList $
+    select $
+    limit_ 20 $
+    orderBy_ (desc_ . logCreatedAt) $
+    filter_ (\l -> logJob l ==. val_ (JobKey jobid)) $
+    all_ (dbLogs db)
+  return $ reverse $ map (\Log{..} -> LogLine logText logCreatedAt) ls
