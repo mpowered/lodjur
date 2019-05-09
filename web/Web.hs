@@ -41,6 +41,7 @@ lpage title content =
       link_ [rel_ "stylesheet", href_ "/static/lodjur.css"]
       deferredScript "/static/jquery-3.0.0.slim.min.js"
       deferredScript "/static/bootstrap/js/bootstrap.bundle.min.js"
+      deferredScript "/js/api.js"
       deferredScript "/static/job.js"
       body_ $
         div_ [class_ "container-fluid"]
@@ -53,8 +54,9 @@ home =
 
 job :: Int32 -> AppM (Html ())
 job jobid =
-  return $ lpage "Job" $
+  return $ lpage "Job" $ do
     div_ [id_ "job", data_ "job-id" (viaShow jobid)] mempty
+    div_ [id_ "logs", data_ "job-id" (viaShow jobid)] mempty
 
 viaShow :: Show a => a -> Text
 viaShow = Text.pack . show

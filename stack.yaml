@@ -12,7 +12,7 @@ packages:
   - Spock-core
 - location:
     git: https://github.com/bflyblue/servant-event-stream.git
-    commit: 575d9380ec960e076bac9bdaba1f7efe15d7d95b
+    commit: 696d72833f67c5b42c42c1591775de86ee22a382
   extra-dep: true
 
 extra-deps:
