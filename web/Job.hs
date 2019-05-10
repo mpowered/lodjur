@@ -2,16 +2,20 @@
 {-# LANGUAGE FlexibleInstances      #-}
 {-# LANGUAGE OverloadedStrings      #-}
 {-# LANGUAGE RecordWildCards        #-}
+{-# LANGUAGE RecursiveDo            #-}
 
 module Job where
 
+import           Control.Monad
 import qualified Data.Aeson                    as A
 import qualified Data.Char                     as C
 import           Data.Int                       ( Int32 )
+import           Data.List                      ( partition )
 import           Data.Maybe
 import           Data.String.Conversions
 import           Data.Text                      ( Text )
 import           Data.Time.Clock                ( UTCTime )
+import           Data.Tree
 import           GHC.Generics
 import           Lucid
 
@@ -68,35 +72,46 @@ options = A.defaultOptions { A.fieldLabelModifier = A.camelTo2 '_' . dropWhile (
 instance ToHtml Job' where
   toHtmlRaw = toHtml
   toHtml Job'{..} =
-    div_ [class_ "card-body p-0"] $
-      div_ [class_ "row m-0 p-1"] $ do
-        case job'Status of
-          Queued     -> div_ [class_ "col-1 badge badge-secondary"]   "Queued"
-          InProgress -> div_ [class_ "col-1 badge badge-primary"] "In Progress"
-          Completed  ->
-            case job'Conclusion of
-              Just Success   -> div_ [class_ "col-1 badge badge-success"]   "Success"
-              Just Failure   -> div_ [class_ "col-1 badge badge-danger"]    "Failure"
-              Just Cancelled -> div_ [class_ "col-1 badge badge-warning"]   "Cancelled"
-              Just Neutral   -> div_ [class_ "col-1 badge badge-info"]      "Neutral"
-              _              -> div_ [class_ "col-1 badge badge-warning"]   "Complete"
-        div_ [class_ "col-1 card-text"] (toHtml job'Name)
-        div_ [class_ "col-4 card-text"] (toHtml $ job'CommitOwner <> " / " <> job'CommitRepo <> " / " <> fromMaybe job'CommitSha job'CommitBranch)
-        div_ [class_ "col-1 card-text"] $
-          a_ [href_ ("/job/" <> cs (show job'Id))] (toHtml $ show job'Id)
-        div_ [class_ "col-1 card-text"] (toHtml $ fromMaybe "" job'CommitAuthor)
-        div_ [class_ "col-3 card-text"] (toHtml $ fromMaybe "" job'CommitMessage)
-        case job'Action of
-          Build False -> div_ [class_ "col-1 card-text"] "Build"
-          Build True  -> div_ [class_ "col-1 card-text"] "Build and Check"
-          Check x     -> div_ [class_ "col-1 card-text"] (toHtml $ "Check " <> x)
-          Deploy x    -> div_ [class_ "col-1 card-text"] (toHtml $ "Deploy " <> x)
+    div_ [class_ "row"] $ do
+      case job'Status of
+        Queued     -> div_ [class_ "col-1 badge badge-secondary"] "Queued"
+        InProgress -> div_ [class_ "col-1 badge badge-primary"]   "In Progress"
+        Completed  ->
+          case job'Conclusion of
+            Just Success   -> div_ [class_ "col-1 badge badge-success"]   "Success"
+            Just Failure   -> div_ [class_ "col-1 badge badge-danger"]    "Failure"
+            Just Cancelled -> div_ [class_ "col-1 badge badge-warning"]   "Cancelled"
+            Just Neutral   -> div_ [class_ "col-1 badge badge-info"]      "Neutral"
+            _              -> div_ [class_ "col-1 badge badge-warning"]   "Complete"
+      div_ [class_ "col-1 card-text"] (toHtml job'Name)
+      div_ [class_ "col-4 card-text"] (toHtml $ job'CommitOwner <> " / " <> job'CommitRepo <> " / " <> fromMaybe job'CommitSha job'CommitBranch)
+      div_ [class_ "col-1 card-text"] $
+        a_ [href_ ("/job/" <> cs (show job'Id))] (toHtml $ show job'Id)
+      div_ [class_ "col-1 card-text"] (toHtml $ fromMaybe "" job'CommitAuthor)
+      div_ [class_ "col-3 card-text"] (toHtml $ fromMaybe "" job'CommitMessage)
+      case job'Action of
+        Build False -> div_ [class_ "col-1 card-text"] "Build"
+        Build True  -> div_ [class_ "col-1 card-text"] "Build and Check"
+        Check x     -> div_ [class_ "col-1 card-text"] (toHtml $ "Check " <> x)
+        Deploy x    -> div_ [class_ "col-1 card-text"] (toHtml $ "Deploy " <> x)
+
+instance ToHtml (Forest Job') where
+  toHtmlRaw = toHtml
+  toHtml = mapM_ toHtml
+
+instance ToHtml (Tree Job') where
+  toHtmlRaw = toHtml
+  toHtml node = do
+    div_ [class_ "card"] $
+      div_ [class_ "card-body py-2"] $
+        toHtml (rootLabel node)
+    when (length (subForest node) > 0) $
+      div_ [class_ "card p-2", style_ "box-shadow: inset 0 0 5px;"] $
+        toHtml (subForest node)
 
 instance ToHtml [Job'] where
   toHtmlRaw = toHtml
-  toHtml jobs =
-    div_ $
-      mapM_ toHtml jobs
+  toHtml = mapM_ toHtml
 
 instance ToHtml (Maybe Job') where
   toHtmlRaw = toHtml
@@ -135,7 +150,7 @@ job' Job{..} Commit{..} =
 
 instance ToHtml LogLine where
   toHtmlRaw = toHtml
-  toHtml LogLine{..} = div_ $ toHtml log'Text
+  toHtml LogLine{..} = div_ [] (toHtml log'Text)
 
 instance ToHtml [LogLine] where
   toHtmlRaw = toHtml
@@ -147,17 +162,45 @@ recentRoots :: Integer -> Pg [Job']
 recentRoots n = do
   ps <- runSelectReturningList $
     select $ do
-      j <- limit_ n $ orderBy_ (desc_ . jobId) $ filter_ (\j -> jobParent j ==. val_ (JobKey Nothing)) $ all_ (dbJobs db)
-      c <- all_ (dbCommits db)
-      guard_ (jobCommit j `references_` c)
+      j <- limit_ n $
+           orderBy_ (desc_ . jobId) $
+           filter_ (\j -> jobParent j ==. val_ nothing_) $
+           all_ (dbJobs db)
+      c <- related_ (dbCommits db) (jobCommit j)
       pure (j, c)
   return (uncurry job' <$> ps)
+
+recentJobsForest :: Integer -> Pg (Forest Job')
+recentJobsForest n = do
+  ps <- runSelectReturningList $
+    selectWith $ do
+      rec prev <- selecting $
+            ( limit_ n $
+              orderBy_ (desc_ . jobId) $
+              filter_ (\j -> jobParent j ==. val_ nothing_) $
+              all_ (dbJobs db)
+            )
+            `union_`
+            ( do
+                parent <- reuse prev
+                relatedBy_ (dbJobs db) (\j -> jobParent j ==. just_( pk parent))
+            )
+      pure $ do
+        j <- reuse prev
+        c <- related_ (dbCommits db) (jobCommit j)
+        pure (j, c)
+  return $ buildForest Nothing (uncurry job' <$> ps)
+ where
+  buildForest _ [] = []
+  buildForest p js = let (roots, js') = partition (\j -> job'Parent j == p) js
+                     in  map (\j -> Node j (buildForest (Just (job'Id j)) js')) roots
 
 lookupJob :: Int32 -> Pg (Maybe Job')
 lookupJob jobid = do
   p <- runSelectReturningOne $
     select $ do
-      j <- filter_ (\j -> jobId j ==. val_ jobid) $ all_ (dbJobs db)
+      j <- filter_ (\j -> jobId j ==. val_ jobid) $
+           all_ (dbJobs db)
       c <- all_ (dbCommits db)
       guard_ (jobCommit j `references_` c)
       pure (j, c)
@@ -167,7 +210,8 @@ jobChildren :: Int32 -> Pg [Job']
 jobChildren jobid = do
   ps <- runSelectReturningList $
     select $ do
-      j <- filter_ (\j -> jobParent j ==. val_ (JobKey (Just jobid))) $ all_ (dbJobs db)
+      j <- filter_ (\j -> jobParent j ==. val_ (JobKey (Just jobid))) $
+           all_ (dbJobs db)
       c <- all_ (dbCommits db)
       guard_ (jobCommit j `references_` c)
       pure (j, c)
@@ -177,8 +221,8 @@ jobLogsTail :: Int32 -> Pg [LogLine]
 jobLogsTail jobid = do
   ls <- runSelectReturningList $
     select $
-    limit_ 20 $
-    orderBy_ (desc_ . logCreatedAt) $
-    filter_ (\l -> logJob l ==. val_ (JobKey jobid)) $
-    all_ (dbLogs db)
+      limit_ 20 $
+      orderBy_ (desc_ . logCreatedAt) $
+      filter_ (\l -> logJob l ==. val_ (JobKey jobid)) $
+      all_ (dbLogs db)
   return $ reverse $ map (\Log{..} -> LogLine logText logCreatedAt) ls

@@ -56,7 +56,7 @@ job :: Int32 -> AppM (Html ())
 job jobid =
   return $ lpage "Job" $ do
     div_ [id_ "job", data_ "job-id" (viaShow jobid)] mempty
-    div_ [id_ "logs", data_ "job-id" (viaShow jobid)] mempty
+    div_ [id_ "logs", class_ "line", data_ "job-id" (viaShow jobid)] mempty
 
 viaShow :: Show a => a -> Text
 viaShow = Text.pack . show

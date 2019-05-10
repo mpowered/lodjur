@@ -23,8 +23,9 @@ import           Lodjur.Database.Enum
 import           Lodjur.Job
 
 beam :: Connection -> Pg a -> IO a
-beam = runBeamPostgres
-    -- runBeamPostgresDebug putStrLn
+beam =
+  runBeamPostgres
+  -- runBeamPostgresDebug putStrLn
 
 data DB f = DB
   { dbCommits    :: f (TableEntity CommitT)

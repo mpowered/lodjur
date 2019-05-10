@@ -59,7 +59,7 @@ watchJobs = do
 
   let
     go = do
-      jobs <- liftIO $ withConnection pool $ \conn -> beam conn (recentRoots 20)
+      jobs <- liftIO $ withConnection pool $ \conn -> beam conn (recentJobsForest 20)
       yield (htmlEvent jobs)
       waitJobEvent
 

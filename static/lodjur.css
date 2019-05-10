@@ -8,8 +8,11 @@
 
 .line {
   font-family: monospace;
+  white-space: pre-wrap;
+  /*
   white-space: pre;
   overflow: auto;
+  */
 }
 
 .line:hover {
