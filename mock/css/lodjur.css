@@ -8,6 +8,7 @@ body {
   background-color: #eee;
   color: #111;
   font-family: 'Roboto', sans-serif;
+  font-size: 12px;
   height: 100%;
   width: 100%;
   margin: 0;
@@ -33,16 +34,18 @@ body {
   background-color: #394B55;
   color: #FDFDFD;
   text-align: center;
-  font-size: 16px;
   display: flex;
   flex-direction: row;
+  align-content: center;
   z-index: -2;
+  height: 2.5em;
 }
 
 .heading .app-header {
+  font-size: large;
   color: #FFFFFF;
   flex: 1 1;
-  padding: 6px 0px;
+  margin: auto;
 }
 
 .heading .tab {
@@ -50,9 +53,11 @@ body {
   max-width: 20em;
   flex: 1 1;
   margin: 0;
-  padding: 6px 0px;
   border-radius: 8px 8px 0px 0px;
   box-shadow: 0 0 8px 0px black;
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
 }
 
 .heading .active {
@@ -67,11 +72,14 @@ body {
 
 .heading .user {
   margin-left: -4px;
-  padding: 6px 2em 6px 6px;
+  padding-right: 2em;
   box-shadow: inset 16px -12px 16px -16px black;
   flex: 1 1;
   z-index: -2;
   text-align: right;
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
 }
 
 .left-panel .jobs {
@@ -79,8 +87,7 @@ body {
   color: #394B55;
   text-align: left;
   padding: 10px 10px;
-  line-height: 48px;
-  font-size: 14px;
+  line-height: 250%;
   flex: 1 1;
   box-shadow: 0 0 8px 0px black;
   z-index: 1;
@@ -147,7 +154,7 @@ body {
 }
 
 .job-head {
-  font-size: 150%;
+  font-size: large;
   margin: auto 0.5em;
   flex: 1 0;
   min-width: 6em;
@@ -212,6 +219,6 @@ body {
 }
 
 .log {
-  font-family: 'Iosevka Term Web', monospace;
+  font-family: 'Source Code Pro', 'Iosevka Term Web', monospace;
   white-space: pre-wrap;
 }
