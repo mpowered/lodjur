@@ -19,15 +19,15 @@ body {
   flex-direction: row;
   height: 100%;
   width: 100%;
-  min-height: 30em;
+  min-height: 20em;
 }
 
 .left-panel {
-  width: 390px;
   display: flex;
   flex-direction: column;
-  flex: 0 0;
-  min-width: 390px;
+  flex: 1 0;
+  min-width: 20em;
+  max-width: 40em;
 }
 
 .heading {
@@ -86,7 +86,7 @@ body {
   background-color: #E1E9EC;
   color: #394B55;
   text-align: left;
-  padding: 10px 10px;
+  padding: 1em 1em;
   line-height: 250%;
   flex: 1 1;
   box-shadow: 0 0 8px 0px black;
@@ -98,8 +98,8 @@ body {
   background-color: #394B55;
   color: #FEFEFE;
   text-align: left;
-  padding: 10px 10px;
-  line-height: 36px;
+  padding: 1em 1em;
+  line-height: 200%;
   box-shadow: 0 0 8px 0px black;
   z-index: -1;
 }
@@ -142,7 +142,7 @@ body {
   width: auto;
   display: flex;
   flex-direction: column;
-  flex: 1 1;
+  flex: 5 1;
 }
 
 .main-panel .job-detail {
