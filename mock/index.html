@@ -1,0 +1,252 @@
+<!DOCTYPE html>
+<html>
+  <head>
+    <title>Lodjur</title>
+    <!-- Favicon -->
+    <link rel="apple-touch-icon" sizes="57x57" href="icon/apple-icon-57x57.png">
+    <link rel="apple-touch-icon" sizes="60x60" href="icon/apple-icon-60x60.png">
+    <link rel="apple-touch-icon" sizes="72x72" href="icon/apple-icon-72x72.png">
+    <link rel="apple-touch-icon" sizes="76x76" href="icon/apple-icon-76x76.png">
+    <link rel="apple-touch-icon" sizes="114x114" href="icon/apple-icon-114x114.png">
+    <link rel="apple-touch-icon" sizes="120x120" href="icon/apple-icon-120x120.png">
+    <link rel="apple-touch-icon" sizes="144x144" href="icon/apple-icon-144x144.png">
+    <link rel="apple-touch-icon" sizes="152x152" href="icon/apple-icon-152x152.png">
+    <link rel="apple-touch-icon" sizes="180x180" href="icon/apple-icon-180x180.png">
+    <link rel="icon" type="image/png" sizes="192x192"  href="icon/android-icon-192x192.png">
+    <link rel="icon" type="image/png" sizes="32x32" href="icon/favicon-32x32.png">
+    <link rel="icon" type="image/png" sizes="96x96" href="icon/favicon-96x96.png">
+    <link rel="icon" type="image/png" sizes="16x16" href="icon/favicon-16x16.png">
+    <link rel="manifest" href="icon/manifest.json">
+    <meta name="msapplication-TileColor" content="#ffffff">
+    <meta name="msapplication-TileImage" content="icon/ms-icon-144x144.png">
+    <meta name="theme-color" content="#ffffff">
+    <!-- Font Awesome -->
+    <link rel="stylesheet" href="css/fa.css">
+    <!-- Fonts -->
+    <link rel="stylesheet" href="https://fonts.googleapis.com/css?family=Roboto">
+    <link rel="stylesheet" href="css/iosevka.css">
+    <!-- Lodjur -->
+    <link rel="stylesheet" href="css/lodjur.css">
+  </head>
+  <body>
+    <div class="app">
+      <div class="left-panel">
+        <div class="heading">
+          <div class="app-header">
+            <b>Lodjur</b> 3.0
+          </div>
+        </div>
+        <div class="jobs">
+          <div class="job">
+            <div>
+              <span class="outline-symbol far fa-fw fa-chevron-down"></span><span class="status-symbol far fa-fw fa-pulse fa-spinner"></span>build-and-check
+            </div>
+            <div class="job">
+              <div>
+                <span class="outline-symbol fa-fw"></span><span class="status-symbol success fas fa-fw fa-check"></span>check-toolkit-1
+              </div>
+            </div>
+            <div class="job">
+              <div>
+                <span class="outline-symbol fa-fw"></span><span class="status-symbol failure fas fa-fw fa-times"></span>check-toolkit-2
+              </div>
+            </div>
+            <div class="job">
+              <div>
+                <span class="outline-symbol fa-fw"></span><span class="status-symbol fas fa-fw fa-pulse fa-spinner"></span>check-toolkit-3
+              </div>
+            </div>
+            <div class="job">
+              <div>
+                <span class="outline-symbol fa-fw"></span><span class="status-symbol fas fa-fw fa-clock"></span>check-sms
+              </div>
+            </div>
+            <div class="job">
+              <div>
+                <span class="outline-symbol fa-fw"></span><span class="status-symbol fas fa-fw fa-clock"></span>check-beagle
+              </div>
+            </div>
+          </div>
+          <div class="job">
+            <div>
+              <span class="outline-symbol far fa-fw fa-chevron-right"></span><span class="status-symbol success far fa-fw fa-check"></span>build-and-check
+            </div>
+          </div>
+          <div class="job">
+            <div>
+              <span class="outline-symbol far fa-fw fa-chevron-right"></span><span class="status-symbol failure far fa-fw fa-times"></span>build-and-check
+            </div>
+          </div>
+        </div>
+        <div class="actions">
+          <div class="disabled">
+            <span class="far fa-fw fa-cloud-upload"></span>&nbsp;&nbsp;
+            Deploy to...
+          </div>
+          <div class="disabled">
+            <span class="far fa-fw fa-redo"></span>&nbsp;&nbsp;
+            Rerun
+          </div>
+          <div>
+            <span class="far fa-fw fa-times"></span>&nbsp;&nbsp;
+            Cancel
+          </div>
+        </div>
+      </div>
+      <div class="main-panel">
+        <div class="heading">
+          <div class="tab active">
+            Output
+          </div>
+          <div class="tab inactive">
+            Test Results
+          </div>
+          <div class="tab inactive">
+            Cat Videos
+          </div>
+          <div class="user">
+            <span class="far fa-chevron-down"></span>&nbsp;&nbsp;
+            <span class="far fa-user"></span>&nbsp;&nbsp;
+            Shaun
+          </div>
+        </div>
+        <div class="job-detail">
+          <div class="job-head">
+            <div>
+              <span class="fas fa-fw failure fa-times"></span>
+            </div>
+            <div>
+              check-toolkit-2
+            </div>
+          </div>
+          <div class="job-commit commit-left">
+            <div class="job-commit-attr">
+              <div>
+                <span class="fab fa-fw fa-github"></span>
+              </div>
+              <div> 
+                mpowered/mpowered-services
+              </div>
+            </div>
+            <div class="job-commit-attr">
+              <div>
+                <span class="far fa-fw fa-code-branch"></span>
+              </div>
+              <div>
+                nix-rails-check 
+              </div>
+            </div>
+            <div class="job-commit-attr">
+              <div>
+                <span class="far fa-fw fa-code-commit"></span>
+              </div>
+              <div>
+                0b7d48745fd2b00057780f3da3ca24e1ae56b1cf
+              </div>
+            </div>
+            <div class="job-commit-attr">
+              <div>
+                <span class="far fa-fw fa-comment-alt"></span>
+              </div>
+              <div>
+                Merge remote-tracking branch 'origin/master' into nix-rails-check
+              </div>
+            </div>
+          </div>
+          <div class="job-commit commit-right">
+            <div class="job-commit-attr">
+              <div>
+                <span class="far fa-fw fa-at"></span>
+              </div>
+              <div>
+                bflyblue <shaun.sharples@gmail.com>
+              </div>
+            </div>
+            <div class="job-commit-attr">
+              <div>
+                <span class="far fa-fw fa-clock"></span>
+              </div>
+              <div>
+                15&nbsp;min ago
+              </div>
+            </div>
+            <div class="job-commit-attr">
+              <div>
+                <span class="far fa-fw fa-stopwatch"></span>
+              </div>
+              <div>
+                7&nbsp;min 50&nbsp;sec
+              </div>
+            </div>
+          </div>
+        </div>
+        <div class="job-info">
+          <div class="log">/nix/store/6dcs7imh3kv1pj98np1z6g19k36ravmw-mpowered-services
+~/devel/mpowered/lodjur/workdirs/0b7d48745fd2b00057780f3da3ca24e1ae56b1cf/applications/toolkit ~/devel/mpowered/lodjur/workdirs/0b7d48745fd2b00057780f3da3ca24e1ae56b1cf
+  * Preparing test databases
+Warning: the running version of Bundler (1.16.3) is older than the version that created the lockfile (1.17.2). We suggest you upgrade to the latest version of Bundler by running `gem install bundler`.
+DEPRECATION WARNING: The factory_girl gem is deprecated. Please upgrade to factory_bot. See https://github.com/thoughtbot/factory_bot/blob/v4.9.0/UPGRADE_FROM_FACTORY_GIRL.md for further instructions. (called from require at /nix/store/ig5v939g2qs9p1xgac2s5qbzww2ys1xx-bundler-1.16.3/lib/ruby/gems/2.3.0/gems/bundler-1.16.3/lib/bundler/runtime.rb:81)
+-- create_table("access_to_finances", {:force=>true})
+    -> 0.0224s
+-- create_table("accommodations", {:force=>true})
+    -> 0.0290s
+-- create_table("account_hierarchies", {:id=>false, :force=>true})
+    -> 0.0165s
+-- add_index("account_hierarchies", ["ancestor_id", "descendant_id"], {:name=>"index_account_hierarchies_on_ancestor_id_and_descendant_id", :unique=>true})
+    -> 0.0131s
+-- add_index("account_hierarchies", ["descendant_id"], {:name=>"index_account_hierarchies_on_descendant_id"})
+    -> 0.0057s
+-- create_table("account_scorecard_copier_histories", {:force=>true})
+    -> 0.0151s
+-- create_table("accounts", {:force=>true})
+    -> 0.0232s
+-- add_index("accounts", ["id"], {:name=>"index_accounts_on_id"})
+    -> 0.0078s
+-- add_index("accounts", ["master_account"], {:name=>"index_accounts_on_master_account"})
+    -> 0.0077s
+-- add_index("accounts", ["parent_id"], {:name=>"index_accounts_on_parent_id"})
+    -> 0.0130s
+-- add_index("accounts", ["portal_id"], {:name=>"index_accounts_on_portal_id"})
+    -> 0.0086s
+-- create_table("accounts_users", {:id=>false, :force=>true})
+    -> 0.0185s
+-- add_index("accounts_users", ["account_id"], {:name=>"index_accounts_users_on_account_id"})
+    -> 0.0074s
+-- add_index("accounts_users", ["user_id"], {:name=>"index_accounts_users_on_user_id"})
+    -> 0.0120s
+-- create_table("action_items", {:force=>true})
+    -> 0.0159s
+-- create_table("addon_subscriptions", {:force=>true})
+    -> 0.0204s
+-- create_table("addons", {:force=>true})
+    -> 0.0191s
+-- create_table("appropriate_products", {:force=>true})
+    -> 0.0245s
+-- create_table("assistant_findings", {:force=>true})
+    -> 0.0194s
+-- create_table("audits", {:force=>true})
+    -> 0.0230s
+-- add_index("audits", ["auditable_id", "auditable_type"], {:name=>"auditable_index"})
+    -> 0.0082s
+-- add_index("audits", ["created_at"], {:name=>"index_audits_on_created_at"})
+    -> 0.0079s
+-- add_index("audits", ["user_id", "user_type"], {:name=>"user_index"})
+    -> 0.0170s
+-- add_index("audits", ["version", "auditable_id", "auditable_type"], {:name=>"index_audits_on_version_and_auditable_id_and_auditable_type"})
+    -> 0.0081s
+-- create_table("automated_sub_tasks", {:force=>true})
+    -> 0.0216s
+-- add_index("automated_sub_tasks", ["automated_task_id"], {:name=>"index_automated_sub_tasks_on_automated_task_id"})
+    -> 0.0078s
+-- create_table("automated_tasks", {:force=>true})
+    -> 0.0237s
+-- create_table("back_office_charges", {:force=>true})
+    -> 0.0196s
+-- create_table("banking_access_to_financial_services", {:force=>true})
+    -> 0.0168s
+          </div>
+        </div>
+      </div>
+    </div>
+  </body>
+</html>
