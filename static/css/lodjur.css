@@ -12,6 +12,8 @@ body {
   height: 100%;
   width: 100%;
   margin: 0;
+  display: flex;
+  flex-direction: column;
 }
 
 .app {
@@ -22,7 +24,7 @@ body {
   min-height: 20em;
 }
 
-.left-panel {
+.app .left-panel {
   display: flex;
   flex-direction: column;
   flex: 1 0;
@@ -33,19 +35,33 @@ body {
 .heading {
   background-color: #394B55;
   color: #FDFDFD;
-  text-align: center;
   display: flex;
   flex-direction: row;
-  align-content: center;
   z-index: -2;
   height: 2.5em;
+  box-shadow: inset 0px -12px 16px -16px black;
 }
 
 .heading .app-header {
   font-size: large;
   color: #FFFFFF;
-  flex: 1 1;
-  margin: auto;
+}
+
+.heading .left-panel {
+  display: flex;
+  flex-direction: row;
+  justify-content: center;
+  align-items: center;
+  flex: 1 0;
+  min-width: 20em;
+  max-width: 40em;
+}
+
+.heading .main-panel {
+  width: auto;
+  display: flex;
+  flex-direction: row;
+  flex: 5 1;
 }
 
 .heading .tab {
@@ -58,6 +74,7 @@ body {
   display: flex;
   flex-direction: column;
   justify-content: center;
+  text-align: center;
 }
 
 .heading .active {
@@ -66,16 +83,15 @@ body {
 
 .heading .inactive {
   background-color: #455A64;
-  box-shadow: inset 8px -8px 8px -8px black;
+  /* box-shadow: inset 8px -8px 8px -8px black; */
+  box-shadow: inset 0px -12px 16px -16px black, 0 0 8px 0px black;;
   z-index: -1;
 }
 
 .heading .user {
-  margin-left: -4px;
+  margin-right: -16px;
   padding-right: 2em;
-  box-shadow: inset 16px -12px 16px -16px black;
   flex: 1 1;
-  z-index: -2;
   text-align: right;
   display: flex;
   flex-direction: column;
@@ -89,7 +105,6 @@ body {
   padding: 1em 1em;
   line-height: 250%;
   flex: 1 1;
-  box-shadow: 0 0 8px 0px black;
   z-index: 1;
   overflow: auto;
 }
@@ -100,7 +115,7 @@ body {
   text-align: left;
   padding: 1em 1em;
   line-height: 200%;
-  box-shadow: 0 0 8px 0px black;
+  box-shadow: inset 0px 4px 8px -4px black;
   z-index: -1;
 }
 
@@ -138,7 +153,7 @@ body {
   color: hsl(0, 60%, 60%);
 }
 
-.main-panel {
+.app .main-panel {
   width: auto;
   display: flex;
   flex-direction: column;

@@ -84,16 +84,14 @@ scripts = do
 leftPanel :: Forest Job' -> Html ()
 leftPanel jobs = do
   div_ [ class_ "left-panel" ] $ do
-    appHeader
     jobOutline jobs
     actionPanel
 
 appHeader :: Html ()
 appHeader = do
-  div_ [ class_ "heading" ] $ do
-    div_ [ class_ "app-header" ] $ do
-      b_ "Lodjur"
-      "3.0"
+  div_ [ class_ "app-header" ] $ do
+    b_ "Lodjur"
+    "3.0"
 
 jobOutline :: Forest Job' -> Html ()
 jobOutline jobs = do
@@ -115,7 +113,9 @@ actionPanel = do
 
 tabBar :: Text -> [(Text, Bool)] -> Html ()
 tabBar user ts = do
-  div_ [ class_ "heading" ] $ do
+  div_ [ class_ "left-panel" ]
+    appHeader
+  div_ [ class_ "main-panel" ] $ do
     mapM_ tab ts
     div_ [ class_ "user" ] $ do
       div_ [ class_ "tab-text" ] $ do
@@ -134,7 +134,6 @@ tab (name, active) = do
 mainPanel :: UTCTime -> Maybe Job' -> [LogLine] -> Html ()
 mainPanel now j l = do
   div_ [ class_ "main-panel" ] $ do
-    tabBar "Shaun" [("Output", True), ("Test Results", False)]
     jobDetail now j
     jobLog l
 
@@ -190,8 +189,8 @@ home :: AppM (Html ())
 home = do
   now <- liftIO $ getCurrentTime
   jobs <- runDb $ recentJobsForest 20
-  j <- runDb $ lookupJob 6
-  l <- runDb $ jobLogsTail 6
+  j <- runDb $ lookupJob 5
+  l <- runDb $ jobLogsTail 5
   return $ doctypehtml_ $ html_ $ do
     head_ $ do
       title_ "Lodjur"
@@ -200,6 +199,8 @@ home = do
       fonts
       stylesheets
     body_ $ do
+      div_ [ class_ "heading" ] $ do
+        tabBar "Shaun" [("Output", True), ("Test Results", False)]
       div_ [ class_ "app" ] $ do
         leftPanel jobs
         mainPanel now j l
