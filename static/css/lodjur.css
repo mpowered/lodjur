@@ -70,7 +70,7 @@ body {
   flex: 1 1;
   margin: 0;
   border-radius: 8px 8px 0px 0px;
-  box-shadow: 0 0 8px 0px black;
+  box-shadow: inset 0px -12px 16px -16px black, 0 0 8px 0px black;;
   display: flex;
   flex-direction: column;
   justify-content: center;
@@ -79,17 +79,15 @@ body {
 
 .heading .active {
   background-color: #546C78;
+  box-shadow: 0 0 8px 0px black;
 }
 
 .heading .inactive {
   background-color: #455A64;
-  /* box-shadow: inset 8px -8px 8px -8px black; */
-  box-shadow: inset 0px -12px 16px -16px black, 0 0 8px 0px black;;
   z-index: -1;
 }
 
 .heading .user {
-  margin-right: -16px;
   padding-right: 2em;
   flex: 1 1;
   text-align: right;
