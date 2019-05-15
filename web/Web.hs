@@ -2,21 +2,28 @@
 {-# LANGUAGE FlexibleContexts       #-}
 {-# LANGUAGE FlexibleInstances      #-}
 {-# LANGUAGE MultiParamTypeClasses  #-}
+{-# LANGUAGE MultiWayIf             #-}
 {-# LANGUAGE NamedFieldPuns         #-}
 {-# LANGUAGE OverloadedStrings      #-}
 {-# LANGUAGE RankNTypes             #-}
+{-# LANGUAGE RecordWildCards        #-}
 {-# LANGUAGE TypeFamilies           #-}
 {-# LANGUAGE TypeOperators          #-}
 
 module Web where
 
+import           Control.Monad.IO.Class         ( liftIO )
 import           Data.Int                       ( Int32 )
+import           Data.Maybe
 import           Data.Text                      ( Text )
 import qualified Data.Text                     as Text
+import           Data.Time
+import           Data.Tree
 import           Lucid
 import           Servant
 import           Servant.HTML.Lucid
 
+import           Job
 import           Types
 
 type Web
@@ -32,31 +39,173 @@ deferredScript :: Text -> Html ()
 deferredScript src =
   script_ [src_ src, defer_ "defer"] ("" :: Text)
 
-lpage :: Html () -> Html () -> Html ()
-lpage title content =
-  doctypehtml_ $ html_ $
-    head_ $ do
-      title_ title
-      link_ [rel_ "stylesheet", href_ "/static/bootstrap/css/bootstrap.min.css"]
-      link_ [rel_ "stylesheet", href_ "/static/lodjur.css"]
-      deferredScript "/static/jquery-3.0.0.slim.min.js"
-      deferredScript "/static/bootstrap/js/bootstrap.bundle.min.js"
-      deferredScript "/js/api.js"
-      deferredScript "/static/job.js"
-      body_ $
-        div_ [class_ "container-fluid"]
-          content
+static :: Text -> Text
+static = ("static/" <>)
+
+staticRef :: Text -> Attribute
+staticRef = href_ . static
+
+favicon :: Html ()
+favicon = do
+  link_ [rel_ "apple-touch-icon", sizes_ "57x57", staticRef "icon/apple-icon-57x57.png"]
+  link_ [rel_ "apple-touch-icon", sizes_ "60x60", staticRef "icon/apple-icon-60x60.png"]
+  link_ [rel_ "apple-touch-icon", sizes_ "72x72", staticRef "icon/apple-icon-72x72.png"]
+  link_ [rel_ "apple-touch-icon", sizes_ "76x76", staticRef "icon/apple-icon-76x76.png"]
+  link_ [rel_ "apple-touch-icon", sizes_ "114x114", staticRef "icon/apple-icon-114x114.png"]
+  link_ [rel_ "apple-touch-icon", sizes_ "120x120", staticRef "icon/apple-icon-120x120.png"]
+  link_ [rel_ "apple-touch-icon", sizes_ "144x144", staticRef "icon/apple-icon-144x144.png"]
+  link_ [rel_ "apple-touch-icon", sizes_ "152x152", staticRef "icon/apple-icon-152x152.png"]
+  link_ [rel_ "apple-touch-icon", sizes_ "180x180", staticRef "icon/apple-icon-180x180.png"]
+  link_ [rel_ "icon", type_ "image/png", sizes_ "192x192",  staticRef "icon/android-icon-192x192.png"]
+  link_ [rel_ "icon", type_ "image/png", sizes_ "32x32", staticRef "icon/favicon-32x32.png"]
+  link_ [rel_ "icon", type_ "image/png", sizes_ "96x96", staticRef "icon/favicon-96x96.png"]
+  link_ [rel_ "icon", type_ "image/png", sizes_ "16x16", staticRef "icon/favicon-16x16.png"]
+  link_ [rel_ "manifest", staticRef "icon/manifest.json"]
+  meta_ [name_ "msapplication-TileColor", content_ "#ffffff"]
+  meta_ [name_ "msapplication-TileImage", content_ "icon/ms-icon-144x144.png"]
+  meta_ [name_ "theme-color", content_ "#ffffff"]
+
+fonts :: Html ()
+fonts = do
+  link_ [rel_ "stylesheet", staticRef "css/fa.css"]
+  link_ [rel_ "stylesheet", href_ "https://fonts.googleapis.com/css?family=Roboto"]
+  link_ [rel_ "stylesheet", href_ "https://fonts.googleapis.com/css?family=Source+Code+Pro"]
+
+stylesheets :: Html ()
+stylesheets =
+  link_ [rel_ "stylesheet", staticRef "css/lodjur.css"]
+
+scripts :: Html ()
+scripts = do
+  deferredScript (static "js/jquery-3.0.0.slim.min.js")
+  deferredScript (static "js/lodjur.js")
+  deferredScript "js/api.js"
+
+leftPanel :: Forest Job' -> Html ()
+leftPanel jobs = do
+  div_ [ class_ "left-panel" ] $ do
+    appHeader
+    jobOutline jobs
+    actionPanel
+
+appHeader :: Html ()
+appHeader = do
+  div_ [ class_ "heading" ] $ do
+    div_ [ class_ "app-header" ] $ do
+      b_ "Lodjur"
+      "3.0"
+
+jobOutline :: Forest Job' -> Html ()
+jobOutline jobs = do
+  div_ [ class_ "jobs" ] $
+    toHtml (Outline jobs)
+
+actionPanel :: Html ()
+actionPanel = do
+  div_ [ class_ "actions" ] $ do
+    div_ [ class_ "disabled" ] $ do
+      span_ [ class_ "far fa-fw fa-cloud-upload" ] ""
+      "Deploy to..."
+    div_ [ class_ "disabled" ] $ do
+      span_ [ class_ "far fa-fw fa-redo" ] ""
+      "Rerun"
+    div_ $ do
+      span_ [ class_ "far fa-fw fa-times" ] ""
+      "Cancel"
+
+tabBar :: Text -> [(Text, Bool)] -> Html ()
+tabBar user ts = do
+  div_ [ class_ "heading" ] $ do
+    mapM_ tab ts
+    div_ [ class_ "user" ] $ do
+      div_ [ class_ "tab-text" ] $ do
+        span_ [ class_ "far fa-chevron-down" ] ""
+        "\160\160"
+        span_ [ class_ "far fa-user" ] ""
+        "\160\160"
+        toHtml user
+
+tab :: (Text, Bool) -> Html ()
+tab (name, active) = do
+  let c = if active then "active" else "inactive"
+  div_ [ classes_ ["tab", c] ] $ do
+    div_ [ class_ "tab-text" ] (toHtml name)
+
+mainPanel :: UTCTime -> Maybe Job' -> [LogLine] -> Html ()
+mainPanel now j l = do
+  div_ [ class_ "main-panel" ] $ do
+    tabBar "Shaun" [("Output", True), ("Test Results", False)]
+    jobDetail now j
+    jobLog l
+
+jobHead :: Job' -> Html ()
+jobHead Job'{..} = do
+  div_ [ class_ "job-head" ] $ do
+    div_ $ statusIcon job'Status job'Conclusion
+    div_ $ toHtml job'Name
+
+jobAttr :: ToHtml a => Text -> a -> Html ()
+jobAttr ico val = do
+  div_ [ class_ "job-commit-attr" ] $ do
+    div_ $ span_ [ class_ ico ] ""
+    div_ $ toHtml val
+
+jobDetail :: UTCTime -> Maybe Job' -> Html ()
+jobDetail now (Just j@Job'{..}) = do
+  div_ [ class_ "job-detail" ] $ do
+    jobHead j
+    div_ [ class_ "job-commit commit-left" ] $ do
+      jobAttr "fab fa-fw fa-github" (job'CommitOwner <> "/" <> job'CommitRepo)
+      jobAttr "far fa-fw fa-code-branch" (fromMaybe "" job'CommitBranch)
+      jobAttr "far fa-fw fa-code-commit" job'CommitSha
+      jobAttr "far fa-fw fa-comment-alt" (fromMaybe "" job'CommitMessage)
+    div_ [ class_ "job-commit commit-right" ] $ do
+      jobAttr "far fa-fw fa-at" committer
+      jobAttr "far fa-fw fa-clock" (maybe "" (prettyRelTime now) job'StartedAt)
+      jobAttr "far fa-fw fa-stopwatch" (maybe "" (prettyDuration . diffUTCTime (fromMaybe now job'CompletedAt)) job'StartedAt)
+  where
+    committer = Text.unwords $ catMaybes
+      [ job'CommitCommitter
+      , (\email -> "<" <> email <> ">") <$> job'CommitAuthorEmail
+      ]
+
+jobDetail _ Nothing = do
+  div_ [ class_ "job-detail" ] ""
+
+prettyRelTime :: UTCTime -> UTCTime -> Html ()
+prettyRelTime _now t =
+  toHtml $ formatTime defaultTimeLocale "%F %r" t
+
+prettyDuration :: NominalDiffTime -> Html ()
+prettyDuration d =
+  toHtml $ show d
+
+jobLog :: [LogLine] -> Html ()
+jobLog l = do
+  div_ [ class_ "job-info" ] $ do
+    div_ [ class_ "log" ] $ do
+      toHtml $ Text.unlines (map log'Text l)
 
 home :: AppM (Html ())
-home =
-  return $ lpage "Jobs" $
-    div_ [id_ "recent-jobs"] mempty
+home = do
+  now <- liftIO $ getCurrentTime
+  jobs <- runDb $ recentJobsForest 20
+  j <- runDb $ lookupJob 6
+  l <- runDb $ jobLogsTail 6
+  return $ doctypehtml_ $ html_ $ do
+    head_ $ do
+      title_ "Lodjur"
+      meta_ [charset_ "UTF-8"]
+      favicon
+      fonts
+      stylesheets
+    body_ $ do
+      div_ [ class_ "app" ] $ do
+        leftPanel jobs
+        mainPanel now j l
 
 job :: Int32 -> AppM (Html ())
-job jobid =
-  return $ lpage "Job" $ do
-    div_ [id_ "job", data_ "job-id" (viaShow jobid)] mempty
-    div_ [id_ "logs", class_ "line", data_ "job-id" (viaShow jobid)] mempty
+job jobid = undefined
 
 viaShow :: Show a => a -> Text
 viaShow = Text.pack . show

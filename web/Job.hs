@@ -118,6 +118,49 @@ instance ToHtml (Maybe Job') where
   toHtml (Just job) = toHtml job
   toHtml Nothing = div_ ""
 
+newtype Outline a = Outline a
+
+instance ToHtml (Outline Job') where
+  toHtmlRaw = toHtml
+  toHtml (Outline Job'{..}) =
+    div_ [ class_ "job" ] $
+      div_ $ do
+        span_ [ class_ "outline-symbol fa-fw" ] ""
+        statusIcon job'Status job'Conclusion
+        span_ [ class_ "status-symbol fas fa-fw fa-clock" ] ""
+        toHtml job'Name
+
+instance ToHtml (Outline (Tree Job')) where
+  toHtmlRaw = toHtml
+  toHtml (Outline (Node Job'{..} children)) =
+    div_ [ class_ "job" ] $ do
+      div_ $ do
+        if (null children)
+          then
+            span_ [ class_ "outline-symbol fa-fw" ] ""
+          else
+            span_ [ class_ "outline-symbol far fa-fw fa-chevron-down" ] ""
+        statusIcon job'Status job'Conclusion
+        toHtml job'Name
+      toHtml (Outline children)
+
+instance ToHtml (Outline (Forest Job')) where
+  toHtmlRaw = toHtml
+  toHtml (Outline jobs) = mapM_ (toHtml . Outline) jobs
+
+statusIcon :: Monad m => Status -> Maybe Conclusion -> HtmlT m ()
+statusIcon status conclusion =
+  case status of
+    Queued     -> span_ [ class_ "status-symbol far fa-fw fa-clock" ] ""
+    InProgress -> span_ [ class_ "status-symbol far fa-fw fa-pulse fa-spinner" ] ""
+    Completed  ->
+      case conclusion of
+        Just Success   -> span_ [ class_ "status-symbol success fas fa-fw fa-check" ] ""
+        Just Failure   -> span_ [ class_ "status-symbol failure fas fa-fw fa-times" ] ""
+        Just Cancelled -> span_ [ class_ "status-symbol fas fa-fw fa-ban" ] ""
+        Just Neutral   -> span_ [ class_ "status-symbol fas fa-fw fa-question" ] ""
+        _              -> span_ [ class_ "status-symbol fas fa-fw fa-exclamation" ] ""
+
 job' :: Job -> Commit -> Job'
 job' Job{..} Commit{..} =
   Job'
@@ -221,7 +264,7 @@ jobLogsTail :: Int32 -> Pg [LogLine]
 jobLogsTail jobid = do
   ls <- runSelectReturningList $
     select $
-      limit_ 20 $
+      limit_ 100 $
       orderBy_ (desc_ . logCreatedAt) $
       filter_ (\l -> logJob l ==. val_ (JobKey jobid)) $
       all_ (dbLogs db)

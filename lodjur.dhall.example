@@ -1,0 +1,24 @@
+{ cfgHttp =
+    { httpPort = 4000
+    -- , httpStaticDir = Some "/path/to/lodjur/static"
+    , httpStaticDir = None Text
+    }
+, cfgGithub =
+    { githubWebhookSecret = "secret"
+    , githubAppId = 0
+    , githubAppPrivateKey = ''
+        -----BEGIN RSA PRIVATE KEY-----
+	SECRET
+        -----END RSA PRIVATE KEY-----
+        ''
+    , githubInstId = 0
+    }
+, cfgLogDir = "/path/to/lodjur/logs"
+, cfgDatabase =
+    { dbHost = "localhost"
+    , dbPort = 5432
+    , dbName = "lodjur"
+    , dbUser = "lodjur"
+    , dbPassword = "lodjur"
+    }
+}

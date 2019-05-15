@@ -6,11 +6,13 @@
 cabal.project.local*
 cabal.sandbox.config
 .DS_Store
+.vscode
 *.swp
 *.keter
 /dist
 /dist-*
 /lodjur.toml
+/lodjur.dhall
 tags
 result
 gitcache
