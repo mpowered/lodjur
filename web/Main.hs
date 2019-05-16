@@ -22,6 +22,7 @@ import qualified Language.JavaScript.Parser    as JS
 import qualified Language.JavaScript.Process.Minify as JS
 import qualified Network.HTTP.Client           as Http
 import qualified Network.HTTP.Client.TLS       as Http
+import           Network.HTTP.Media             ( (//), (/:) )
 import qualified Network.Wai.Handler.Warp      as Warp
 import           Options.Applicative
 import           Servant
@@ -43,10 +44,17 @@ import           WebSocket
 
 import           Paths_lodjur
 
+data Javascript
+
+instance Accept Javascript where
+   contentType _ = "application" // "javascript" /: ("charset", "utf-8")
+
+instance MimeRender Javascript Text where
+  mimeRender _ = cs
+
 type App
     = "github-event" :> Webhook
- :<|> "js" :> "api.js" :> Get '[PlainText] Text
- :<|> "js" :> "api.min.js" :> Get '[PlainText] Text
+ :<|> "js" :> "api.js" :> Get '[Javascript] Text
  :<|> "static" :> Raw
  :<|> "websocket" :> WebSocketPending
  :<|> Api
@@ -57,7 +65,6 @@ app :: FilePath -> ServerT App AppM
 app static
       = webhook
   :<|> return apijs
-  :<|> return apijsMin
   :<|> serveDirectoryFileServer static
   :<|> websocket
   :<|> api

@@ -33,8 +33,9 @@ data-files:
     static/icon/ms-icon-150x150.png
     static/icon/ms-icon-310x310.png
     static/icon/ms-icon-70x70.png
-    static/js/jquery-3.0.0.slim.min.js
+    static/js/jquery-3.4.1.min.js
     static/js/lodjur.js
+    static/js/underscore-min.js
     static/webfonts/fa-brands-400.eot
     static/webfonts/fa-brands-400.svg
     static/webfonts/fa-brands-400.ttf

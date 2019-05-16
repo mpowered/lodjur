@@ -1,3 +1,5 @@
+{-# LANGUAGE DeriveGeneric #-}
+
 module Lodjur.Core.Types
   ( Core(..)
   , Env(..)
@@ -20,10 +22,13 @@ import           Control.Concurrent.Async
 import           Control.Concurrent.STM         ( TQueue, TChan )
 import           Control.Exception
 import           Control.Monad.Reader
+import           Data.Aeson
 import           Data.Int                       ( Int32 )
 import           Data.Pool                      ( Pool )
+import           GHC.Generics
 import           Lodjur.Database                ( Connection )
 import qualified Lodjur.GitHub                 as GH
+import qualified Lodjur.Internal.JSON          as JSON
 import qualified Lodjur.Job                    as Job
 import qualified Network.HTTP.Client           as HTTP
 import           Network.Socket                 ( PortNumber )
@@ -44,10 +49,16 @@ data Env = Env
   }
 
 data Event
-  = JobSubmitted
-  | JobUpdated
+  = JobSubmitted Int32
+  | JobUpdated Int32
   | LogsUpdated Int32
-  deriving (Show, Eq, Ord)
+  deriving (Show, Eq, Ord, Generic)
+
+instance ToJSON Event where
+  toEncoding = genericToEncoding JSON.options
+
+instance FromJSON Event where
+  parseJSON = genericParseJSON JSON.options
 
 data Associated
   = Associated

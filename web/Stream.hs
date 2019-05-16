@@ -10,6 +10,7 @@
 module Stream where
 
 import           Control.Concurrent.STM
+import           Control.Monad
 import           Data.Aeson
 import qualified Data.Binary.Builder           as Builder
 import           Data.ByteString.Lazy           ( ByteString )
@@ -53,24 +54,14 @@ htmlEvent = textEvent . renderBS . toHtml
 
 watchJobs :: AppM EventSource
 watchJobs = do
-  pool <- getEnv Types.envDbPool
   core <- getEnv Types.envCore
   chan <- liftIO $ Core.subscribe core
 
-  let
-    go = do
-      jobs <- liftIO $ withConnection pool $ \conn -> beam conn (recentJobsForest 20)
-      yield (htmlEvent jobs)
-      waitJobEvent
-
-    waitJobEvent = do
-      event <- liftIO $ atomically $ readTChan chan
-      case event of
-        Core.JobSubmitted -> return ()
-        Core.JobUpdated   -> return ()
-        _                 -> waitJobEvent
-
-  return $ eventSource go
+  return $
+    eventSource $
+      forever $ do
+        event <- liftIO $ atomically $ readTChan chan
+        yield (jsonEvent event)
 
 watchJob :: Int32 -> AppM EventSource
 watchJob jobid = do
@@ -87,9 +78,9 @@ watchJob jobid = do
     waitJobEvent = do
       event <- liftIO $ atomically $ readTChan chan
       case event of
-        Core.JobSubmitted -> return ()
-        Core.JobUpdated   -> return ()
-        _                 -> waitJobEvent
+        (Core.JobSubmitted _) -> return ()
+        (Core.JobUpdated _)   -> return ()
+        _                     -> waitJobEvent
 
   return $ eventSource go
 

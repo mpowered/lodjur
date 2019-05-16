@@ -77,9 +77,10 @@ stylesheets =
 
 scripts :: Html ()
 scripts = do
-  deferredScript (static "js/jquery-3.0.0.slim.min.js")
-  deferredScript (static "js/lodjur.js")
+  deferredScript (static "js/jquery-3.4.1.min.js")
+  deferredScript (static "js/underscore-min.js")
   deferredScript "js/api.js"
+  deferredScript (static "js/lodjur.js")
 
 leftPanel :: Forest Job' -> Html ()
 leftPanel jobs = do
@@ -95,7 +96,7 @@ appHeader = do
 
 jobOutline :: Forest Job' -> Html ()
 jobOutline jobs = do
-  div_ [ class_ "jobs" ] $
+  div_ [ class_ "jobs-outline" ] $
     toHtml (Outline jobs)
 
 actionPanel :: Html ()
@@ -188,7 +189,6 @@ jobLog l = do
 home :: AppM (Html ())
 home = do
   now <- liftIO $ getCurrentTime
-  jobs <- runDb $ recentJobsForest 20
   j <- runDb $ lookupJob 5
   l <- runDb $ jobLogsTail 5
   return $ doctypehtml_ $ html_ $ do
@@ -197,12 +197,13 @@ home = do
       meta_ [charset_ "UTF-8"]
       favicon
       fonts
+      scripts
       stylesheets
     body_ $ do
       div_ [ class_ "heading" ] $ do
         tabBar "Shaun" [("Output", True), ("Test Results", False)]
       div_ [ class_ "app" ] $ do
-        leftPanel jobs
+        leftPanel []
         mainPanel now j l
 
 job :: Int32 -> AppM (Html ())

@@ -124,7 +124,7 @@ createJob parent req = do
       , GH.newCheckRunExternalId = Just (toExternalId lodjurJobId)
       }
   liftIO $ atomically $ writeTQueue envJobQueue (req, Associated { .. })
-  notify JobSubmitted
+  notify (JobSubmitted lodjurJobId)
   where toExternalId = Text.pack . show
 
 handleReply :: Reply -> Associated -> CoreM ()
@@ -147,7 +147,7 @@ handleReply rep Associated {..} = do
         $ GH.emptyUpdateCheckRun { GH.updateCheckRunStatus = Just GH.InProgress
                                  , GH.updateCheckRunStartedAt = Just now
                                  }
-      notify JobUpdated
+      notify (JobUpdated lodjurJobId)
     Requeued -> do
       database $ runUpdate $ update
         (dbJobs db)
@@ -162,7 +162,7 @@ handleReply rep Associated {..} = do
         $ GH.emptyUpdateCheckRun { GH.updateCheckRunStatus    = Just GH.Queued
                                  , GH.updateCheckRunStartedAt = Nothing
                                  }
-      notify JobUpdated
+      notify (JobUpdated lodjurJobId)
     LogOutput txt -> do
       database $ runInsert $ insert (dbLogs db) $ insertExpressions
         [ Log { logId        = default_
@@ -225,4 +225,4 @@ handleReply rep Associated {..} = do
             , GH.updateCheckRunOutput      = output
             }
       mapM_ (createJob (Just lodjurJobId)) dependencies
-      notify JobUpdated
+      notify (JobUpdated lodjurJobId)
