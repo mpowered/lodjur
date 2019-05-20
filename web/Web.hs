@@ -183,14 +183,12 @@ prettyDuration d =
 jobLog :: [LogLine] -> Html ()
 jobLog l = do
   div_ [ class_ "job-info" ] $ do
-    div_ [ class_ "log" ] $ do
+    div_ [ class_ "job-log" ] $ do
       toHtml $ Text.unlines (map log'Text l)
 
 home :: AppM (Html ())
 home = do
-  now <- liftIO $ getCurrentTime
-  j <- runDb $ lookupJob 5
-  l <- runDb $ jobLogsTail 5
+  now <- liftIO getCurrentTime
   return $ doctypehtml_ $ html_ $ do
     head_ $ do
       title_ "Lodjur"
@@ -204,10 +202,10 @@ home = do
         tabBar "Shaun" [("Output", True), ("Test Results", False)]
       div_ [ class_ "app" ] $ do
         leftPanel []
-        mainPanel now j l
+        mainPanel now Nothing [] -- j l
 
 job :: Int32 -> AppM (Html ())
-job jobid = undefined
+job _jobid = undefined
 
 viaShow :: Show a => a -> Text
 viaShow = Text.pack . show

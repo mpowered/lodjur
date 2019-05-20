@@ -24,12 +24,19 @@ body {
   min-height: 20em;
 }
 
-.app .left-panel {
+.left-panel {
   display: flex;
   flex-direction: column;
   flex: 1 0;
   min-width: 20em;
   max-width: 40em;
+}
+
+.main-panel {
+  width: auto;
+  display: flex;
+  flex-direction: column;
+  flex: 5 1;
 }
 
 .heading {
@@ -96,7 +103,7 @@ body {
   justify-content: center;
 }
 
-.left-panel .jobs-outline {
+.jobs-outline {
   background-color: #E1E9EC;
   color: #394B55;
   text-align: left;
@@ -105,9 +112,40 @@ body {
   flex: 1 1;
   z-index: 1;
   overflow: auto;
+  display: flex;
+  flex-direction: column;
 }
 
-.left-panel .actions {
+.job-tree {
+  margin-left: 2em;
+  display: flex;
+  flex-direction: column;
+}
+
+.job-item {
+  display: flex;
+  flex-direction: row;
+  align-items: baseline;
+}
+
+.job {
+  display: flex;
+  flex-direction: row;
+  flex: 1 1;
+  cursor: pointer;
+}
+
+.job.active {
+  background-color: #546C78;
+  color: #FEFEFE;
+}
+
+.job:hover {
+  background-color: #394B55;
+  color: #E1E9EC;
+}
+
+.actions {
   background-color: #394B55;
   color: #FEFEFE;
   text-align: left;
@@ -117,12 +155,8 @@ body {
   z-index: -1;
 }
 
-.left-panel .actions .disabled {
+.actions .disabled {
   color: #C5C5C5;
-}
-
-.job .job {
-  margin-left: 2em;
 }
 
 .outline-symbol {
@@ -149,13 +183,6 @@ body {
 
 .main-panel .failure {
   color: hsl(0, 60%, 60%);
-}
-
-.app .main-panel {
-  width: auto;
-  display: flex;
-  flex-direction: column;
-  flex: 5 1;
 }
 
 .main-panel .job-detail {
@@ -231,7 +258,7 @@ body {
   overflow: auto;
 }
 
-.log {
+.job-log {
   font-family: 'Source Code Pro', 'Iosevka Term Web', monospace;
   white-space: pre-wrap;
 }

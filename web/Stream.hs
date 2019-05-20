@@ -72,7 +72,7 @@ watchJob jobid = do
   let
     go = do
       j <- liftIO $ withConnection pool $ \conn -> beam conn (lookupJob jobid)
-      yield (htmlEvent j)
+      yield undefined -- (htmlEvent j)
       waitJobEvent
 
     waitJobEvent = do
