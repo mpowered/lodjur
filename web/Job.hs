@@ -6,6 +6,7 @@
 
 module Job where
 
+import           Control.Applicative
 import           Data.Aeson                     ( ToJSON(..)
                                                 , FromJSON(..)
                                                 , genericToJSON
@@ -17,7 +18,7 @@ import           Data.Int                       ( Int32 )
 import           Data.List                      ( partition )
 import           Data.String.Conversions
 import           Data.Text                      ( Text )
-import           Data.Time.Clock                ( UTCTime )
+import           Data.Time
 import           Data.Tree
 import           GHC.Generics
 import           Lucid
@@ -99,18 +100,57 @@ instance ToHtml (Outline (Forest Job')) where
   toHtmlRaw = toHtml
   toHtml (Outline jobs) = mapM_ (toHtml . Outline) jobs
 
+icon :: Monad m => Text -> HtmlT m ()
+icon a = span_ [ class_ a ] ""
+
+clock :: Monad m => HtmlT m ()
+clock = icon "far fa-fw fa-clock"
+
+stopwatch :: Monad m => HtmlT m ()
+stopwatch = icon "far fa-fw fa-stopwatch"
+
+spinner :: Monad m => HtmlT m ()
+spinner = icon "far fa-fw fa-pulse fa-spinner"
+
+check :: Monad m => HtmlT m ()
+check = icon "success fas fa-fw fa-check"
+
+times :: Monad m => HtmlT m ()
+times = icon "failure fas fa-fw fa-times"
+
+ban :: Monad m => HtmlT m ()
+ban = icon "fas fa-fw fa-ban"
+
+question :: Monad m => HtmlT m ()
+question = icon "fas fa-fw fa-question"
+
+exclamation :: Monad m => HtmlT m ()
+exclamation = icon "fas fa-fw fa-exclamation"
+
+codebranch :: Monad m => HtmlT m ()
+codebranch = icon "far fa-fw fa-code-branch"
+
 statusIcon :: Monad m => Status -> Maybe Conclusion -> HtmlT m ()
 statusIcon status conclusion = case status of
-  Queued     -> span_ [class_ "status-symbol far fa-fw fa-clock"] ""
-  InProgress -> span_ [class_ "status-symbol far fa-fw fa-pulse fa-spinner"] ""
+  Queued     -> clock
+  InProgress -> spinner
   Completed  -> case conclusion of
-    Just Success ->
-      span_ [class_ "status-symbol success fas fa-fw fa-check"] ""
-    Just Failure ->
-      span_ [class_ "status-symbol failure fas fa-fw fa-times"] ""
-    Just Cancelled -> span_ [class_ "status-symbol fas fa-fw fa-ban"] ""
-    Just Neutral   -> span_ [class_ "status-symbol fas fa-fw fa-question"] ""
-    _              -> span_ [class_ "status-symbol fas fa-fw fa-exclamation"] ""
+    Just Success   -> check
+    Just Failure   -> times
+    Just Cancelled -> ban
+    Just Neutral   -> question
+    _              -> exclamation
+
+attr :: (Monad m, ToHtml a) => HtmlT m () -> a -> HtmlT m ()
+attr f v = do
+  div_ [ class_ "attr-field" ] f
+  div_ [ class_ "attr-val" ] (toHtml v)
+
+attrMaybe :: (Monad m, ToHtml a) => HtmlT m () -> Maybe a -> HtmlT m ()
+attrMaybe f (Just v) = attr f v
+attrMaybe _ Nothing = do
+  div_ [ class_ "attr-field" ] ""
+  div_ [ class_ "attr-val" ] ""
 
 job' :: Job -> Commit -> Job'
 job' Job {..} Commit {..} = Job'
@@ -215,3 +255,41 @@ jobLogsTail jobid = do
     $ filter_ (\l -> logJob l ==. val_ (JobKey jobid))
     $ all_ (dbLogs db)
   return $ reverse $ map (\Log {..} -> LogLine logText logCreatedAt) ls
+
+data Card a = Card UTCTime a
+
+instance ToHtml (Card Job') where
+  toHtmlRaw = toHtml
+  toHtml (Card now Job' {..}) =
+    div_ [class_ "card"] $ do
+      div_ [ class_ "card-col" ] $ do
+        div_ [ class_ "card-row" ] $
+          attr (statusIcon job'Status job'Conclusion) job'Name
+        div_ [ class_ "card-row" ] $
+          attrMaybe codebranch job'CommitBranch
+      div_ [ class_ "card-col" ] $ do
+        div_ [ class_ "card-row" ] $
+          attrMaybe clock (prettyTime now <$> job'StartedAt)
+        div_ [ class_ "card-row" ] $
+          attrMaybe stopwatch (prettyDuration <$> (diffUTCTime <$> (job'CompletedAt <|> pure now) <*> job'StartedAt))
+
+instance ToHtml (Card (Tree Job')) where
+  toHtmlRaw = toHtml
+  toHtml (Card now (Node job children)) = do
+    if null children
+      then
+        div_ [ class_ "card-item" ] $
+          toHtml (Card now job)
+      else do
+        div_ [ class_ "card-item" ] $ do
+          toHtml (Card now job)
+          div_ [class_ "card-sublist"] $
+            mapM_ (toHtml . Card now . rootLabel) children
+
+prettyTime :: Monad m => UTCTime -> UTCTime -> HtmlT m ()
+prettyTime _now t =
+  toHtml $ formatTime defaultTimeLocale "%F %r" t
+
+prettyDuration :: Monad m => NominalDiffTime -> HtmlT m ()
+prettyDuration d =
+  toHtml $ show d

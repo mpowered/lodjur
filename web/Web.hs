@@ -13,8 +13,10 @@
 module Web where
 
 import           Control.Monad.IO.Class         ( liftIO )
+import           Data.ByteString                ( ByteString )
 import           Data.Int                       ( Int32 )
 import           Data.Maybe
+import           Data.String.Conversions
 import           Data.Text                      ( Text )
 import qualified Data.Text                     as Text
 import           Data.Time
@@ -27,13 +29,15 @@ import           Job
 import           Types
 
 type Web
-    = Get '[HTML] (Html ())
+    = GetNoContent '[HTML] (Html ())
+ :<|> "jobs" :> Get '[HTML] (Html ())
  :<|> "job" :> Capture "jobid" Int32 :> Get '[HTML] (Html ())
 
 web :: ServerT Web AppM
 web
     = home
- :<|> job
+ :<|> getJobs
+ :<|> getJob
 
 deferredScript :: Text -> Html ()
 deferredScript src =
@@ -113,18 +117,22 @@ actionPanel = do
       "Cancel"
 
 tabBar :: Text -> [(Text, Bool)] -> Html ()
-tabBar user ts = do
+tabBar username ts = do
   div_ [ class_ "left-panel" ]
     appHeader
   div_ [ class_ "main-panel" ] $ do
     mapM_ tab ts
-    div_ [ class_ "user" ] $ do
-      div_ [ class_ "tab-text" ] $ do
-        span_ [ class_ "far fa-chevron-down" ] ""
-        "\160\160"
-        span_ [ class_ "far fa-user" ] ""
-        "\160\160"
-        toHtml user
+    user username
+
+user :: Text -> Html ()
+user username = do
+  div_ [ class_ "user" ] $ do
+    div_ [ class_ "tab-text" ] $ do
+      span_ [ class_ "far fa-chevron-down" ] ""
+      "\160\160"
+      span_ [ class_ "far fa-user" ] ""
+      "\160\160"
+      toHtml username
 
 tab :: (Text, Bool) -> Html ()
 tab (name, active) = do
@@ -161,7 +169,7 @@ jobDetail now (Just j@Job'{..}) = do
       jobAttr "far fa-fw fa-comment-alt" (fromMaybe "" job'CommitMessage)
     div_ [ class_ "job-commit commit-right" ] $ do
       jobAttr "far fa-fw fa-at" committer
-      jobAttr "far fa-fw fa-clock" (maybe "" (prettyRelTime now) job'StartedAt)
+      jobAttr "far fa-fw fa-clock" (maybe "" (prettyTime now) job'StartedAt)
       jobAttr "far fa-fw fa-stopwatch" (maybe "" (prettyDuration . diffUTCTime (fromMaybe now job'CompletedAt)) job'StartedAt)
   where
     committer = Text.unwords $ catMaybes
@@ -172,22 +180,21 @@ jobDetail now (Just j@Job'{..}) = do
 jobDetail _ Nothing = do
   div_ [ class_ "job-detail" ] ""
 
-prettyRelTime :: UTCTime -> UTCTime -> Html ()
-prettyRelTime _now t =
-  toHtml $ formatTime defaultTimeLocale "%F %r" t
-
-prettyDuration :: NominalDiffTime -> Html ()
-prettyDuration d =
-  toHtml $ show d
-
 jobLog :: [LogLine] -> Html ()
 jobLog l = do
   div_ [ class_ "job-info" ] $ do
     div_ [ class_ "job-log" ] $ do
       toHtml $ Text.unlines (map log'Text l)
 
+redirects :: ByteString -> AppM a
+redirects url = throwError err302 { errHeaders = [("Location", cs url)] }
+
 home :: AppM (Html ())
-home = do
+home = redirects "jobs"
+
+{-
+getJobs :: AppM (Html ())
+getJobs = do
   now <- liftIO getCurrentTime
   return $ doctypehtml_ $ html_ $ do
     head_ $ do
@@ -203,9 +210,39 @@ home = do
       div_ [ class_ "app" ] $ do
         leftPanel []
         mainPanel now Nothing [] -- j l
+-}
 
-job :: Int32 -> AppM (Html ())
-job _jobid = undefined
+getJobs :: AppM (Html ())
+getJobs = do
+  now <- liftIO getCurrentTime
+  jobs <- runDb (recentJobsForest 20)
+  return $ doctypehtml_ $ html_ $ do
+    head_ $ do
+      title_ "Lodjur"
+      meta_ [charset_ "UTF-8"]
+      favicon
+      fonts
+      scripts
+      stylesheets
+    body_ $ do
+      div_ [ class_ "app basic" ] $ do
+        div_ [ class_ "title-box header" ] $ do
+          div_ [ class_ "title" ] $ do
+            b_ "Lodjur"
+            "\160"
+            "3.0"
+        div_ [ class_ "user-box header" ] $ do
+          div_ [ class_ "user"] $ span_ [ class_ "far fa-chevron-down" ] ""
+          div_ [ class_ "user"] $ span_ [ class_ "far fa-user" ] ""
+          div_ [ class_ "user"] "Shaun"
+        div_ [ class_ "head-box header" ] $ do
+          div_ [ class_ "head"] "Recent Jobs"
+        div_ [ class_ "content" ] $ do
+          div_ [ class_ "card-list" ] $ do
+            mapM_ (toHtml . Card now) jobs
+
+getJob :: Int32 -> AppM (Html ())
+getJob _jobid = undefined
 
 viaShow :: Show a => a -> Text
 viaShow = Text.pack . show

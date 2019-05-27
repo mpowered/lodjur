@@ -17,7 +17,7 @@ import           Data.Aeson
 import           Data.Int                       ( Int32 )
 import           Data.Maybe
 import           Data.Text                      ( Text )
-import           Data.Text                     as Text
+import qualified Data.Text                     as Text
 import           Data.Time
 import           Data.Tree
 import           Lucid
