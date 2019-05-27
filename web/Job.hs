@@ -258,6 +258,9 @@ jobLogsTail jobid = do
 
 data Card a = Card UTCTime a
 
+instance ToJSON a => ToJSON (Card a) where
+  toJSON (Card _ a) = toJSON a
+
 instance ToHtml (Card Job') where
   toHtmlRaw = toHtml
   toHtml (Card now Job' {..}) =
@@ -285,6 +288,10 @@ instance ToHtml (Card (Tree Job')) where
           toHtml (Card now job)
           div_ [class_ "card-sublist"] $
             mapM_ (toHtml . Card now . rootLabel) children
+
+instance ToHtml (Card (Forest Job')) where
+  toHtmlRaw = toHtml
+  toHtml (Card now jobs) = mapM_ (toHtml . Card now) jobs
 
 prettyTime :: Monad m => UTCTime -> UTCTime -> HtmlT m ()
 prettyTime _now t =

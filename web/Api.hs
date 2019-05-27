@@ -30,6 +30,7 @@ import           Types
 
 type Api = "api" :>
  (    "jobs" :> "outline" :> Get '[HTML, JSON] (Outline (Forest Job'))
+ :<|> "jobs" :> "cards" :> Get '[HTML, JSON] (Card (Forest Job'))
  :<|> "job" :> Capture "jobId" Int32 :> "detail" :> Get '[HTML, JSON] (Detail Job')
  :<|> "job" :> Capture "jobId" Int32 :> "logs" :> Get '[HTML, JSON] [LogLine]
  )
@@ -39,12 +40,18 @@ apiAsJS = jsForAPI (Proxy :: Proxy Api) jquery
 
 api :: ServerT Api AppM
 api = jobsOutline
+ :<|> jobsCards
  :<|> jobDetail
  :<|> jobLogs
 
 jobsOutline :: AppM (Outline (Forest Job'))
 jobsOutline =
   Outline <$> runDb (recentJobsForest 20)
+
+jobsCards :: AppM (Card (Forest Job'))
+jobsCards = do
+  now <- liftIO getCurrentTime
+  Card now <$> runDb (recentJobsForest 20)
 
 data Detail a = Detail UTCTime a
 

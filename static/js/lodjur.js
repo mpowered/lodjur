@@ -48,12 +48,18 @@ function updateJobLogs(jobId) {
   $('.job-log').loadApi(_.partial(getApiJobByJobIdLogs, jobId));
 }
 
+function updateJobsCards() {
+  $('.card-list').loadApi(getApiJobsCards);
+}
+
 $(document).ready(function() {
   var s = streamApiJobsWatch();
   s.addEventListener('message', function (e) {
     var data = JSON.parse(e.data);
     if (data.tag === 'JobUpdated') { updateJobsOutline(); }
+    if (data.tag === 'JobUpdated') { updateJobsCards(); }
   });
 
   updateJobsOutline();
+  updateJobsCards();
 });
