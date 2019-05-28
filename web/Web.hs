@@ -240,8 +240,7 @@ getJobs = do
           div_ [ class_ "head"] "Recent Jobs"
         div_ [ class_ "content" ] $ do
           div_ [ class_ "card-list" ] ""
-          -- div_ [ class_ "card-list" ] $ do
-          --   mapM_ (toHtml . Card now) jobs
+        div_ [ class_ "footer" ] ""
 
 getJob :: Int32 -> AppM (Html ())
 getJob _jobid = undefined
