@@ -72,8 +72,9 @@ favicon = do
 fonts :: Html ()
 fonts = do
   link_ [rel_ "stylesheet", staticRef "css/fa.css"]
-  link_ [rel_ "stylesheet", href_ "https://fonts.googleapis.com/css?family=Roboto"]
-  link_ [rel_ "stylesheet", href_ "https://fonts.googleapis.com/css?family=Source+Code+Pro"]
+  link_ [rel_ "stylesheet", href_ "https://fonts.googleapis.com/css?family=Roboto&display=swap"]
+  link_ [rel_ "stylesheet", href_ "https://fonts.googleapis.com/css?family=Roboto+Condensed&display=swap"]
+  link_ [rel_ "stylesheet", href_ "https://fonts.googleapis.com/css?family=Source+Code+Pro&display=swap"]
 
 stylesheets :: Html ()
 stylesheets =
@@ -169,8 +170,8 @@ jobDetail now (Just j@Job'{..}) = do
       jobAttr "far fa-fw fa-comment-alt" (fromMaybe "" job'CommitMessage)
     div_ [ class_ "job-commit commit-right" ] $ do
       jobAttr "far fa-fw fa-at" committer
-      jobAttr "far fa-fw fa-clock" (maybe "" (prettyTime now) job'StartedAt)
-      jobAttr "far fa-fw fa-stopwatch" (maybe "" (prettyDuration . diffUTCTime (fromMaybe now job'CompletedAt)) job'StartedAt)
+      -- jobAttr "far fa-fw fa-clock" (maybe "" (prettyTime now) job'StartedAt)
+      -- jobAttr "far fa-fw fa-stopwatch" (maybe "" (prettyDuration . diffUTCTime (fromMaybe now job'CompletedAt)) job'StartedAt)
   where
     committer = Text.unwords $ catMaybes
       [ job'CommitCommitter

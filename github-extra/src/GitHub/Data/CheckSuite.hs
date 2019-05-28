@@ -51,3 +51,21 @@ instance ToJSON CheckSuite where
         , "app"           .= checkSuiteApp
         , "repository"    .= checkSuiteRepository
         ]
+
+data NewCheckSuite = NewCheckSuite
+    { newCheckSuiteHeadSha      :: !Sha
+    }
+  deriving (Show, Data, Typeable, Eq, Ord, Generic)
+
+instance NFData NewCheckSuite where rnf = genericRnf
+instance Binary NewCheckSuite
+
+instance ToJSON NewCheckSuite where
+    toJSON NewCheckSuite {..} = object
+        [ "head_sha"        .= newCheckSuiteHeadSha
+        ]
+
+newCheckSuite :: Sha -> NewCheckSuite
+newCheckSuite sha = NewCheckSuite
+    { newCheckSuiteHeadSha      = sha
+    }

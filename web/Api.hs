@@ -49,9 +49,8 @@ jobsOutline =
   Outline <$> runDb (recentJobsForest 20)
 
 jobsCards :: AppM (Card (Forest Job'))
-jobsCards = do
-  now <- liftIO getCurrentTime
-  Card now <$> runDb (recentJobsForest 20)
+jobsCards =
+  Card LargeCard <$> runDb (recentJobsForest 20)
 
 data Detail a = Detail UTCTime a
 
