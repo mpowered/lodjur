@@ -5,6 +5,7 @@ module Lodjur.Core
   , cancelCore
   , submit
   , subscribe
+  , newSuite
   , module Lodjur.Core.Types
   )
 where
@@ -18,6 +19,7 @@ import           Data.Aeson
 import           Data.Bifunctor
 import           Data.Int                       ( Int32 )
 import           Data.Pool
+import           Data.Text                      ( Text )
 import qualified Data.Text                     as Text
 import           Data.Time.Clock                ( getCurrentTime )
 import           Database.Beam.Postgres
@@ -62,6 +64,10 @@ submit core parent job = runCore (coreEnv core) $ createJob parent job
 subscribe :: Core -> IO (TChan Event)
 subscribe core = atomically $ dupTChan $ envEventChan $ coreEnv core
 
+newSuite :: Core -> Text -> Text -> Text -> IO GH.CheckSuite
+newSuite core owner repo sha =
+  runCore (coreEnv core) $ createSuite owner repo sha
+
 notify :: Event -> CoreM ()
 notify event = do
   Env {..} <- getEnv
@@ -94,6 +100,10 @@ upsertCommit GH.GitHubCommit{..} =
         -- )
       )
       ( Just id )
+
+createSuite :: Text -> Text -> Text -> CoreM GH.CheckSuite
+createSuite owner repo sha =
+  github $ GH.createCheckSuiteR (GH.N owner) (GH.N repo) (GH.newCheckSuite (GH.Sha sha))
 
 createJob :: Maybe Int32 -> Job.Request -> CoreM ()
 createJob parent req = do

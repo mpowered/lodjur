@@ -28,6 +28,7 @@ import           GitHub.Data.Name              as GH
 import           GitHub.Extra                  as GH
 import           GitHub.Endpoints.Apps         as GH
 import           GitHub.Endpoints.Checks       as GH
+import           GitHub.Endpoints.CheckSuite   as GH
 import qualified Lodjur.Internal.JSON          as JSON
 
 data GitHubCommit
