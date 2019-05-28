@@ -45,13 +45,13 @@ cancelCore core = cancel (coreReplyHandler core)
 
 replyHandler :: Env -> IO ()
 replyHandler env = do
-  r <- try $ forever $
+  e <- try $ forever $
     runCore env $ do
       (rep, assoc) <- liftIO $ atomically $ readTQueue (envReplyQueue env)
       handleReply rep assoc
-  case first fromException r of
+  case first fromException e of
     Left (Just AsyncCancelled) -> return ()
-    Left e -> do
+    Left _ -> do
       putStrLn $ "Exception in replyHandler: " ++ show e
       replyHandler env
     Right () -> return ()
