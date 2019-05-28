@@ -18,6 +18,7 @@ import           Data.Int                       ( Int32 )
 import           Data.List                      ( partition )
 import           Data.String.Conversions
 import           Data.Text                      ( Text )
+import qualified Data.Text                     as Text
 import           Data.Time
 import           Data.Tree
 import           GHC.Generics
@@ -103,43 +104,69 @@ instance ToHtml (Outline (Forest Job')) where
 icon :: Monad m => Text -> HtmlT m ()
 icon a = span_ [ class_ a ] ""
 
-clock :: Monad m => HtmlT m ()
-clock = icon "far fa-fw fa-clock"
+clock_ :: Monad m => HtmlT m ()
+clock_ = icon "far fa-fw fa-clock"
 
-stopwatch :: Monad m => HtmlT m ()
-stopwatch = icon "far fa-fw fa-stopwatch"
+stopwatch_ :: Monad m => HtmlT m ()
+stopwatch_ = icon "far fa-fw fa-stopwatch"
 
-spinner :: Monad m => HtmlT m ()
-spinner = icon "far fa-fw fa-pulse fa-spinner"
+spinner_ :: Monad m => HtmlT m ()
+spinner_ = icon "far fa-fw fa-pulse fa-spinner"
 
-check :: Monad m => HtmlT m ()
-check = icon "success fas fa-fw fa-check"
+check_ :: Monad m => HtmlT m ()
+check_ = icon "success fas fa-fw fa-check"
 
-times :: Monad m => HtmlT m ()
-times = icon "failure fas fa-fw fa-times"
+times_ :: Monad m => HtmlT m ()
+times_ = icon "failure fas fa-fw fa-times"
 
-ban :: Monad m => HtmlT m ()
-ban = icon "fas fa-fw fa-ban"
+ban_ :: Monad m => HtmlT m ()
+ban_ = icon "fas fa-fw fa-ban"
 
-question :: Monad m => HtmlT m ()
-question = icon "fas fa-fw fa-question"
+question_ :: Monad m => HtmlT m ()
+question_ = icon "fas fa-fw fa-question"
 
-exclamation :: Monad m => HtmlT m ()
-exclamation = icon "fas fa-fw fa-exclamation"
+exclamation_ :: Monad m => HtmlT m ()
+exclamation_ = icon "fas fa-fw fa-exclamation"
 
-codebranch :: Monad m => HtmlT m ()
-codebranch = icon "far fa-fw fa-code-branch"
+codebranch_ :: Monad m => HtmlT m ()
+codebranch_ = icon "far fa-fw fa-code-branch"
+
+codecommit_ :: Monad m => HtmlT m ()
+codecommit_ = icon "far fa-fw fa-code-commit"
+
+hashtag_ :: Monad m => HtmlT m ()
+hashtag_ = icon "far fa-fw fa-hashtag"
+
+linki_ :: Monad m => HtmlT m ()
+linki_ = icon "far fa-fw fa-link"
+
+user_ :: Monad m => HtmlT m ()
+user_ = icon "far fa-fw fa-user"
+
+github_ :: Monad m => HtmlT m ()
+github_ = icon "fab fa-fw fa-github"
 
 statusIcon :: Monad m => Status -> Maybe Conclusion -> HtmlT m ()
 statusIcon status conclusion = case status of
-  Queued     -> clock
-  InProgress -> spinner
+  Queued     -> clock_
+  InProgress -> spinner_
   Completed  -> case conclusion of
-    Just Success   -> check
-    Just Failure   -> times
-    Just Cancelled -> ban
-    Just Neutral   -> question
-    _              -> exclamation
+    Just Success   -> check_
+    Just Failure   -> times_
+    Just Cancelled -> ban_
+    Just Neutral   -> question_
+    _              -> exclamation_
+
+statusClass :: Status -> Maybe Conclusion -> Text
+statusClass status conclusion = case status of
+  Queued     -> "queued"
+  InProgress -> "inprogress"
+  Completed  -> case conclusion of
+    Just Success   -> "success"
+    Just Failure   -> "failure"
+    Just Cancelled -> "cancelled"
+    Just Neutral   -> "neutral"
+    _              -> "other"
 
 attr :: (Monad m, ToHtml a) => HtmlT m () -> a -> HtmlT m ()
 attr f v = do
@@ -256,47 +283,73 @@ jobLogsTail jobid = do
     $ all_ (dbLogs db)
   return $ reverse $ map (\Log {..} -> LogLine logText logCreatedAt) ls
 
-data Card a = Card UTCTime a
+data CardSize = LargeCard | SmallCard
+
+data Card a = Card CardSize a
 
 instance ToJSON a => ToJSON (Card a) where
   toJSON (Card _ a) = toJSON a
 
 instance ToHtml (Card Job') where
   toHtmlRaw = toHtml
-  toHtml (Card now Job' {..}) =
+  toHtml (Card LargeCard Job' {..}) =
     div_ [class_ "card"] $ do
-      div_ [ class_ "card-col" ] $ do
+      div_ [ class_ ("card-trim left status-background " <> statusClass job'Status job'Conclusion) ] ""
+      div_ [ class_ "card-col narrow" ] $ do
         div_ [ class_ "card-row" ] $
           attr (statusIcon job'Status job'Conclusion) job'Name
         div_ [ class_ "card-row" ] $
-          attrMaybe codebranch job'CommitBranch
+          attr linki_ (show job'Id)
+        div_ [ class_ "card-row" ] $
+          attrMaybe codebranch_ job'CommitBranch
+        div_ [ class_ "card-row" ] $
+          attr codecommit_ (Text.take 10 job'CommitSha)
+      div_ [ class_ "card-col wide" ] $ do
+        div_ [ class_ "card-row" ] $
+          attrMaybe clock_ (prettyTime <$> job'StartedAt)
+        div_ [ class_ "card-row" ] $
+          attrMaybe stopwatch_ (prettyDuration <$> job'StartedAt <*> pure job'CompletedAt)
+        div_ [ class_ "card-row" ] $
+          attr github_ (job'CommitOwner <> "/" <> job'CommitRepo)
+        div_ [ class_ "card-row" ] $
+          attrMaybe user_ (job'CommitCommitter <|> job'CommitCommitterEmail)
+      div_ [ class_ "card-trim right" ] ""
+
+  toHtml (Card SmallCard Job' {..}) =
+    div_ [class_ "card"] $ do
+      div_ [ class_ ("card-trim left status-background " <> statusClass job'Status job'Conclusion) ] ""
+      div_ [ class_ "card-col narrow" ] $ do
+        div_ [ class_ "card-row" ] $
+          attr (statusIcon job'Status job'Conclusion) job'Name
+        div_ [ class_ "card-row" ] $
+          attr linki_ (show job'Id)
       div_ [ class_ "card-col" ] $ do
         div_ [ class_ "card-row" ] $
-          attrMaybe clock (prettyTime now <$> job'StartedAt)
+          attrMaybe clock_ (prettyTime <$> job'StartedAt)
         div_ [ class_ "card-row" ] $
-          attrMaybe stopwatch (prettyDuration <$> (diffUTCTime <$> (job'CompletedAt <|> pure now) <*> job'StartedAt))
+          attrMaybe stopwatch_ (prettyDuration <$> job'StartedAt <*> pure job'CompletedAt)
+      div_ [ class_ "card-trim right" ] ""
 
 instance ToHtml (Card (Tree Job')) where
   toHtmlRaw = toHtml
-  toHtml (Card now (Node job children)) = do
+  toHtml (Card sz (Node job children)) = do
     if null children
       then
         div_ [ class_ "card-item" ] $
-          toHtml (Card now job)
+          toHtml (Card sz job)
       else do
         div_ [ class_ "card-item" ] $ do
-          toHtml (Card now job)
+          toHtml (Card sz job)
           div_ [class_ "card-sublist"] $
-            mapM_ (toHtml . Card now . rootLabel) children
+            mapM_ (toHtml . Card SmallCard . rootLabel) children
 
 instance ToHtml (Card (Forest Job')) where
   toHtmlRaw = toHtml
-  toHtml (Card now jobs) = mapM_ (toHtml . Card now) jobs
+  toHtml (Card sz jobs) = mapM_ (toHtml . Card sz) jobs
 
-prettyTime :: Monad m => UTCTime -> UTCTime -> HtmlT m ()
-prettyTime _now t =
-  toHtml $ formatTime defaultTimeLocale "%F %r" t
+prettyTime :: Monad m => UTCTime -> HtmlT m ()
+prettyTime t = toHtml $ formatTime defaultTimeLocale "%F %r" t
 
-prettyDuration :: Monad m => NominalDiffTime -> HtmlT m ()
-prettyDuration d =
-  toHtml $ show d
+prettyDuration :: Monad m => UTCTime -> Maybe UTCTime -> HtmlT m ()
+prettyDuration start (Just end) = let d = diffUTCTime end start in toHtml (show d)
+prettyDuration _ Nothing = "running"
