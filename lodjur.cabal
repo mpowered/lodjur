@@ -152,6 +152,7 @@ library                 github-extra
                       , GitHub.Endpoints.Apps
                       , GitHub.Endpoints.Apps.Installations
                       , GitHub.Endpoints.Checks
+                      , GitHub.Endpoints.CheckSuite
     build-depends:      base                  >= 4.11 && < 5
                       , github                >= 0.21 && < 0.22
                       , http-types            >= 0.12.1 && < 0.13
