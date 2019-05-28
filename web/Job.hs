@@ -15,7 +15,7 @@ import           Data.Aeson                     ( ToJSON(..)
 import qualified Data.Aeson                    as A
 import qualified Data.Char                     as C
 import           Data.Int                       ( Int32 )
-import           Data.List                      ( partition )
+import           Data.List                      ( partition, sortOn )
 import           Data.String.Conversions
 import           Data.Text                      ( Text )
 import           Data.Time
@@ -219,12 +219,13 @@ recentJobsForest n = do
       j <- reuse prev
       c <- related_ (dbCommits db) (jobCommit j)
       pure (j, c)
-  return $ buildForest Nothing (uncurry job' <$> ps)
+  return $ reverse $ buildForest Nothing (uncurry job' <$> ps)
  where
   buildForest _ [] = []
   buildForest p js =
     let (roots, js') = partition (\j -> job'Parent j == p) js
-    in  map (\j -> Node j (buildForest (Just (job'Id j)) js')) roots
+        sorted = sortOn job'Id roots
+    in  map (\j -> Node j (buildForest (Just (job'Id j)) js')) sorted
 
 lookupJob :: Int32 -> Pg (Maybe Job')
 lookupJob jobid = do
