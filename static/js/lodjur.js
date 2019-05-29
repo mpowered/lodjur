@@ -60,8 +60,8 @@ function updatePretty() {
   var now = moment();
   var tdiffs = $('.time').map(updatePrettyTime(now)).get();
   var ddiffs = $('.duration').map(updatePrettyDuration(now)).get();
-  var mindiff = Math.min(1000, ...tdiffs, ...ddiffs);
-  if (mindiff < 60000) {
+  var mindiff = Math.min(Infinity, ...tdiffs, ...ddiffs);
+  if (mindiff < 60) {
     timerPretty = window.setTimeout(updatePretty, 1000);
   } else {
     timerPretty = window.setTimeout(updatePretty, 60000);
@@ -72,7 +72,7 @@ function updatePrettyTime(now) {
   return function() {
     var self = $(this);
     var time = self.children('.utctime').text();
-    var m = moment(time);
+    var m = moment.utc(time);
     self.children('.time-pretty').text(m.from(now));
     return Math.abs(now.diff(m, 'seconds'));
   };
@@ -83,10 +83,16 @@ function updatePrettyDuration(now) {
     var self = $(this);
     var start = self.children('.duration-start').text();
     var end = self.children('.duration-end').text();
-    if (end === undefined) { end = now; }
-    var m = moment.duration(moment(end).diff(moment(start)));
+    var diff = Infinity;
+    var m;
+    if (end === '') {
+      var m = moment.duration(now.diff(moment.utc(start)));
+      diff = Math.abs(m.asSeconds());
+    } else {
+      var m = moment.duration(moment.utc(end).diff(moment.utc(start)));
+    }
     self.children('.duration-pretty').text(m.humanize());
-    return Math.abs(m.asSeconds());
+    return diff;
   };
 }
 
@@ -94,9 +100,10 @@ $(document).ready(function() {
   moment.relativeTimeThreshold('M', 12);
   moment.relativeTimeThreshold('d', 30);
   moment.relativeTimeThreshold('h', 24);
-  moment.relativeTimeThreshold('m', 90);
-  moment.relativeTimeThreshold('s', 90);
-  moment.relativeTimeThreshold('ss', 15);
+  moment.relativeTimeThreshold('m', 60);
+  moment.relativeTimeThreshold('s', 60);
+  moment.relativeTimeThreshold('ss', 3);
+  moment.relativeTimeRounding(Math.floor);
   var s = streamApiJobsWatch();
   s.addEventListener('message', function (e) {
     var data = JSON.parse(e.data);
