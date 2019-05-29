@@ -84,6 +84,7 @@ scripts :: Html ()
 scripts = do
   deferredScript (static "js/jquery-3.4.1.min.js")
   deferredScript (static "js/underscore-min.js")
+  deferredScript (static "js/moment.js")
   deferredScript "js/api.js"
   deferredScript (static "js/lodjur.js")
 

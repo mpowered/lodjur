@@ -7,6 +7,7 @@
 module Job where
 
 import           Control.Applicative
+import           Control.Monad
 import           Data.Aeson                     ( ToJSON(..)
                                                 , FromJSON(..)
                                                 , genericToJSON
@@ -349,8 +350,21 @@ instance ToHtml (Card (Forest Job')) where
   toHtml (Card sz jobs) = mapM_ (toHtml . Card sz) jobs
 
 prettyTime :: Monad m => UTCTime -> HtmlT m ()
-prettyTime t = toHtml $ formatTime defaultTimeLocale "%F %r" t
+prettyTime t =
+  div_ [class_ "time"] $ do
+    div_ [class_ "utctime"] $
+      toHtml (formatTime defaultTimeLocale "%Y-%m-%d %H:%M:%S" t)
+    div_ [class_ "time-pretty"] $
+      toHtml (formatTime defaultTimeLocale "%Y-%m-%d %H:%M:%S" t)
 
 prettyDuration :: Monad m => UTCTime -> Maybe UTCTime -> HtmlT m ()
-prettyDuration start (Just end) = let d = diffUTCTime end start in toHtml (show d)
-prettyDuration _ Nothing = "running"
+prettyDuration start end = do
+  div_ [class_ "duration"] $ do
+    div_ [class_ "duration-start"] $ 
+      toHtml (formatTime defaultTimeLocale "%Y-%m-%d %H:%M:%S" start)
+    forM_ end $ \t ->
+      div_ [class_ "duration-end"] $ 
+        toHtml (formatTime defaultTimeLocale "%Y-%m-%d %H:%M:%S" t)
+    let d = maybe "running" show (diffUTCTime <$> end <*> pure start)
+    div_ [class_ "duration-pretty"] $ 
+      toHtml d

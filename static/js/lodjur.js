@@ -18,10 +18,14 @@ $(document).ready(function() {
 });
 */
 
+var timerPretty;
+
 $.fn.loadApi = function(fn) {
   var self = this;
   fn( function(data) {
+    window.clearTimeout(timerPretty);
     self.html(data);
+    updatePretty();
   } );
   return this;
 };
@@ -52,7 +56,47 @@ function updateJobsCards() {
   $('.card-list').loadApi(getApiJobsCards);
 }
 
+function updatePretty() {
+  var now = moment();
+  var tdiffs = $('.time').map(updatePrettyTime(now)).get();
+  var ddiffs = $('.duration').map(updatePrettyDuration(now)).get();
+  var mindiff = Math.min(1000, ...tdiffs, ...ddiffs);
+  if (mindiff < 60000) {
+    timerPretty = window.setTimeout(updatePretty, 1000);
+  } else {
+    timerPretty = window.setTimeout(updatePretty, 60000);
+  }
+}
+
+function updatePrettyTime(now) {
+  return function() {
+    var self = $(this);
+    var time = self.children('.utctime').text();
+    var m = moment(time);
+    self.children('.time-pretty').text(m.from(now));
+    return Math.abs(now.diff(m, 'seconds'));
+  };
+}
+
+function updatePrettyDuration(now) {
+  return function() {
+    var self = $(this);
+    var start = self.children('.duration-start').text();
+    var end = self.children('.duration-end').text();
+    if (end === undefined) { end = now; }
+    var m = moment.duration(moment(end).diff(moment(start)));
+    self.children('.duration-pretty').text(m.humanize());
+    return Math.abs(m.asSeconds());
+  };
+}
+
 $(document).ready(function() {
+  moment.relativeTimeThreshold('M', 12);
+  moment.relativeTimeThreshold('d', 30);
+  moment.relativeTimeThreshold('h', 24);
+  moment.relativeTimeThreshold('m', 90);
+  moment.relativeTimeThreshold('s', 90);
+  moment.relativeTimeThreshold('ss', 15);
   var s = streamApiJobsWatch();
   s.addEventListener('message', function (e) {
     var data = JSON.parse(e.data);
@@ -60,6 +104,7 @@ $(document).ready(function() {
     if (data.tag === 'JobUpdated') { updateJobsCards(); }
   });
 
+  updatePretty();
   updateJobsOutline();
   updateJobsCards();
 });

@@ -120,6 +120,14 @@ body {
   flex-direction: row;
 }
 
+.card-item:nth-child(odd) {
+  background-color: hsl(200, 18%, 41%);
+}
+
+.card-item:nth-child(even) {
+  background-color: hsl(200, 18%, 39%);
+}
+
 .card {
   display: flex;
   flex-direction: row;
@@ -128,7 +136,12 @@ body {
 
 .card-trim {
   width: 0.5rem;
-  background-color: #E1E9EC;
+  background-color: hsl(196, 22%, 90%);
+}
+
+.card-sublist .card-trim {
+  width: 0.5rem;
+  background-color: hsl(196, 22%, 80%);
 }
 
 .card-trim.left {
@@ -137,6 +150,85 @@ body {
 
 .card-trim.right {
   border-radius: 0rem 0.5rem 0.5rem 0rem;
+}
+
+.card-col {
+  display: flex;
+  flex-direction: column;
+  width: 12em;
+  background-color: hsl(196, 22%, 90%);
+  color: hsl(201, 20%, 28%);
+  padding: 0.5rem;
+}
+
+.card-sublist .card-col {
+  background-color: hsl(196, 22%, 80%);
+  color: hsl(201, 20%, 28%);
+}
+
+.card-col.narrow {
+  width: 8em;
+}
+
+.card-col.wide {
+  width: 16em;
+}
+
+.card-row {
+  display: flex;
+  flex-direction: row;
+  position: relative;
+}
+
+.attr-field {
+  width: 1.5em;
+}
+
+.attr-val {
+  font-family: 'Roboto Condensed', sans-serif;
+  overflow: hidden;
+  white-space: nowrap;
+  display: flex;
+  flex-direction: row;
+}
+
+.attr-val:after {
+  content: '';
+  position: absolute;
+  right: 0px;
+  width: 1em;
+  height: 100%;
+  background: linear-gradient(to right, hsla(196, 22%, 90%, 0), hsl(196, 22%, 90%));
+}
+
+.card-sublist .attr-val:after {
+  background: linear-gradient(to right, hsla(196, 22%, 80%, 0), hsl(196, 22%, 80%));
+}
+
+.job-list {
+  display: flex;
+  flex-direction: column;
+}
+
+.job-list-item {
+  border-style: solid;
+  border-color: black;
+  background-color: #E1E9EC;
+  color: #394B55;
+}
+
+.job-commit-attr {
+  display: flex;
+  flex-direction: row;
+}
+
+.job-commit-attr > div:first-child {
+  min-width: 2em;
+  flex: 0 0;
+}
+
+.job-commit-attr > div {
+  flex: 1 1;
 }
 
 @keyframes card-inprogress {
@@ -177,74 +269,21 @@ body {
   background-color: rgb(180, 0, 180);
 }
 
-.card-col {
-  display: flex;
-  flex-direction: column;
-  width: 12em;
-  background-color: #E1E9EC;
-  color: #394B55;
-  padding: 0.5rem;
+.time > * {
+  display: none;
 }
 
-.card-col.narrow {
-  width: 8em;
+.time > .time-pretty {
+  display: block;
 }
 
-.card-col.wide {
-  width: 16em;
+.duration > * {
+  display: none;
 }
 
-.card-row {
-  display: flex;
-  flex-direction: row;
-  position: relative;
+.duration > .duration-pretty {
+  display: block;
 }
-
-.attr-field {
-  width: 1.5em;
-}
-
-.attr-val {
-  font-family: 'Roboto Condensed', sans-serif;
-  overflow: hidden;
-  white-space: nowrap;
-}
-
-.attr-val:after {
-  content: '';
-  position: absolute;
-  right: 0px;
-  width: 1em;
-  height: 100%;
-  background: linear-gradient(to right, rgba(225, 233, 236, 0), rgba(225, 233, 236, 1));
-}
-
-.job-list {
-  display: flex;
-  flex-direction: column;
-}
-
-.job-list-item {
-  border-style: solid;
-  border-color: black;
-  background-color: #E1E9EC;
-  color: #394B55;
-}
-
-.job-commit-attr {
-  display: flex;
-  flex-direction: row;
-}
-
-.job-commit-attr > div:first-child {
-  min-width: 2em;
-  flex: 0 0;
-}
-
-.job-commit-attr > div {
-  flex: 1 1;
-}
-
 
 /* .left-panel {
   display: flex;

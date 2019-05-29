@@ -35,6 +35,7 @@ data-files:
     static/icon/ms-icon-70x70.png
     static/js/jquery-3.4.1.min.js
     static/js/lodjur.js
+    static/js/moment.js
     static/js/underscore-min.js
     static/webfonts/fa-brands-400.eot
     static/webfonts/fa-brands-400.svg
