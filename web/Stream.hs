@@ -22,9 +22,8 @@ import           Pipes                   hiding ( Proxy )
 import           Servant
 import           Servant.EventStream
 
-import           Lodjur.Core                   as Core
-import           Lodjur.Database
 import           Job
+import           Lodjur.Core                   as Core
 import           Types
 
 type StreamApi = "api" :>
@@ -61,47 +60,39 @@ watchJobs = do
     eventSource $
       forever $ do
         event <- liftIO $ atomically $ readTChan chan
-        yield (jsonEvent event)
+        case event of
+          JobSubmitted {} -> yield (jsonEvent event)
+          JobUpdated {}   -> yield (jsonEvent event)
+          LogsUpdated {}  -> return ()
 
 watchJob :: Int32 -> AppM EventSource
 watchJob jobid = do
-  pool <- getEnv Types.envDbPool
   core <- getEnv Types.envCore
   chan <- liftIO $ Core.subscribe core
 
-  let
-    go = do
-      j <- liftIO $ withConnection pool $ \conn -> beam conn (lookupJob jobid)
-      yield undefined -- (htmlEvent j)
-      waitJobEvent
-
-    waitJobEvent = do
-      event <- liftIO $ atomically $ readTChan chan
-      case event of
-        (Core.JobSubmitted _) -> return ()
-        (Core.JobUpdated _)   -> return ()
-        _                     -> waitJobEvent
-
-  return $ eventSource go
+  return $
+    eventSource $
+      forever $ do
+        event <- liftIO $ atomically $ readTChan chan
+        when (eventJobId event == jobid) $
+          case event of
+            JobSubmitted {} -> yield (jsonEvent event)
+            JobUpdated {}   -> yield (jsonEvent event)
+            LogsUpdated {}  -> return ()
 
 watchJobLogs :: Int32 -> AppM EventSource
 watchJobLogs jobid = do
-  pool <- getEnv Types.envDbPool
   core <- getEnv Types.envCore
   chan <- liftIO $ Core.subscribe core
+  logs <- runDb $ jobLogsTail jobid
 
-  let
-    go = do
-      j <- liftIO $ withConnection pool $ \conn -> beam conn (jobLogsTail jobid)
-      yield (htmlEvent j)
-      waitJobEvent
-
-    waitJobEvent = do
-      event <- liftIO $ atomically $ readTChan chan
-      case event of
-        Core.LogsUpdated uid
-          | uid == jobid -> return ()
-          | otherwise    -> waitJobEvent
-        _                -> waitJobEvent
-
-  return $ eventSource go
+  return $
+    eventSource $ do
+      yield (htmlEvent logs)
+      forever $ do
+        event <- liftIO $ atomically $ readTChan chan
+        when (eventJobId event == jobid) $
+          case event of
+            JobSubmitted {} -> return ()
+            JobUpdated {}   -> return ()
+            LogsUpdated _ logtxt  -> yield (htmlEvent logtxt)

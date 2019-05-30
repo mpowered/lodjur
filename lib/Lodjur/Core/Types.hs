@@ -25,6 +25,7 @@ import           Control.Monad.Reader
 import           Data.Aeson
 import           Data.Int                       ( Int32 )
 import           Data.Pool                      ( Pool )
+import           Data.Text                      ( Text )
 import           GHC.Generics
 import           Lodjur.Database                ( Connection )
 import qualified Lodjur.GitHub                 as GH
@@ -49,9 +50,9 @@ data Env = Env
   }
 
 data Event
-  = JobSubmitted Int32
-  | JobUpdated Int32
-  | LogsUpdated Int32
+  = JobSubmitted  { eventJobId :: Int32 }
+  | JobUpdated    { eventJobId :: Int32 }
+  | LogsUpdated   { eventJobId :: Int32, eventLogText :: Text }
   deriving (Show, Eq, Ord, Generic)
 
 instance ToJSON Event where

@@ -279,7 +279,6 @@ jobLogsTail jobid = do
   ls <-
     runSelectReturningList
     $ select
-    $ limit_ 1000
     $ orderBy_ (desc_ . logCreatedAt)
     $ filter_ (\l -> logJob l ==. val_ (JobKey jobid))
     $ all_ (dbLogs db)

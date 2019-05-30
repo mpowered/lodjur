@@ -181,7 +181,7 @@ handleReply rep Associated {..} = do
               , logText      = val_ txt
               }
         ]
-      notify $ LogsUpdated lodjurJobId
+      notify $ LogsUpdated lodjurJobId txt
     Concluded Result {..} -> do
       database $ do
         runUpdate $ update
