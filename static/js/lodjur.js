@@ -10,50 +10,55 @@ $.fn.stream = function(streamfn, args = []) {
   });
   return this;
 };
-
-$(document).ready(function() {
-  $("#recent-jobs").stream(streamApiJobsWatch);
-  $("#job").stream(streamApiJobByJobIdWatch, ['job-id']);
-  $("#logs").stream(streamApiJobByJobIdWatchLogs, ['job-id']);
-});
 */
 
 var timerPretty;
 
-$.fn.loadApi = function(fn) {
+$.fn.loadApi = function(getfn, args, scroll) {
   var self = this;
-  fn( function(data) {
+  if (self.length === 0)
+    return self;
+
+  var cb = function(data) {
+    var s = scroll;
     window.clearTimeout(timerPretty);
+    if (s === true) {
+      var top = self.prop('scrollHeight') - self.prop('clientHeight');
+      if (Math.abs(self.scrollTop - top) > 4) {
+        s = false;
+      }
+    }
     self.html(data);
     updatePretty();
-  } );
-  return this;
+    if (scroll === true) {
+      self.scrollTop(self.prop('scrollHeight'));
+    }
+  };
+
+  if (args === undefined) {
+    getfn(cb);
+  } else {
+    var vals = args.map(a => self.data(a));
+    vals.push(cb);
+    getfn.apply(self, vals);
+  }
+
+  return self;
 };
 
-function openJobDetail(jobId) {
-  updateJobDetail(jobId);
-  updateJobLogs(jobId);
-}
-
-function updateJobsOutline() {
-  $('.jobs-outline').loadApi(getApiJobsOutline);
-  $('.jobs-outline').on('click', '.job', function() {
-    $('.jobs-outline .job').removeClass('active');
-    $(this).addClass('active');
-    openJobDetail($(this).data('jobId'));
+function updateJobsCards() {
+  $('.job-list').loadApi(getApiJobsCards);
+  $('.job-list').on('click', '.card[data-job-id]', function() {
+    window.open("/job/" + $(this).data('jobId'), "_self");
   });
 }
 
-function updateJobDetail(jobId) {
-  $('.job-detail').loadApi(_.partial(getApiJobByJobIdDetail, jobId));
+function updateJobDetail(jobid) {
+  $('.job-detail[data-job-id]').loadApi(getApiJobByJobIdCard, ['jobId']);
 }
 
-function updateJobLogs(jobId) {
-  $('.job-log').loadApi(_.partial(getApiJobByJobIdLogs, jobId));
-}
-
-function updateJobsCards() {
-  $('.card-list').loadApi(getApiJobsCards);
+function updateJobLogs(jobid) {
+  $('.job-log[data-job-id]').loadApi(getApiJobByJobIdLogs, ['jobId'], true);
 }
 
 function updatePretty() {
@@ -86,10 +91,10 @@ function updatePrettyDuration(now) {
     var diff = Infinity;
     var m;
     if (end === '') {
-      var m = moment.duration(now.diff(moment.utc(start)));
+      m = moment.duration(now.diff(moment.utc(start)));
       diff = Math.abs(m.asSeconds());
     } else {
-      var m = moment.duration(moment.utc(end).diff(moment.utc(start)));
+      m = moment.duration(moment.utc(end).diff(moment.utc(start)));
     }
     self.children('.duration-pretty').text(m.humanize());
     return diff;
@@ -107,11 +112,17 @@ $(document).ready(function() {
   var s = streamApiJobsWatch();
   s.addEventListener('message', function (e) {
     var data = JSON.parse(e.data);
-    if (data.tag === 'JobUpdated') { updateJobsOutline(); }
-    if (data.tag === 'JobUpdated') { updateJobsCards(); }
+    if (data.tag === 'JobUpdated') {
+      updateJobsCards();
+      updateJobDetail();
+    }
+    if (data.tag === 'LogsUpdated') {
+      updateJobLogs();
+    }
   });
 
   updatePretty();
-  updateJobsOutline();
   updateJobsCards();
+  updateJobDetail();
+  updateJobLogs();
 });

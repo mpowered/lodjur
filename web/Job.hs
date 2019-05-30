@@ -279,7 +279,7 @@ jobLogsTail jobid = do
   ls <-
     runSelectReturningList
     $ select
-    $ limit_ 100
+    $ limit_ 1000
     $ orderBy_ (desc_ . logCreatedAt)
     $ filter_ (\l -> logJob l ==. val_ (JobKey jobid))
     $ all_ (dbLogs db)
@@ -295,7 +295,7 @@ instance ToJSON a => ToJSON (Card a) where
 instance ToHtml (Card Job') where
   toHtmlRaw = toHtml
   toHtml (Card LargeCard Job' {..}) =
-    div_ [class_ "card"] $ do
+    div_ [class_ "card", data_ "job-id" (cs $ show job'Id) ] $ do
       div_ [ class_ ("card-trim left status-background " <> statusClass job'Status job'Conclusion) ] ""
       div_ [ class_ "card-col narrow" ] $ do
         div_ [ class_ "card-row" ] $
@@ -318,7 +318,7 @@ instance ToHtml (Card Job') where
       div_ [ class_ "card-trim right" ] ""
 
   toHtml (Card SmallCard Job' {..}) =
-    div_ [class_ "card"] $ do
+    div_ [class_ "card",  data_ "job-id" (cs $ show job'Id) ] $ do
       div_ [ class_ ("card-trim left status-background " <> statusClass job'Status job'Conclusion) ] ""
       div_ [ class_ "card-col narrow" ] $ do
         div_ [ class_ "card-row" ] $

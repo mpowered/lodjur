@@ -89,10 +89,14 @@ body {
 
 .content {
   grid-area: content;
+  display: flex;
+  flex-direction: column;
 }
 
 .footer {
   grid-area: footer;
+  background-color: #394B55;
+  color: #FDFDFD;
 }
 
 .header {
@@ -285,241 +289,12 @@ body {
   display: block;
 }
 
-/* .left-panel {
-  display: flex;
-  flex-direction: column;
-  flex: 1 0;
-  min-width: 20em;
-  max-width: 40em;
-}
-
-.main-panel {
-  width: auto;
-  display: flex;
-  flex-direction: column;
-  flex: 5 1;
-}
-
-.heading {
-  background-color: #394B55;
-  color: #FDFDFD;
-  display: flex;
-  flex-direction: row;
-  z-index: -2;
-  height: 2.5em;
-  box-shadow: inset 0px -12px 16px -16px black;
-}
-
-.heading .app-header {
-  font-size: large;
-  color: #FFFFFF;
-}
-
-.heading .left-panel {
-  display: flex;
-  flex-direction: row;
-  justify-content: center;
-  align-items: center;
-  flex: 1 0;
-  min-width: 20em;
-  max-width: 40em;
-}
-
-.heading .main-panel {
-  width: auto;
-  display: flex;
-  flex-direction: row;
-  flex: 5 1;
-}
-
-.heading .tab {
-  min-width: 10em;
-  max-width: 20em;
-  flex: 1 1;
-  margin: 0;
-  border-radius: 8px 8px 0px 0px;
-  box-shadow: inset 0px -12px 16px -16px black, 0 0 8px 0px black;;
-  display: flex;
-  flex-direction: column;
-  justify-content: center;
-  text-align: center;
-}
-
-.heading .active {
-  background-color: #546C78;
-  box-shadow: 0 0 8px 0px black;
-}
-
-.heading .inactive {
-  background-color: #455A64;
-  z-index: -1;
-}
-
-.heading .user {
-  padding-right: 2em;
-  flex: 1 1;
-  text-align: right;
-  display: flex;
-  flex-direction: column;
-  justify-content: center;
-}
-
-.jobs-outline {
-  background-color: #E1E9EC;
-  color: #394B55;
-  text-align: left;
-  padding: 1em 1em;
-  line-height: 250%;
-  flex: 1 1;
-  z-index: 1;
-  overflow: auto;
-  display: flex;
-  flex-direction: column;
-}
-
-.job-tree {
-  margin-left: 2em;
-  display: flex;
-  flex-direction: column;
-}
-
-.job-item {
-  display: flex;
-  flex-direction: row;
-  align-items: baseline;
-}
-
-.job {
-  display: flex;
-  flex-direction: row;
-  flex: 1 1;
+.job-list *[data-job-id] {
   cursor: pointer;
-}
-
-.job.active {
-  background-color: #546C78;
-  color: #FEFEFE;
-}
-
-.job:hover {
-  background-color: #394B55;
-  color: #E1E9EC;
-}
-
-.actions {
-  background-color: #394B55;
-  color: #FEFEFE;
-  text-align: left;
-  padding: 1em 1em;
-  line-height: 200%;
-  box-shadow: inset 0px 4px 8px -4px black;
-  z-index: -1;
-}
-
-.actions .disabled {
-  color: #C5C5C5;
-}
-
-.outline-symbol {
-  width: 2em;
-  display: inline-block;
-}
-
-.status-symbol {
-  width: 2em;
-  display: inline-block;
-}
-
-.left-panel .success {
-  color: hsl(106, 30%, 50%);
-}
-
-.left-panel .failure {
-  color: hsl(0, 30%, 50%);
-}
-
-.main-panel .success {
-  color: hsl(106, 60%, 60%);
-}
-
-.main-panel .failure {
-  color: hsl(0, 60%, 60%);
-}
-
-.main-panel .job-detail {
-  background-color: #546C78;
-  color: #FEFEFE;
-  padding: 1.5em;
-  display: flex;
-  flex-direction: row;
-}
-
-.job-head {
-  font-size: large;
-  margin: auto 0.5em;
-  flex: 1 0;
-  min-width: 6em;
-  display: flex;
-  flex-direction: row;
-}
-
-.job-head > div:first-child {
-  min-width: 2em;
-  flex: 0 0;
-}
-
-.job-head > div {
-  flex: 1 1;
-}
-
-.job-commit {
-  display: flex;
-  flex-direction: column;
-  line-height: 150%;
-  margin: 0 1em;
-  flex: 2 1;
-}
-
-.job-commit-attr {
-  display: flex;
-  flex-direction: row;
-}
-
-.job-commit-attr > div:first-child {
-  min-width: 2em;
-  flex: 0 0;
-}
-
-.job-commit-attr > div {
-  flex: 1 1;
-}
-
-.commit-left .job-commit-attr > div {
-  text-align: start;
-}
-
-.commit-right .job-commit-attr > div {
-  text-align: end;
-}
-
-.commit-left .job-commit-attr {
-  display: flex;
-  flex-direction: row;
-}
-
-.commit-right .job-commit-attr{
-  display: flex;
-  flex-direction: row-reverse;
-}
-
-.main-panel .job-info {
-  flex: 1 1;
-  padding: 1em 2em;
-  box-shadow: inset 0px -2px 20px -8px black;
-  overflow: auto;
 }
 
 .job-log {
   font-family: 'Source Code Pro', 'Iosevka Term Web', monospace;
   white-space: pre-wrap;
-} */
+  overflow: auto;
+}
