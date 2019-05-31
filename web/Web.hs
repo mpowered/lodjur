@@ -150,5 +150,6 @@ getJob jobid = do
                 toHtml ("Job " <> viaShow job'Id)
             div_ [ class_ "content" ] $ do
               div_ [ class_ "job-detail", data_ "job-id" (cs $ show job'Id) ] ""
-              div_ [ class_ "job-log", data_ "job-id" (cs $ show job'Id) ] ""
+              -- div_ [ class_ "job-log", data_ "job-id" (cs $ show job'Id) ] ""
+              div_ [ class_ "job-rspec", data_ "job-id" (cs $ show job'Id) ] ""
             div_ [ class_ "footer" ] ""
