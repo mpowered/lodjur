@@ -43,4 +43,4 @@ jobCard jobid = do
   maybe (throwError err404) (return . Card LargeCard) j
 
 jobLogs :: Int32 -> AppM [LogLine]
-jobLogs jobid = runDb $ jobLogsTail jobid
+jobLogs jobid = runDb $ jobLogLines jobid

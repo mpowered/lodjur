@@ -84,7 +84,7 @@ watchJobLogs :: Int32 -> AppM EventSource
 watchJobLogs jobid = do
   core <- getEnv Types.envCore
   chan <- liftIO $ Core.subscribe core
-  logs <- runDb $ jobLogsTail jobid
+  logs <- runDb $ jobLogLines jobid
 
   return $
     eventSource $ do
@@ -95,4 +95,4 @@ watchJobLogs jobid = do
           case event of
             JobSubmitted {} -> return ()
             JobUpdated {}   -> return ()
-            LogsUpdated _ logtxt  -> yield (htmlEvent logtxt)
+            LogsUpdated _ logtxt  -> yield (htmlEvent $ LogLine logtxt)

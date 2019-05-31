@@ -1,7 +1,7 @@
 function scrollMaybe(self, scroll, fn) {
   if (scroll === true) {
     var top = self.prop('scrollHeight') - self.prop('clientHeight');
-    if (Math.abs(self.scrollTop - top) > 4) {
+    if (Math.abs(self.scrollTop() - top) > 4) {
       scroll = false;
     }
   }
@@ -38,6 +38,7 @@ $.fn.loadApi = function(getfn, args, scroll) {
     window.clearTimeout(timerPretty);
     scrollMaybe(self, scroll, function () {
       self.html(data);
+      updatePretty();
     });
   };
   var vals = args.map(a => self.data(a));
@@ -111,7 +112,8 @@ $(document).ready(function() {
   moment.relativeTimeRounding(Math.floor);
   var s = streamApiJobsWatch();
   s.addEventListener('message', function (e) {
-    if (e.data.tag === 'JobUpdated') {
+    var data = JSON.parse(e.data);
+    if (data.tag === 'JobUpdated') {
       updateJobsCards();
       updateJobDetail();
     }

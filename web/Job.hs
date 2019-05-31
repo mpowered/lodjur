@@ -62,7 +62,6 @@ instance FromJSON Job' where
 data LogLine
   = LogLine
     { log'Text                  :: Text
-    , log'Timestamp             :: UTCTime
     }
   deriving (Show, Generic)
 
@@ -214,7 +213,7 @@ instance ToHtml LogLine where
 
 instance ToHtml [LogLine] where
   toHtmlRaw = toHtml
-  toHtml ls = div_ $ mapM_ toHtml ls
+  toHtml ls = mapM_ toHtml ls
 
 recentRoots :: Integer -> Pg [Job']
 recentRoots n = do
@@ -274,15 +273,15 @@ jobChildren jobid = do
     pure (j, c)
   return (uncurry job' <$> ps)
 
-jobLogsTail :: Int32 -> Pg [LogLine]
-jobLogsTail jobid = do
+jobLogLines :: Int32 -> Pg [LogLine]
+jobLogLines jobid = do
   ls <-
     runSelectReturningList
     $ select
-    $ orderBy_ (desc_ . logCreatedAt)
+    $ orderBy_ (asc_ . logCreatedAt)
     $ filter_ (\l -> logJob l ==. val_ (JobKey jobid))
     $ all_ (dbLogs db)
-  return $ reverse $ map (\Log {..} -> LogLine logText logCreatedAt) ls
+  return $ map (\Log {..} -> LogLine logText) ls
 
 data CardSize = LargeCard | SmallCard
 
