@@ -26,6 +26,8 @@ CREATE TABLE jobs (
     parent__id int4 REFERENCES jobs (id) ON DELETE cascade
 );
 
+CREATE INDEX jobs_parent_id ON jobs (parent__id);
+
 CREATE TABLE rspecs (
     id serial4 PRIMARY KEY,
     job__id int4 references jobs (id) ON DELETE cascade,
@@ -34,6 +36,8 @@ CREATE TABLE rspecs (
     failure_count integer NOT NULL,
     pending_count integer NOT NULL
 );
+
+CREATE INDEX rspecs_job_id ON rspecs (job__id);
 
 CREATE TABLE rspec_tests (
     id serial8 PRIMARY KEY,
@@ -48,12 +52,16 @@ CREATE TABLE rspec_tests (
     exception_backtrace text NULL
 );
 
+CREATE INDEX rspec_tests_rspec_id ON rspec_tests (r_spec__id);
+
 CREATE TABLE logs (
     id serial8 PRIMARY KEY,
     job__id int4 references jobs (id) ON DELETE cascade,
     created_at timestamp with time zone NOT NULL,
     "text" text NOT NULL
 );
+
+CREATE INDEX logs_job_id_created_at ON logs (job__id, created_at);
 
 CREATE TABLE users (
     id int4 NOT NULL,

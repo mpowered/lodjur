@@ -213,7 +213,7 @@ instance ToHtml LogLine where
 
 instance ToHtml [LogLine] where
   toHtmlRaw = toHtml
-  toHtml ls = mapM_ toHtml ls
+  toHtml = mapM_ toHtml
 
 recentRoots :: Integer -> Pg [Job']
 recentRoots n = do

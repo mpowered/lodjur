@@ -12,6 +12,8 @@
 
 module Web where
 
+import           Prelude                 hiding ( head )
+
 import           Data.ByteString                ( ByteString )
 import           Data.Int                       ( Int32 )
 import           Data.String.Conversions
@@ -44,6 +46,16 @@ static = ("/static" <>)
 
 staticRef :: Text -> Attribute
 staticRef = href_ . static
+
+head :: Text -> Html ()
+head title = 
+  head_ $ do
+    title_ (toHtml title)
+    meta_ [charset_ "UTF-8"]
+    favicon
+    fonts
+    scripts
+    stylesheets
 
 favicon :: Html ()
 favicon = do
@@ -87,19 +99,16 @@ scripts = do
 redirects :: ByteString -> AppM a
 redirects url = throwError err302 { errHeaders = [("Location", cs url)] }
 
+viaShow :: Show a => a -> Text
+viaShow = Text.pack . show
+
 home :: AppM (Html ())
 home = redirects "jobs"
 
 getJobs :: AppM (Html ())
 getJobs = do
   return $ doctypehtml_ $ html_ $ do
-    head_ $ do
-      title_ "Lodjur"
-      meta_ [charset_ "UTF-8"]
-      favicon
-      fonts
-      scripts
-      stylesheets
+    head "Lodjur"
     body_ $ do
       div_ [ class_ "app basic" ] $ do
         div_ [ class_ "title-box header" ] $ do
@@ -117,9 +126,6 @@ getJobs = do
           div_ [ class_ "job-list card-list" ] ""
         div_ [ class_ "footer" ] ""
 
-viaShow :: Show a => a -> Text
-viaShow = Text.pack . show
-
 getJob :: Int32 -> AppM (Html ())
 getJob jobid = do
   job <- runDb $ lookupJob jobid
@@ -127,13 +133,7 @@ getJob jobid = do
     Nothing -> throwError err404
     Just Job'{..} -> do
       return $ doctypehtml_ $ html_ $ do
-        head_ $ do
-          title_ "Lodjur"
-          meta_ [charset_ "UTF-8"]
-          favicon
-          fonts
-          scripts
-          stylesheets
+        head "Lodjur"
         body_ $ do
           div_ [ class_ "app basic" ] $ do
             div_ [ class_ "title-box header" ] $ do

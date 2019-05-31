@@ -1,13 +1,14 @@
 function scrollMaybe(self, scroll, fn) {
+  var top;
   if (scroll === true) {
-    var top = self.prop('scrollHeight') - self.prop('clientHeight');
+    top = self.prop('scrollHeight') - self.prop('clientHeight');
     if (Math.abs(self.scrollTop() - top) > 4) {
       scroll = false;
     }
   }
   fn(self);
   if (scroll === true) {
-    var top = self.prop('scrollHeight') - self.prop('clientHeight');
+    top = self.prop('scrollHeight') - self.prop('clientHeight');
     self.scrollTop(top);
   }
 }

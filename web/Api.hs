@@ -35,7 +35,7 @@ api = jobsCards
 
 jobsCards :: AppM (Card (Forest Job'))
 jobsCards =
-  Card LargeCard <$> runDb (recentJobsForest 20)
+  Card LargeCard <$> runDb (recentJobsForest 100)
 
 jobCard :: Int32 -> AppM (Card Job')
 jobCard jobid = do
