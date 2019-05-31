@@ -80,7 +80,7 @@ checkRequested HookCheckSuite{..} HookRepository{..} = do
           , ghcTimestamp = Just whTimestamp
           }
   core <- getEnv envCore
-  liftIO $ submit core Nothing (Request "build" commit (Build { doCheck = True}))
+  liftIO $ submit core Nothing (Request "build" commit (Build { doCheck = True }))
 
 validateApp :: HookApp -> AppM ()
 validateApp a = do

@@ -23,6 +23,7 @@ type Api = "api" :>
  (    "jobs" :> "cards" :> Get '[HTML, JSON] (Card (Forest Job'))
  :<|> "job" :> Capture "jobId" Int32 :> "card" :> Get '[HTML, JSON] (Card Job')
  :<|> "job" :> Capture "jobId" Int32 :> "logs" :> Get '[HTML, JSON] [LogLine]
+ :<|> "job" :> Capture "jobId" Int32 :> "rspec" :> Get '[HTML, JSON] [LogLine]
  )
 
 apiAsJS :: Text
@@ -32,10 +33,11 @@ api :: ServerT Api AppM
 api = jobsCards
  :<|> jobCard
  :<|> jobLogs
+ :<|> jobRspec
 
 jobsCards :: AppM (Card (Forest Job'))
 jobsCards =
-  Card LargeCard <$> runDb (recentJobsForest 20)
+  Card LargeCard <$> runDb (recentJobsForest 100)
 
 jobCard :: Int32 -> AppM (Card Job')
 jobCard jobid = do
@@ -44,3 +46,6 @@ jobCard jobid = do
 
 jobLogs :: Int32 -> AppM [LogLine]
 jobLogs jobid = runDb $ jobLogLines jobid
+
+jobRspec :: Int32 -> AppM [LogLine]
+jobRspec jobid = runDb $ jobLogLines jobid

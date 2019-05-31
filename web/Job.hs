@@ -71,6 +71,40 @@ instance ToJSON LogLine where
 instance FromJSON LogLine where
   parseJSON = genericParseJSON options
 
+data RSpec'
+  = RSpec'
+    { rspec'Duration            :: Double
+    , rspec'ExampleCount        :: Int
+    , rspec'FailureCount        :: Int
+    , rspec'PendingCount        :: Int
+    }
+  deriving (Show, Generic)
+
+instance ToJSON RSpec' where
+  toJSON = genericToJSON options
+
+instance FromJSON RSpec' where
+  parseJSON = genericParseJSON options
+
+data RSpecTest'
+  = RSpecTest'
+    { rspectest'Description         :: Text
+    , rspectest'FullDescription     :: Text
+    , rspectest'Status              :: Text
+    , rspectest'FilePath            :: Text
+    , rspectest'LineNumber          :: Int
+    , rspectest'ExceptionClass      :: Int
+    , rspectest'ExceptionMessage    :: Int
+    , rspectest'ExceptionBacktrace  :: Int
+    }
+  deriving (Show, Generic)
+
+instance ToJSON RSpecTest' where
+  toJSON = genericToJSON options
+
+instance FromJSON RSpecTest' where
+  parseJSON = genericParseJSON options
+
 options :: A.Options
 options = A.defaultOptions
   { A.fieldLabelModifier = A.camelTo2 '_' . dropWhile (not . C.isUpper)
@@ -213,7 +247,7 @@ instance ToHtml LogLine where
 
 instance ToHtml [LogLine] where
   toHtmlRaw = toHtml
-  toHtml ls = mapM_ toHtml ls
+  toHtml = mapM_ toHtml
 
 recentRoots :: Integer -> Pg [Job']
 recentRoots n = do
@@ -282,6 +316,16 @@ jobLogLines jobid = do
     $ filter_ (\l -> logJob l ==. val_ (JobKey jobid))
     $ all_ (dbLogs db)
   return $ map (\Log {..} -> LogLine logText) ls
+
+lookupRSpec :: Int32 -> Pg (Maybe (RSpec, [RSpecTest]))
+lookupRSpec jobid = do
+  r <- runSelectReturningOne $ select $ filter_ (\r -> rspecJob r ==. val_ (JobKey jobid)) $ all_ (dbRspecs db)
+  case r of
+    Just r' -> do
+      ts <- runSelectReturningList $ select $ oneToMany_ (dbRspecTests db) rspectestRSpec (val_ r')
+      return $ Just (r', ts)
+    Nothing ->
+      return Nothing
 
 data CardSize = LargeCard | SmallCard
 

@@ -23,6 +23,7 @@ import qualified Language.JavaScript.Process.Minify as JS
 import qualified Network.HTTP.Client           as Http
 import qualified Network.HTTP.Client.TLS       as Http
 import           Network.HTTP.Media             ( (//), (/:) )
+import           Network.Wai.Middleware.Gzip
 import qualified Network.Wai.Handler.Warp      as Warp
 import           Options.Applicative
 import           Servant
@@ -62,10 +63,10 @@ type App
  :<|> Web
 
 app :: FilePath -> ServerT App AppM
-app static
+app staticDir
       = webhook
   :<|> return apijs
-  :<|> serveDirectoryFileServer static
+  :<|> serveDirectoryFileServer staticDir
   :<|> websocket
   :<|> api
   :<|> streamapi
@@ -123,7 +124,7 @@ lodjur LodjurOptions {..} = do
 
     putStrLn $ "Serving on port " ++ show httpPort ++ ", static from " ++ show staticDir
 
-    Warp.run (ci httpPort) $
+    Warp.run (ci httpPort) $ gzip def { gzipFiles = GzipCompress } $
       serveWithContext (Proxy :: Proxy App) (key :. EmptyContext) $
         hoistServerWithContext (Proxy :: Proxy App) (Proxy :: Proxy '[GitHubKey]) (runApp env) $
           app staticDir
