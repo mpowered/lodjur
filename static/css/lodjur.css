@@ -74,7 +74,7 @@ body {
   grid-area: user;
   display: flex;
   flex-direction: row;
-  justify-content: right;
+  justify-content: flex-end;
   align-items: center;
   padding-right: 1em;
 }
@@ -91,6 +91,7 @@ body {
   grid-area: content;
   display: flex;
   flex-direction: column;
+  overflow: auto;
 }
 
 .footer {
@@ -296,5 +297,49 @@ body {
 .job-log {
   font-family: 'Source Code Pro', 'Iosevka Term Web', monospace;
   white-space: pre-wrap;
+}
+
+.job-rspec {
+  font-family: 'Source Code Pro', 'Iosevka Term Web', monospace;
+  white-space: pre-wrap;
+}
+
+.rspec-tests {
+  display: flex;
+  flex-direction: column;
+  width: max-content;
+}
+
+.rspec-test {
+  display: flex;
+  flex-direction: row;
+}
+
+.rspec-test:nth-child(odd) {
+  background-color: hsl(196, 22%, 90%);
+}
+
+.rspec-test:nth-child(even) {
+  background-color: hsl(196, 22%, 88%);
+}
+
+.rspec-test > div {
+  overflow: hidden;
+  margin-right: 1em;
+  width: 20em;
+}
+
+.rspec-test .wide {
+  width: 40em;
+}
+
+.rspec-test .narrow {
+  width: 10em;
+}
+
+.rspec-test .scroll {
   overflow: auto;
+  width: max-content;
+  max-height: 10em;
+  white-space: pre;
 }

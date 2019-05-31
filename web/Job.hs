@@ -77,6 +77,7 @@ data RSpec'
     , rspec'ExampleCount        :: Int
     , rspec'FailureCount        :: Int
     , rspec'PendingCount        :: Int
+    , rspec'Tests               :: [RSpecTest']
     }
   deriving (Show, Generic)
 
@@ -93,11 +94,52 @@ data RSpecTest'
     , rspectest'Status              :: Text
     , rspectest'FilePath            :: Text
     , rspectest'LineNumber          :: Int
-    , rspectest'ExceptionClass      :: Int
-    , rspectest'ExceptionMessage    :: Int
-    , rspectest'ExceptionBacktrace  :: Int
+    , rspectest'ExceptionClass      :: Maybe Text
+    , rspectest'ExceptionMessage    :: Maybe Text
+    , rspectest'ExceptionBacktrace  :: Maybe Text
     }
   deriving (Show, Generic)
+
+instance ToHtml RSpec' where
+  toHtmlRaw = toHtml
+  toHtml RSpec' {..} = do
+    div_ $ do
+      div_ $ do
+        div_ "Duration"
+        div_ $ toHtml (show rspec'Duration)
+      div_ $ do
+        div_ "Example Count"
+        div_ $ toHtml (show rspec'ExampleCount)
+      div_ $ do
+        div_ "Failure Count"
+        div_ $ toHtml (show rspec'FailureCount)
+      div_ $ do
+        div_ "Pending Count"
+        div_ $ toHtml (show rspec'PendingCount)
+    div_ [ class_ "rspec-tests" ] $ do
+      div_ [ class_ "rspec-test" ] $ do
+        div_ [ class_ "wide"]        "Description"
+        div_ [ class_ "wide"]        "Full Description"
+        div_ [ class_ "narrow"]      "Status"
+        div_ [ class_ "wide"]        "File Path"
+        div_ [ class_ "narrow"]      "Line Number"
+        div_ [ class_ "wide"]        "Exception Class"
+        div_ [ class_ "wide"]        "Exception Message"
+        div_ [ class_ "scroll"]      "Exception Backtrace"
+      mapM_ toHtml rspec'Tests
+
+instance ToHtml RSpecTest' where
+  toHtmlRaw = toHtml
+  toHtml RSpecTest' {..} =
+    div_ [ class_ "rspec-test" ] $ do
+      div_ [ class_ "wide" ]        $ toHtml rspectest'Description
+      div_ [ class_ "wide" ]        $ toHtml rspectest'FullDescription
+      div_ [ class_ "narrow" ]      $ toHtml rspectest'Status
+      div_ [ class_ "wide" ]        $ toHtml rspectest'FilePath
+      div_ [ class_ "narrow" ]      $ toHtml (show rspectest'LineNumber)
+      div_ [ class_ "wide" ]        $ maybe "" toHtml rspectest'ExceptionClass
+      div_ [ class_ "wide" ]        $ maybe "" toHtml rspectest'ExceptionMessage
+      div_ [ class_ "scroll" ]      $ maybe "" toHtml rspectest'ExceptionBacktrace
 
 instance ToJSON RSpecTest' where
   toJSON = genericToJSON options
@@ -317,15 +359,36 @@ jobLogLines jobid = do
     $ all_ (dbLogs db)
   return $ map (\Log {..} -> LogLine logText) ls
 
-lookupRSpec :: Int32 -> Pg (Maybe (RSpec, [RSpecTest]))
+lookupRSpec :: Int32 -> Pg (Maybe RSpec')
 lookupRSpec jobid = do
   r <- runSelectReturningOne $ select $ filter_ (\r -> rspecJob r ==. val_ (JobKey jobid)) $ all_ (dbRspecs db)
   case r of
     Just r' -> do
       ts <- runSelectReturningList $ select $ oneToMany_ (dbRspecTests db) rspectestRSpec (val_ r')
-      return $ Just (r', ts)
+      return $ Just (rspec' r' ts)
     Nothing ->
       return Nothing
+
+rspec' :: RSpec -> [RSpecTest] -> RSpec'
+rspec' RSpec {..} tests = RSpec'
+    { rspec'Duration            = rspecDuration
+    , rspec'ExampleCount        = rspecExampleCount
+    , rspec'FailureCount        = rspecFailureCount
+    , rspec'PendingCount        = rspecPendingCount
+    , rspec'Tests               = map rspectest' tests
+    }
+
+rspectest' :: RSpecTest -> RSpecTest'
+rspectest' RSpecTest {..} = RSpecTest'
+    { rspectest'Description         = rspectestDescription
+    , rspectest'FullDescription     = rspectestFullDescription
+    , rspectest'Status              = rspectestStatus
+    , rspectest'FilePath            = rspectestFilePath
+    , rspectest'LineNumber          = rspectestLineNumber
+    , rspectest'ExceptionClass      = rspectestExceptionClass
+    , rspectest'ExceptionMessage    = rspectestExceptionMessage
+    , rspectest'ExceptionBacktrace  = rspectestExceptionBacktrace
+    }
 
 data CardSize = LargeCard | SmallCard
 
