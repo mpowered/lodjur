@@ -54,6 +54,10 @@ CREATE TABLE rspec_tests (
 
 CREATE INDEX rspec_tests_rspec_id ON rspec_tests (r_spec__id);
 
+CREATE INDEX rspec_tests_status ON rspec_tests (status);
+
+CREATE INDEX rspec_tests_file_line ON rspec_tests (file_path, line_number);
+
 CREATE TABLE logs (
     id serial8 PRIMARY KEY,
     job__id int4 references jobs (id) ON DELETE cascade,
