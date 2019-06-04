@@ -15,7 +15,7 @@ import           Data.Aeson                     ( ToJSON(..)
                                                 )
 import qualified Data.Aeson                    as A
 import qualified Data.Char                     as C
-import           Data.Int                       ( Int32 )
+import           Data.Int                       ( Int32, Int64 )
 import           Data.List                      ( partition, sortOn )
 import           Data.String.Conversions
 import           Data.Text                      ( Text )
@@ -73,7 +73,8 @@ instance FromJSON LogLine where
 
 data RSpec'
   = RSpec'
-    { rspec'Duration            :: Double
+    { rspec'Id                  :: Int32
+    , rspec'Duration            :: Double
     , rspec'ExampleCount        :: Int
     , rspec'FailureCount        :: Int
     , rspec'PendingCount        :: Int
@@ -89,7 +90,8 @@ instance FromJSON RSpec' where
 
 data RSpecTest'
   = RSpecTest'
-    { rspectest'Description         :: Text
+    { rspectest'Id                  :: Int64
+    , rspectest'Description         :: Text
     , rspectest'FullDescription     :: Text
     , rspectest'Status              :: Text
     , rspectest'FilePath            :: Text
@@ -160,7 +162,7 @@ instance ToJSON a => ToJSON (Outline a) where
 instance ToHtml (Outline Job') where
   toHtmlRaw = toHtml
   toHtml (Outline Job' {..}) = div_ [class_ "job", data_ "job-id" (cs $ show job'Id)] $ div_ $ do
-    statusIcon job'Status job'Conclusion
+    jobStatusIcon job'Status job'Conclusion
     toHtml job'Name
 
 instance ToHtml (Outline (Tree Job')) where
@@ -219,11 +221,32 @@ linki_ = icon "far fa-fw fa-link"
 user_ :: Monad m => HtmlT m ()
 user_ = icon "far fa-fw fa-user"
 
+file_ :: Monad m => HtmlT m ()
+file_ = icon "far fa-fw fa-file"
+
+bars_ :: Monad m => HtmlT m ()
+bars_ = icon "far fa-fw fa-bars"
+
+comment_ :: Monad m => HtmlT m ()
+comment_ = icon "far fa-fw fa-comment"
+
+curly_ :: Monad m => HtmlT m ()
+curly_ = icon "far fa-fw fa-brackets-curly"
+
+circle_ :: Monad m => HtmlT m ()
+circle_ = icon "far fa-fw fa-circle"
+
+dotcircle_ :: Monad m => HtmlT m ()
+dotcircle_ = icon "far fa-fw fa-dot-circle"
+
+infocircle_ :: Monad m => HtmlT m ()
+infocircle_ = icon "far fa-fw fa-info-circle"
+
 github_ :: Monad m => HtmlT m ()
 github_ = icon "fab fa-fw fa-github"
 
-statusIcon :: Monad m => Status -> Maybe Conclusion -> HtmlT m ()
-statusIcon status conclusion = case status of
+jobStatusIcon :: Monad m => Status -> Maybe Conclusion -> HtmlT m ()
+jobStatusIcon status conclusion = case status of
   Queued     -> clock_
   InProgress -> spinner_
   Completed  -> case conclusion of
@@ -233,8 +256,8 @@ statusIcon status conclusion = case status of
     Just Neutral   -> question_
     _              -> exclamation_
 
-statusClass :: Status -> Maybe Conclusion -> Text
-statusClass status conclusion = case status of
+jobStatusClass :: Status -> Maybe Conclusion -> Text
+jobStatusClass status conclusion = case status of
   Queued     -> "queued"
   InProgress -> "inprogress"
   Completed  -> case conclusion of
@@ -243,6 +266,20 @@ statusClass status conclusion = case status of
     Just Cancelled -> "cancelled"
     Just Neutral   -> "neutral"
     _              -> "other"
+
+testStatusClass :: Text -> Text
+testStatusClass status = case status of
+  "passed"  -> "success"
+  "failed"  -> "failure"
+  "pending" -> "cancelled"
+  _         -> "other"
+
+testStatusIcon :: Monad m => Text -> HtmlT m ()
+testStatusIcon status = case status of
+  "passed"  -> check_
+  "failed"  -> times_
+  "pending" -> question_
+  _         -> exclamation_
 
 attr :: (Monad m, ToHtml a) => HtmlT m () -> a -> HtmlT m ()
 attr f v = do
@@ -361,17 +398,22 @@ jobLogLines jobid = do
 
 lookupRSpec :: Int32 -> Pg (Maybe RSpec')
 lookupRSpec jobid = do
-  r <- runSelectReturningOne $ select $ filter_ (\r -> rspecJob r ==. val_ (JobKey jobid)) $ all_ (dbRspecs db)
+  r <- runSelectReturningOne $ select $
+    filter_ (\r -> rspecJob r ==. val_ (JobKey jobid)) $ all_ (dbRspecs db)
   case r of
     Just r' -> do
-      ts <- runSelectReturningList $ select $ oneToMany_ (dbRspecTests db) rspectestRSpec (val_ r')
+      ts <- runSelectReturningList $ select
+        $ orderBy_ (\t -> (asc_ $ rspectestFilePath t, asc_ $ rspectestLineNumber t))
+        $ filter_ (\t -> rspectestStatus t ==. val_ "failed")
+        $ oneToMany_ (dbRspecTests db) rspectestRSpec (val_ r')
       return $ Just (rspec' r' ts)
     Nothing ->
       return Nothing
 
 rspec' :: RSpec -> [RSpecTest] -> RSpec'
 rspec' RSpec {..} tests = RSpec'
-    { rspec'Duration            = rspecDuration
+    { rspec'Id                  = rspecId
+    , rspec'Duration            = rspecDuration
     , rspec'ExampleCount        = rspecExampleCount
     , rspec'FailureCount        = rspecFailureCount
     , rspec'PendingCount        = rspecPendingCount
@@ -380,7 +422,8 @@ rspec' RSpec {..} tests = RSpec'
 
 rspectest' :: RSpecTest -> RSpecTest'
 rspectest' RSpecTest {..} = RSpecTest'
-    { rspectest'Description         = rspectestDescription
+    { rspectest'Id                  = rspectestId
+    , rspectest'Description         = rspectestDescription
     , rspectest'FullDescription     = rspectestFullDescription
     , rspectest'Status              = rspectestStatus
     , rspectest'FilePath            = rspectestFilePath
@@ -390,21 +433,21 @@ rspectest' RSpecTest {..} = RSpecTest'
     , rspectest'ExceptionBacktrace  = rspectestExceptionBacktrace
     }
 
-data CardSize = LargeCard | SmallCard
+newtype Card a = Card a
 
-data Card a = Card CardSize a
+newtype SmallCard a = SmallCard a
 
 instance ToJSON a => ToJSON (Card a) where
-  toJSON (Card _ a) = toJSON a
+  toJSON (Card a) = toJSON a
 
 instance ToHtml (Card Job') where
   toHtmlRaw = toHtml
-  toHtml (Card LargeCard Job' {..}) =
-    div_ [class_ "card", data_ "job-id" (cs $ show job'Id) ] $ do
-      div_ [ class_ ("card-trim left status-background " <> statusClass job'Status job'Conclusion) ] ""
+  toHtml (Card Job' {..}) =
+    div_ [class_ "card job", data_ "job-id" (cs $ show job'Id) ] $ do
+      div_ [ class_ ("card-trim left status-background " <> jobStatusClass job'Status job'Conclusion) ] ""
       div_ [ class_ "card-col narrow" ] $ do
         div_ [ class_ "card-row" ] $
-          attr (statusIcon job'Status job'Conclusion) job'Name
+          attr (jobStatusIcon job'Status job'Conclusion) job'Name
         div_ [ class_ "card-row" ] $
           attr linki_ (show job'Id)
         div_ [ class_ "card-row" ] $
@@ -422,12 +465,14 @@ instance ToHtml (Card Job') where
           attrMaybe user_ (job'CommitCommitter <|> job'CommitCommitterEmail)
       div_ [ class_ "card-trim right" ] ""
 
-  toHtml (Card SmallCard Job' {..}) =
-    div_ [class_ "card",  data_ "job-id" (cs $ show job'Id) ] $ do
-      div_ [ class_ ("card-trim left status-background " <> statusClass job'Status job'Conclusion) ] ""
+instance ToHtml (SmallCard Job') where
+  toHtmlRaw = toHtml
+  toHtml (SmallCard Job' {..}) =
+    div_ [class_ "card job",  data_ "job-id" (cs $ show job'Id) ] $ do
+      div_ [ class_ ("card-trim left status-background " <> jobStatusClass job'Status job'Conclusion) ] ""
       div_ [ class_ "card-col narrow" ] $ do
         div_ [ class_ "card-row" ] $
-          attr (statusIcon job'Status job'Conclusion) job'Name
+          attr (jobStatusIcon job'Status job'Conclusion) job'Name
         div_ [ class_ "card-row" ] $
           attr linki_ (show job'Id)
       div_ [ class_ "card-col" ] $ do
@@ -439,20 +484,45 @@ instance ToHtml (Card Job') where
 
 instance ToHtml (Card (Tree Job')) where
   toHtmlRaw = toHtml
-  toHtml (Card sz (Node job children)) = do
+  toHtml (Card (Node job children)) = do
     if null children
       then
         div_ [ class_ "card-item" ] $
-          toHtml (Card sz job)
+          toHtml (Card job)
       else do
         div_ [ class_ "card-item" ] $ do
-          toHtml (Card sz job)
+          toHtml (Card job)
           div_ [class_ "card-sublist"] $
-            mapM_ (toHtml . Card SmallCard . rootLabel) children
+            mapM_ (toHtml . SmallCard . rootLabel) children
 
 instance ToHtml (Card (Forest Job')) where
   toHtmlRaw = toHtml
-  toHtml (Card sz jobs) = mapM_ (toHtml . Card sz) jobs
+  toHtml (Card jobs) = mapM_ (toHtml . Card) jobs
+
+instance ToHtml [Card RSpecTest'] where
+  toHtmlRaw = toHtml
+  toHtml = mapM_ toHtml
+
+instance ToHtml (Card RSpecTest') where
+  toHtmlRaw = toHtml
+  toHtml (Card RSpecTest' {..}) =
+    div_ [class_ "card rspectest", data_ "rspec-test-id" (cs $ show rspectest'Id) ] $ do
+      div_ [ class_ ("card-trim left status-background " <> testStatusClass rspectest'Status) ] ""
+      div_ [ class_ "card-col extrawide" ] $ do
+        div_ [ class_ "card-row" ] $
+          attr (testStatusIcon rspectest'Status) rspectest'Description
+        div_ [ class_ "card-row" ] $
+          attr bars_ rspectest'FullDescription
+        div_ [ class_ "card-row" ] $
+          attr file_ (rspectest'FilePath <> " " <> cs (show rspectest'LineNumber))
+        div_ [ class_ "card-row" ] $
+          attrMaybe curly_ rspectest'ExceptionClass
+        div_ [ class_ "card-row" ] $
+          attrMaybe comment_ rspectest'ExceptionMessage
+      div_ [ class_ "card-col fullwidth" ] $ do
+        div_ [ class_ "card-row" ] $
+          attrMaybe infocircle_ rspectest'ExceptionBacktrace
+      div_ [ class_ "card-trim right" ] ""
 
 prettyTime :: Monad m => UTCTime -> HtmlT m ()
 prettyTime t =

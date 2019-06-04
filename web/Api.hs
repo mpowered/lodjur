@@ -23,7 +23,7 @@ type Api = "api" :>
  (    "jobs" :> "cards" :> Get '[HTML, JSON] (Card (Forest Job'))
  :<|> "job" :> Capture "jobId" Int32 :> "card" :> Get '[HTML, JSON] (Card Job')
  :<|> "job" :> Capture "jobId" Int32 :> "logs" :> Get '[HTML, JSON] [LogLine]
- :<|> "job" :> Capture "jobId" Int32 :> "rspec" :> Get '[HTML, JSON] RSpec'
+ :<|> "job" :> Capture "jobId" Int32 :> "rspec" :> Get '[HTML, JSON] [Card RSpecTest']
  )
 
 apiAsJS :: Text
@@ -37,17 +37,17 @@ api = jobsCards
 
 jobsCards :: AppM (Card (Forest Job'))
 jobsCards =
-  Card LargeCard <$> runDb (recentJobsForest 100)
+  Card <$> runDb (recentJobsForest 100)
 
 jobCard :: Int32 -> AppM (Card Job')
 jobCard jobid = do
   j <- runDb $ lookupJob jobid
-  maybe (throwError err404) (return . Card LargeCard) j
+  maybe (throwError err404) (return . Card) j
 
 jobLogs :: Int32 -> AppM [LogLine]
 jobLogs jobid = runDb $ jobLogLines jobid
 
-jobRspec :: Int32 -> AppM RSpec'
+jobRspec :: Int32 -> AppM [Card RSpecTest']
 jobRspec jobid = do
   r <- runDb $ lookupRSpec jobid
-  maybe (throwError err404) return r
+  maybe (throwError err404) (return . map Card . rspec'Tests) r

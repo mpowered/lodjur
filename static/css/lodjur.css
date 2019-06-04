@@ -179,6 +179,14 @@ body {
   width: 16em;
 }
 
+.card-col.extrawide {
+  width: 40em;
+}
+
+.card-col.fullwidth {
+  width: 80em;
+}
+
 .card-row {
   display: flex;
   flex-direction: row;
@@ -186,7 +194,7 @@ body {
 }
 
 .attr-field {
-  width: 1.5em;
+  min-width: 1.5em;
 }
 
 .attr-val {
@@ -204,6 +212,20 @@ body {
   width: 1em;
   height: 100%;
   background: linear-gradient(to right, hsla(196, 22%, 90%, 0), hsl(196, 22%, 90%));
+}
+
+.rspectest .attr-val {
+  white-space: pre-wrap;
+  width: 100%;
+}
+
+.rspectest .fullwidth .attr-val {
+  overflow: auto;
+  max-height: 10em;
+}
+
+.rspectest .fullwidth .attr-val:after {
+  display: none;
 }
 
 .card-sublist .attr-val:after {
