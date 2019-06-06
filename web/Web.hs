@@ -14,12 +14,23 @@ module Web where
 
 import           Prelude                 hiding ( head )
 
+import           Control.Monad.IO.Class
+import           Data.Aeson
 import           Data.ByteString                ( ByteString )
+import           Data.Default.Class
 import           Data.Int                       ( Int32 )
 import           Data.String.Conversions
 import           Data.Text                      ( Text )
 import qualified Data.Text                     as Text
+import           Data.Time.Clock                ( UTCTime, getCurrentTime )
+import           Database.Beam.Postgres
+import qualified Database.Beam.Postgres.Full   as Pg
+import           GitHub                        as GH
+import           GitHub.Endpoints.Users        as GH
+import           Lodjur.Database               as Db hiding ( div_ )
 import           Lucid
+import           Network.HTTP.Req               ( (/:), (=:) )
+import qualified Network.HTTP.Req              as Req
 import           Servant
 import           Servant.HTML.Lucid
 
@@ -28,12 +39,16 @@ import           Types
 
 type Web
     = GetNoContent '[HTML] (Html ())
+ :<|> "login" :> Get '[HTML] (Html ())
+ :<|> "auth" :> QueryParam "code" Text :> Get '[HTML] (Html ())
  :<|> "jobs" :> Get '[HTML] (Html ())
  :<|> "job" :> Capture "jobid" Int32 :> Get '[HTML] (Html ())
 
 web :: ServerT Web AppM
 web
     = home
+ :<|> login
+ :<|> auth
  :<|> getJobs
  :<|> getJob
 
@@ -103,7 +118,106 @@ viaShow :: Show a => a -> Text
 viaShow = Text.pack . show
 
 home :: AppM (Html ())
-home = redirects "jobs"
+home = redirects "/jobs"
+
+login :: AppM (Html ())
+login = do
+  clientId <- getEnv envGithubClientId
+  let endpoint = "https://github.com/login/oauth/authorize?client_id=" <> cs clientId
+  return $ doctypehtml_ $ html_ $ do
+    head "Lodjur"
+    body_ $ do
+      div_ $ do
+        a_ [ href_ endpoint ] "Login with GitHub"
+
+auth :: Maybe Text -> AppM (Html ())
+auth mcode = do
+  case mcode of
+    Nothing -> error "You must pass in a code as a parameter."
+    Just code -> do
+      token <- getAccessToken code
+      muser <- liftIO $ userInfoCurrent' (OAuth token)
+      case muser of
+        Left _ -> error "Couldn't determine authenticated user."
+        Right user -> loggedIn user token
+
+loggedIn :: GH.User -> Token -> AppM (Html ())
+loggedIn user token = do
+  now <- liftIO getCurrentTime
+  us <- runDb $ upsertUser user token now
+  case us of
+    [dbuser] ->
+      return $ doctypehtml_ $ html_ $ do
+        head "Lodjur"
+        body_ $ do
+          div_ (toHtml $ show dbuser)
+    _ -> error "User upsert failed."
+
+upsertUser :: GH.User -> Token -> UTCTime -> Pg [Db.User]
+upsertUser GH.User{..} token now =
+  Pg.runPgInsertReturningList $
+    Pg.insertReturning (dbUsers db)
+      ( insertExpressions
+        [ Db.User
+            { userId            = val_ (fromIntegral $ untagId userId)
+            , userLogin         = val_ (untagName userLogin)
+            , userName          = val_ userName
+            , userEmail         = val_ userEmail
+            , userCompany       = val_ userCompany
+            , userLocation      = val_ userLocation
+            , userAvatarUrl     = val_ (Just $ getUrl userAvatarUrl)
+            , userAccessToken   = val_ (Just $ cs token)
+            , userCreatedAt     = val_ now
+            , userUpdatedAt     = val_ now
+            , userLastLogin     = val_ now
+            }
+        ]
+      )
+      ( Pg.onConflict (Pg.conflictingFields Db.userId) $
+        Pg.onConflictUpdateInstead (\u -> (( Db.userLogin u
+                                           , Db.userName u
+                                           , Db.userEmail u
+                                           )
+                                          ,( Db.userCompany u
+                                           , Db.userLocation u
+                                           , Db.userAvatarUrl u
+                                           , Db.userAccessToken u
+                                           , Db.userUpdatedAt u
+                                           , Db.userLastLogin u
+                                          ))
+                                   )
+      )
+      ( Just id )
+
+data AccessToken = AccessToken
+  { accessToken :: !Text
+  , tokenType   :: !Text
+  } deriving (Show, Eq, Ord)
+
+instance FromJSON AccessToken where
+  parseJSON = withObject "AccessToken" $ \o -> do
+    accessToken <- o .: "access_token"
+    tokenType   <- o .: "token_type"
+    return AccessToken { .. }
+
+getAccessToken :: Text -> AppM Token
+getAccessToken code = do
+  clientId <- getEnv envGithubClientId
+  clientSecret <- getEnv envGithubClientSecret
+
+  r <- Req.runReq def $
+    Req.req
+      Req.POST
+      (Req.https "github.com" /: "login" /: "oauth" /: "access_token")
+      (Req.ReqBodyUrlEnc
+        (  "client_id" =: clientId
+        <> "client_secret" =: clientSecret
+        <> "code" =: code
+        )
+      )
+      Req.jsonResponse
+      (Req.header "accept" "application/json")
+  return (cs $ accessToken $ Req.responseBody r)
 
 getJobs :: AppM (Html ())
 getJobs = do

@@ -1,4 +1,5 @@
-resolver: lts-13.17
+resolver: lts-13.19   # 8.6.4
+# resolver: lts-13.24   # 8.6.5
 packages:
 - .
 - location: github

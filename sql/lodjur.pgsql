@@ -68,12 +68,44 @@ CREATE TABLE logs (
 CREATE INDEX logs_job_id_created_at ON logs (job__id, created_at);
 
 CREATE TABLE users (
-    id int4 NOT NULL,
+    id int8 PRIMARY KEY,
     login text NOT NULL,
     name text NULL,
     email text NULL,
     company text NULL,
     location text NULL,
     avatar_url text NULL,
-    created_at timestamp with time zone NOT NULL
+    access_token text NULL,
+    created_at timestamp with time zone NOT NULL,
+    updated_at timestamp with time zone NOT NULL,
+    last_login timestamp with time zone NOT NULL
+);
+
+CREATE TABLE organizations (
+    id int8 PRIMARY KEY,
+    login text NOT NULL,
+    avatar_url text NULL,
+    created_at timestamp with time zone NOT NULL,
+    updated_at timestamp with time zone NOT NULL
+);
+
+CREATE TABLE installations (
+    id int8 PRIMARY KEY
+);
+
+CREATE TABLE repositories (
+    id int8 PRIMARY KEY,
+    login text NOT NULL,
+    owner text NOT NULL,
+    created_at timestamp with time zone NOT NULL,
+    updated_at timestamp with time zone NOT NULL,
+    UNIQUE (owner, login)
+);
+
+CREATE TABLE user_accessible (
+    user__id int4 references users (id) ON DELETE cascade,
+    installation__id int4 references installations (id) ON DELETE cascade,
+    repository__id int4 references repositories (id) ON DELETE cascade,
+    seen_at timestamp with time zone NOT NULL,
+    UNIQUE (user__id, installation__id, repository__id)
 );

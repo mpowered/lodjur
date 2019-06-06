@@ -39,6 +39,8 @@ data GithubConfig = GithubConfig
   , githubAppId           :: Natural
   , githubAppPrivateKey   :: Text
   , githubInstId          :: Natural
+  , githubClientId        :: Text
+  , githubClientSecret    :: Text
   } deriving (Generic, Interpret)
 
 readConfig :: FilePath -> IO Config

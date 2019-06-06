@@ -148,18 +148,21 @@ deriving instance Show (PrimaryKey LogT Identity)
 -- GitHub Users
 
 data UserT f = User
-  { userId           :: C f Int32
+  { userId           :: C f Int64
   , userLogin        :: C f Text
   , userName         :: C f (Maybe Text)
   , userEmail        :: C f (Maybe Text)
   , userCompany      :: C f (Maybe Text)
   , userLocation     :: C f (Maybe Text)
-  , userAvatarUrl    :: C f Text
+  , userAvatarUrl    :: C f (Maybe Text)
+  , userAccessToken  :: C f (Maybe Text)
   , userCreatedAt    :: C f UTCTime
+  , userUpdatedAt    :: C f UTCTime
+  , userLastLogin    :: C f UTCTime
   } deriving (Generic, Beamable)
 
 instance Table UserT where
-  data PrimaryKey UserT f = UserKey (C f Int32) deriving (Generic, Beamable)
+  data PrimaryKey UserT f = UserKey (C f Int64) deriving (Generic, Beamable)
   primaryKey = UserKey <$> userId
 
 type User = UserT Identity

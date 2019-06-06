@@ -120,7 +120,12 @@ lodjur LodjurOptions {..} = do
 
   bracket (startCore accessToken httpManager dbPool) cancelCore $ \core -> do
     let key = gitHubKey (pure (cs githubWebhookSecret))
-        env = Types.Env { envGithubAppId = ci githubAppId, envCore = core, envDbPool = dbPool }
+        env = Types.Env { envGithubAppId = ci githubAppId
+                        , envGithubClientId = githubClientId
+                        , envGithubClientSecret = githubClientSecret
+                        , envCore = core
+                        , envDbPool = dbPool
+                        }
 
     putStrLn $ "Serving on port " ++ show httpPort ++ ", static from " ++ show staticDir
 

@@ -3,6 +3,7 @@
 module Types where
 
 import Control.Monad.Reader   ( ReaderT , runReaderT , asks, liftIO )
+import Data.Text              ( Text )
 import Servant                ( Handler )
 import Lodjur.Core            ( Core )
 import Lodjur.Database        ( DbPool, Pg, withConnection, beam )
@@ -10,9 +11,11 @@ import Lodjur.Database        ( DbPool, Pg, withConnection, beam )
 type AppM = ReaderT Env Handler
 
 data Env = Env
-  { envGithubAppId      :: !Int
-  , envCore             :: Core
-  , envDbPool           :: DbPool
+  { envGithubAppId        :: !Int
+  , envGithubClientId     :: !Text
+  , envGithubClientSecret :: !Text
+  , envCore               :: Core
+  , envDbPool             :: DbPool
   }
 
 runApp :: Env -> AppM a -> Handler a
