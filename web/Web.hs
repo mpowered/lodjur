@@ -32,24 +32,41 @@ import           Lucid
 import           Network.HTTP.Req               ( (/:), (=:) )
 import qualified Network.HTTP.Req              as Req
 import           Servant
+import           Servant.Auth.Server           as S
 import           Servant.HTML.Lucid
 
 import           Job
 import           Types
 
-type Web
+data Session = Session
+
+type Web auths
     = GetNoContent '[HTML] (Html ())
- :<|> "login" :> Get '[HTML] (Html ())
+ :<|> Unprotected
+ :<|> S.Auth auths Session :> Protected
+
+web :: CookieSettings -> JWTSettings -> ServerT (Web auths) AppM
+web cs jwts
+    = home
+ :<|> unprotected cs jwts
+ :<|> protected
+
+type Unprotected
+    = "login" :> Get '[HTML] (Html ())
  :<|> "auth" :> QueryParam "code" Text :> Get '[HTML] (Html ())
- :<|> "jobs" :> Get '[HTML] (Html ())
+
+type Protected
+    = "jobs" :> Get '[HTML] (Html ())
  :<|> "job" :> Capture "jobid" Int32 :> Get '[HTML] (Html ())
 
-web :: ServerT Web AppM
-web
-    = home
- :<|> login
+unprotected :: CookieSettings -> JWTSettings -> ServerT Unprotected AppM
+unprotected cs jwts
+    = login
  :<|> auth
- :<|> getJobs
+
+protected :: S.AuthResult Session -> ServerT Protected AppM
+protected session
+    = getJobs
  :<|> getJob
 
 deferredScript :: Text -> Html ()
