@@ -27,6 +27,7 @@ import           Network.Wai.Middleware.Gzip
 import qualified Network.Wai.Handler.Warp      as Warp
 import           Options.Applicative
 import           Servant
+import           Servant.Auth.Server           as S
 import           Servant.API.WebSocket
 import qualified Web.JWT                       as JWT
 
@@ -53,24 +54,24 @@ instance Accept Javascript where
 instance MimeRender Javascript Text where
   mimeRender _ = cs
 
-type App
+type App auths
     = "github-event" :> Webhook
  :<|> "js" :> "api.js" :> Get '[Javascript] Text
  :<|> "static" :> Raw
  :<|> "websocket" :> WebSocketPending
  :<|> Api
  :<|> StreamApi
- :<|> Web
+ :<|> Web auths
 
-app :: FilePath -> ServerT App AppM
-app staticDir
+app :: FilePath -> CookieSettings -> JWTSettings -> ServerT (App auths) AppM
+app staticDir cookie jwt
       = webhook
   :<|> return apijs
   :<|> serveDirectoryFileServer staticDir
   :<|> websocket
   :<|> api
   :<|> streamapi
-  :<|> web
+  :<|> web cookie jwt
 
 apijs :: Text
 apijs = mconcat [ apiAsJS, streamapiAsJS ]
@@ -127,12 +128,23 @@ lodjur LodjurOptions {..} = do
                         , envDbPool = dbPool
                         }
 
+    cookieKey <- generateKey
+
+    let cookieSettings = defaultCookieSettings { cookieIsSecure = NotSecure
+                                               , cookieXsrfSetting = Just xsrfSettings
+                                               }
+        xsrfSettings = defaultXsrfCookieSettings { xsrfExcludeGet = False
+                                                 }
+        jwtSettings = defaultJWTSettings cookieKey
+        ctx = key :. cookieSettings :. jwtSettings :. EmptyContext
+        api' = Proxy :: Proxy (App '[Cookie])
+
     putStrLn $ "Serving on port " ++ show httpPort ++ ", static from " ++ show staticDir
 
     Warp.run (ci httpPort) $ gzip def { gzipFiles = GzipCompress } $
-      serveWithContext (Proxy :: Proxy App) (key :. EmptyContext) $
-        hoistServerWithContext (Proxy :: Proxy App) (Proxy :: Proxy '[GitHubKey]) (runApp env) $
-          app staticDir
+      serveWithContext api' ctx $
+        hoistServerWithContext api' (Proxy :: Proxy '[GitHubKey, CookieSettings, JWTSettings]) (runApp env) $
+          app staticDir cookieSettings jwtSettings
 
  where
   pgConnectInfo DbConfig {..} = Pg.ConnectInfo

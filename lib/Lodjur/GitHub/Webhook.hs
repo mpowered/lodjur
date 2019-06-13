@@ -108,5 +108,5 @@ newtype GitHubKey = GitHubKey (forall result. Webhook.GitHubKey result)
 gitHubKey :: IO BS.ByteString -> GitHubKey
 gitHubKey k = GitHubKey (Webhook.gitHubKey k)
 
-instance HasContextEntry '[GitHubKey] (Webhook.GitHubKey result) where
+instance HasContextEntry (GitHubKey ': xs) (Webhook.GitHubKey result) where
   getContextEntry (GitHubKey x :. _) = x

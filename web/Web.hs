@@ -36,9 +36,8 @@ import           Servant.Auth.Server           as S
 import           Servant.HTML.Lucid
 
 import           Job
+import           Session
 import           Types
-
-data Session = Session
 
 type Web auths
     = GetNoContent '[HTML] (Html ())
@@ -46,28 +45,29 @@ type Web auths
  :<|> S.Auth auths Session :> Protected
 
 web :: CookieSettings -> JWTSettings -> ServerT (Web auths) AppM
-web cs jwts
+web cookie jwt
     = home
- :<|> unprotected cs jwts
+ :<|> unprotected cookie jwt
  :<|> protected
 
 type Unprotected
     = "login" :> Get '[HTML] (Html ())
- :<|> "auth" :> QueryParam "code" Text :> Get '[HTML] (Html ())
+ :<|> "auth" :> QueryParam "code" Text :> Get '[HTML] (Headers '[Header "Set-Cookie" SetCookie, Header "Set-Cookie" SetCookie] (Html ()))
 
 type Protected
     = "jobs" :> Get '[HTML] (Html ())
  :<|> "job" :> Capture "jobid" Int32 :> Get '[HTML] (Html ())
 
 unprotected :: CookieSettings -> JWTSettings -> ServerT Unprotected AppM
-unprotected cs jwts
+unprotected cookie jwt
     = login
- :<|> auth
+ :<|> auth cookie jwt
 
 protected :: S.AuthResult Session -> ServerT Protected AppM
-protected session
-    = getJobs
- :<|> getJob
+protected (Authenticated session)
+    = getJobs session
+ :<|> getJob session
+protected _ = throwAll $ err302 { errHeaders = [("Location", "/login")] }
 
 deferredScript :: Text -> Html ()
 deferredScript src =
@@ -147,8 +147,8 @@ login = do
       div_ $ do
         a_ [ href_ endpoint ] "Login with GitHub"
 
-auth :: Maybe Text -> AppM (Html ())
-auth mcode = do
+auth :: CookieSettings -> JWTSettings -> Maybe Text -> AppM (Headers '[Header "Set-Cookie" SetCookie, Header "Set-Cookie" SetCookie] (Html ()))
+auth cookie jwt mcode = do
   case mcode of
     Nothing -> error "You must pass in a code as a parameter."
     Just code -> do
@@ -156,18 +156,22 @@ auth mcode = do
       muser <- liftIO $ userInfoCurrent' (OAuth token)
       case muser of
         Left _ -> error "Couldn't determine authenticated user."
-        Right user -> loggedIn user token
+        Right user -> loggedIn cookie jwt user token
 
-loggedIn :: GH.User -> Token -> AppM (Html ())
-loggedIn user token = do
+loggedIn :: CookieSettings -> JWTSettings -> GH.User -> Token -> AppM (Headers '[Header "Set-Cookie" SetCookie, Header "Set-Cookie" SetCookie] (Html ()))
+loggedIn cookie jwt user token = do
   now <- liftIO getCurrentTime
   us <- runDb $ upsertUser user token now
   case us of
-    [dbuser] ->
-      return $ doctypehtml_ $ html_ $ do
-        head "Lodjur"
-        body_ $ do
-          div_ (toHtml $ show dbuser)
+    [dbuser] -> do
+      mApplyCookies <- liftIO $ acceptLogin cookie jwt Session
+      case mApplyCookies of
+        Nothing           -> throwError err401
+        Just applyCookies -> return $ applyCookies $
+          doctypehtml_ $ html_ $ do
+            head "Lodjur"
+            body_ $ do
+              div_ (toHtml $ show dbuser)
     _ -> error "User upsert failed."
 
 upsertUser :: GH.User -> Token -> UTCTime -> Pg [Db.User]
@@ -236,8 +240,8 @@ getAccessToken code = do
       (Req.header "accept" "application/json")
   return (cs $ accessToken $ Req.responseBody r)
 
-getJobs :: AppM (Html ())
-getJobs = do
+getJobs :: Session -> AppM (Html ())
+getJobs Session = do
   return $ doctypehtml_ $ html_ $ do
     head "Lodjur"
     body_ $ do
@@ -257,8 +261,8 @@ getJobs = do
           div_ [ class_ "job-list card-list" ] ""
         div_ [ class_ "footer" ] ""
 
-getJob :: Int32 -> AppM (Html ())
-getJob jobid = do
+getJob :: Session -> Int32 -> AppM (Html ())
+getJob Session jobid = do
   job <- runDb $ lookupJob jobid
   case job of
     Nothing -> throwError err404

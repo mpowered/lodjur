@@ -225,6 +225,7 @@ executable              lodjur
     other-modules:      Config
                       , Api
                       , Job
+                      , Session
                       , Stream
                       , Types
                       , Web
