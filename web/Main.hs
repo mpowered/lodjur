@@ -22,13 +22,13 @@ import qualified Language.JavaScript.Parser    as JS
 import qualified Language.JavaScript.Process.Minify as JS
 import qualified Network.HTTP.Client           as Http
 import qualified Network.HTTP.Client.TLS       as Http
-import           Network.HTTP.Media             ( (//), (/:) )
+import           Network.Wai
 import           Network.Wai.Middleware.Gzip
 import qualified Network.Wai.Handler.Warp      as Warp
 import           Options.Applicative
 import           Servant
-import           Servant.Auth.Server           as S
 import           Servant.API.WebSocket
+import           Servant.Server.Experimental.Auth
 import qualified Web.JWT                       as JWT
 
 import           Lodjur.Core
@@ -37,7 +37,9 @@ import qualified Lodjur.GitHub                 as GH
 import           Lodjur.GitHub.Webhook
 
 import           Api
+import           Auth
 import           Config
+import           ContentTypes
 import           Stream
 import           Types
 import           Web
@@ -46,32 +48,24 @@ import           WebSocket
 
 import           Paths_lodjur
 
-data Javascript
-
-instance Accept Javascript where
-   contentType _ = "application" // "javascript" /: ("charset", "utf-8")
-
-instance MimeRender Javascript Text where
-  mimeRender _ = cs
-
-type App auths
+type App
     = "github-event" :> Webhook
  :<|> "js" :> "api.js" :> Get '[Javascript] Text
  :<|> "static" :> Raw
  :<|> "websocket" :> WebSocketPending
  :<|> Api
  :<|> StreamApi
- :<|> Web auths
+ :<|> Web
 
-app :: FilePath -> CookieSettings -> JWTSettings -> ServerT (App auths) AppM
-app staticDir cookie jwt
+app :: FilePath -> ServerT App AppM
+app staticDir
       = webhook
   :<|> return apijs
   :<|> serveDirectoryFileServer staticDir
   :<|> websocket
   :<|> api
   :<|> streamapi
-  :<|> web cookie jwt
+  :<|> web
 
 apijs :: Text
 apijs = mconcat [ apiAsJS, streamapiAsJS ]
@@ -128,23 +122,15 @@ lodjur LodjurOptions {..} = do
                         , envDbPool = dbPool
                         }
 
-    cookieKey <- generateKey
-
-    let cookieSettings = defaultCookieSettings { cookieIsSecure = NotSecure
-                                               , cookieXsrfSetting = Just xsrfSettings
-                                               }
-        xsrfSettings = defaultXsrfCookieSettings { xsrfExcludeGet = False
-                                                 }
-        jwtSettings = defaultJWTSettings cookieKey
-        ctx = key :. cookieSettings :. jwtSettings :. EmptyContext
-        api' = Proxy :: Proxy (App '[Cookie])
+    let ctx = key :. authHandler :. EmptyContext
+        api' = Proxy :: Proxy App
 
     putStrLn $ "Serving on port " ++ show httpPort ++ ", static from " ++ show staticDir
 
     Warp.run (ci httpPort) $ gzip def { gzipFiles = GzipCompress } $
       serveWithContext api' ctx $
-        hoistServerWithContext api' (Proxy :: Proxy '[GitHubKey, CookieSettings, JWTSettings]) (runApp env) $
-          app staticDir cookieSettings jwtSettings
+        hoistServerWithContext api' (Proxy :: Proxy '[GitHubKey, AuthHandler Request Session]) (runApp env) $
+          app staticDir
 
  where
   pgConnectInfo DbConfig {..} = Pg.ConnectInfo

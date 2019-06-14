@@ -224,8 +224,9 @@ executable              lodjur
     default-language:   Haskell2010
     other-modules:      Config
                       , Api
+                      , Auth
+                      , ContentTypes
                       , Job
-                      , Session
                       , Stream
                       , Types
                       , Web

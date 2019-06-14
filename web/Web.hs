@@ -32,42 +32,42 @@ import           Lucid
 import           Network.HTTP.Req               ( (/:), (=:) )
 import qualified Network.HTTP.Req              as Req
 import           Servant
-import           Servant.Auth.Server           as S
 import           Servant.HTML.Lucid
 
+import           Auth
 import           Job
 import           Session
 import           Types
 
-type Web auths
+type Web
     = GetNoContent '[HTML] (Html ())
  :<|> Unprotected
- :<|> S.Auth auths Session :> Protected
+ :<|> CookieAuth :> Protected
 
-web :: CookieSettings -> JWTSettings -> ServerT (Web auths) AppM
-web cookie jwt
+web :: ServerT Web AppM
+web
     = home
- :<|> unprotected cookie jwt
+ :<|> unprotected
  :<|> protected
 
 type Unprotected
     = "login" :> Get '[HTML] (Html ())
- :<|> "auth" :> QueryParam "code" Text :> Get '[HTML] (Headers '[Header "Set-Cookie" SetCookie, Header "Set-Cookie" SetCookie] (Html ()))
+ :<|> "auth" :> QueryParam "code" Text :> Get '[HTML] (Html ())
 
 type Protected
     = "jobs" :> Get '[HTML] (Html ())
  :<|> "job" :> Capture "jobid" Int32 :> Get '[HTML] (Html ())
 
-unprotected :: CookieSettings -> JWTSettings -> ServerT Unprotected AppM
-unprotected cookie jwt
+unprotected :: ServerT Unprotected AppM
+unprotected
     = login
- :<|> auth cookie jwt
+ :<|> auth
 
-protected :: S.AuthResult Session -> ServerT Protected AppM
-protected (Authenticated session)
+protected :: Session -> ServerT Protected AppM
+protected session
     = getJobs session
  :<|> getJob session
-protected _ = throwAll $ err302 { errHeaders = [("Location", "/login")] }
+-- protected _ = throwAll $ err302 { errHeaders = [("Location", "/login")] }
 
 deferredScript :: Text -> Html ()
 deferredScript src =
@@ -147,8 +147,8 @@ login = do
       div_ $ do
         a_ [ href_ endpoint ] "Login with GitHub"
 
-auth :: CookieSettings -> JWTSettings -> Maybe Text -> AppM (Headers '[Header "Set-Cookie" SetCookie, Header "Set-Cookie" SetCookie] (Html ()))
-auth cookie jwt mcode = do
+auth :: Maybe Text -> AppM (Html ())
+auth mcode = do
   case mcode of
     Nothing -> error "You must pass in a code as a parameter."
     Just code -> do
@@ -156,23 +156,24 @@ auth cookie jwt mcode = do
       muser <- liftIO $ userInfoCurrent' (OAuth token)
       case muser of
         Left _ -> error "Couldn't determine authenticated user."
-        Right user -> loggedIn cookie jwt user token
+        Right user -> loggedIn user token
 
-loggedIn :: CookieSettings -> JWTSettings -> GH.User -> Token -> AppM (Headers '[Header "Set-Cookie" SetCookie, Header "Set-Cookie" SetCookie] (Html ()))
-loggedIn cookie jwt user token = do
-  now <- liftIO getCurrentTime
-  us <- runDb $ upsertUser user token now
-  case us of
-    [dbuser] -> do
-      mApplyCookies <- liftIO $ acceptLogin cookie jwt Session
-      case mApplyCookies of
-        Nothing           -> throwError err401
-        Just applyCookies -> return $ applyCookies $
-          doctypehtml_ $ html_ $ do
-            head "Lodjur"
-            body_ $ do
-              div_ (toHtml $ show dbuser)
-    _ -> error "User upsert failed."
+loggedIn :: GH.User -> Token -> AppM (Html ())
+loggedIn user token = do
+  undefined
+  -- now <- liftIO getCurrentTime
+  -- us <- runDb $ upsertUser user token now
+  -- case us of
+  --   [dbuser] -> do
+  --     mApplyCookies <- liftIO $ acceptLogin cookie jwt Session
+  --     case mApplyCookies of
+  --       Nothing           -> throwError err401
+  --       Just applyCookies -> return $ applyCookies $
+  --         doctypehtml_ $ html_ $ do
+  --           head "Lodjur"
+  --           body_ $ do
+  --             div_ (toHtml $ show dbuser)
+  --   _ -> error "User upsert failed."
 
 upsertUser :: GH.User -> Token -> UTCTime -> Pg [Db.User]
 upsertUser GH.User{..} token now =
