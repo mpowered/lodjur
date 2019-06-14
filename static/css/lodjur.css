@@ -83,6 +83,10 @@ body {
   margin-right: 0.5em;
 }
 
+img.user {
+  max-height: 100%;
+}
+
 .tabbar {
   grid-area: tabbar;
 }

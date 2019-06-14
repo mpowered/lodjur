@@ -19,6 +19,7 @@ import           Data.Aeson
 import           Data.ByteString                ( ByteString )
 import           Data.Default.Class
 import           Data.Int                       ( Int32 )
+import           Data.Maybe
 import           Data.String.Conversions
 import           Data.Text                      ( Text )
 import qualified Data.Text                     as Text
@@ -63,9 +64,9 @@ unprotected
  :<|> auth
 
 protected :: AuthUser -> ServerT Protected AppM
-protected user
-    = getJobs user
- :<|> getJob user
+protected authuser
+    = getJobs authuser
+ :<|> getJob authuser
 -- protected _ = throwAll $ err302 { errHeaders = [("Location", "/login")] }
 
 deferredScript :: Text -> Html ()
@@ -155,15 +156,18 @@ auth mcode = do
       muser <- liftIO $ userInfoCurrent' (OAuth token)
       case muser of
         Left _ -> error "Couldn't determine authenticated user."
-        Right user -> loggedIn user token
+        Right user' -> loggedIn user' token
 
 loggedIn :: GH.User -> Token -> AppM (Headers '[Header "Set-Cookie" Text] (Html ()))
-loggedIn user token = do
+loggedIn user' token = do
   now <- liftIO getCurrentTime
-  us <- runDb $ upsertUser user token now
+  us <- runDb $ upsertUser user' token now
   case us of
     [dbuser] -> do
-      addCookie <- authenticateUser $ AuthUser (Db.userId dbuser)
+      addCookie <- authenticateUser $
+        AuthUser (Db.userId dbuser)
+                 (fromMaybe (Db.userLogin dbuser) (Db.userName dbuser))
+                 (Db.userAvatarUrl dbuser)
       return $ addCookie $
           doctypehtml_ $ html_ $ do
             head "Lodjur"
@@ -237,8 +241,15 @@ getAccessToken code = do
       (Req.header "accept" "application/json")
   return (cs $ accessToken $ Req.responseBody r)
 
+user :: AuthUser -> Html ()
+user u = do
+  case authUserAvatar u of
+    Just url -> img_ [ class_ "user", src_ url ]
+    Nothing -> div_ [ class_ "user"] $ span_ [ class_ "far fa-user" ] ""
+  div_ [ class_ "user" ] (toHtml $ authUserName u)
+
 getJobs :: AuthUser -> AppM (Html ())
-getJobs (AuthUser userid) = do
+getJobs authuser = do
   return $ doctypehtml_ $ html_ $ do
     head "Lodjur"
     body_ $ do
@@ -249,9 +260,10 @@ getJobs (AuthUser userid) = do
             "\160"
             "3.0"
         div_ [ class_ "user-box header" ] $ do
-          div_ [ class_ "user"] $ span_ [ class_ "far fa-chevron-down" ] ""
-          div_ [ class_ "user"] $ span_ [ class_ "far fa-user" ] ""
-          div_ [ class_ "user"] "Shaun"
+          user authuser
+          -- div_ [ class_ "user"] $ span_ [ class_ "far fa-chevron-down" ] ""
+          -- div_ [ class_ "user"] $ span_ [ class_ "far fa-user" ] ""
+          -- div_ [ class_ "user"] "Shaun"
         div_ [ class_ "head-box header" ] $ do
           div_ [ class_ "head"] "Recent Jobs"
         div_ [ class_ "content" ] $ do
@@ -259,7 +271,7 @@ getJobs (AuthUser userid) = do
         div_ [ class_ "footer" ] ""
 
 getJob :: AuthUser -> Int32 -> AppM (Html ())
-getJob (AuthUser userid) jobid = do
+getJob authuser jobid = do
   job <- runDb $ lookupJob jobid
   case job of
     Nothing -> throwError err404
@@ -274,9 +286,10 @@ getJob (AuthUser userid) jobid = do
                 "\160"
                 "3.0"
             div_ [ class_ "user-box header" ] $ do
-              div_ [ class_ "user"] $ span_ [ class_ "far fa-chevron-down" ] ""
-              div_ [ class_ "user"] $ span_ [ class_ "far fa-user" ] ""
-              div_ [ class_ "user"] "Shaun"
+              user authuser
+              -- div_ [ class_ "user"] $ span_ [ class_ "far fa-chevron-down" ] ""
+              -- div_ [ class_ "user"] $ span_ [ class_ "far fa-user" ] ""
+              -- div_ [ class_ "user"] "Shaun"
             div_ [ class_ "head-box header" ] $ do
               div_ [ class_ "head"] $
                 toHtml ("Job " <> viaShow job'Id)
