@@ -7,6 +7,7 @@ import Data.Text              ( Text )
 import Servant                ( Handler )
 import Lodjur.Core            ( Core )
 import Lodjur.Database        ( DbPool, Pg, withConnection, beam )
+import Web.JWT                ( Signer )
 
 type AppM = ReaderT Env Handler
 
@@ -14,6 +15,7 @@ data Env = Env
   { envGithubAppId        :: !Int
   , envGithubClientId     :: !Text
   , envGithubClientSecret :: !Text
+  , envCookieSigner       :: !Signer
   , envCore               :: Core
   , envDbPool             :: DbPool
   }

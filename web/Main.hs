@@ -101,7 +101,8 @@ lodjur LodjurOptions {..} = do
   let HttpConfig {..}   = cfgHttp
       GithubConfig {..} = cfgGithub
 
-  staticDir   <- maybe (getDataFileName "static") (return . cs) httpStaticDir
+  staticDir    <- maybe (getDataFileName "static") (return . cs) httpStaticDir
+  let cookieSigner = JWT.hmacSecret httpCookieSecret
 
   httpManager <- Http.newManager Http.tlsManagerSettings
 
@@ -118,18 +119,19 @@ lodjur LodjurOptions {..} = do
         env = Types.Env { envGithubAppId = ci githubAppId
                         , envGithubClientId = githubClientId
                         , envGithubClientSecret = githubClientSecret
+                        , envCookieSigner = cookieSigner
                         , envCore = core
                         , envDbPool = dbPool
                         }
 
-    let ctx = key :. authHandler :. EmptyContext
+    let ctx = key :. authHandler cookieSigner :. EmptyContext
         api' = Proxy :: Proxy App
 
     putStrLn $ "Serving on port " ++ show httpPort ++ ", static from " ++ show staticDir
 
     Warp.run (ci httpPort) $ gzip def { gzipFiles = GzipCompress } $
       serveWithContext api' ctx $
-        hoistServerWithContext api' (Proxy :: Proxy '[GitHubKey, AuthHandler Request Session]) (runApp env) $
+        hoistServerWithContext api' (Proxy :: Proxy '[GitHubKey, AuthHandler Request AuthUser]) (runApp env) $
           app staticDir
 
  where

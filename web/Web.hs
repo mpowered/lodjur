@@ -22,7 +22,7 @@ import           Data.Int                       ( Int32 )
 import           Data.String.Conversions
 import           Data.Text                      ( Text )
 import qualified Data.Text                     as Text
-import           Data.Time.Clock                ( UTCTime, getCurrentTime )
+import           Data.Time                      ( UTCTime, getCurrentTime )
 import           Database.Beam.Postgres
 import qualified Database.Beam.Postgres.Full   as Pg
 import           GitHub                        as GH
@@ -36,7 +36,6 @@ import           Servant.HTML.Lucid
 
 import           Auth
 import           Job
-import           Session
 import           Types
 
 type Web
@@ -52,7 +51,7 @@ web
 
 type Unprotected
     = "login" :> Get '[HTML] (Html ())
- :<|> "auth" :> QueryParam "code" Text :> Get '[HTML] (Html ())
+ :<|> "auth" :> QueryParam "code" Text :> Get '[HTML] (Headers '[Header "Set-Cookie" Text] (Html ()))
 
 type Protected
     = "jobs" :> Get '[HTML] (Html ())
@@ -63,10 +62,10 @@ unprotected
     = login
  :<|> auth
 
-protected :: Session -> ServerT Protected AppM
-protected session
-    = getJobs session
- :<|> getJob session
+protected :: AuthUser -> ServerT Protected AppM
+protected user
+    = getJobs user
+ :<|> getJob user
 -- protected _ = throwAll $ err302 { errHeaders = [("Location", "/login")] }
 
 deferredScript :: Text -> Html ()
@@ -147,7 +146,7 @@ login = do
       div_ $ do
         a_ [ href_ endpoint ] "Login with GitHub"
 
-auth :: Maybe Text -> AppM (Html ())
+auth :: Maybe Text -> AppM (Headers '[Header "Set-Cookie" Text] (Html ()))
 auth mcode = do
   case mcode of
     Nothing -> error "You must pass in a code as a parameter."
@@ -158,22 +157,19 @@ auth mcode = do
         Left _ -> error "Couldn't determine authenticated user."
         Right user -> loggedIn user token
 
-loggedIn :: GH.User -> Token -> AppM (Html ())
+loggedIn :: GH.User -> Token -> AppM (Headers '[Header "Set-Cookie" Text] (Html ()))
 loggedIn user token = do
-  undefined
-  -- now <- liftIO getCurrentTime
-  -- us <- runDb $ upsertUser user token now
-  -- case us of
-  --   [dbuser] -> do
-  --     mApplyCookies <- liftIO $ acceptLogin cookie jwt Session
-  --     case mApplyCookies of
-  --       Nothing           -> throwError err401
-  --       Just applyCookies -> return $ applyCookies $
-  --         doctypehtml_ $ html_ $ do
-  --           head "Lodjur"
-  --           body_ $ do
-  --             div_ (toHtml $ show dbuser)
-  --   _ -> error "User upsert failed."
+  now <- liftIO getCurrentTime
+  us <- runDb $ upsertUser user token now
+  case us of
+    [dbuser] -> do
+      addCookie <- authenticateUser $ AuthUser (Db.userId dbuser)
+      return $ addCookie $
+          doctypehtml_ $ html_ $ do
+            head "Lodjur"
+            body_ $ do
+              div_ (toHtml $ show dbuser)
+    _ -> error "User upsert failed."
 
 upsertUser :: GH.User -> Token -> UTCTime -> Pg [Db.User]
 upsertUser GH.User{..} token now =
@@ -241,8 +237,8 @@ getAccessToken code = do
       (Req.header "accept" "application/json")
   return (cs $ accessToken $ Req.responseBody r)
 
-getJobs :: Session -> AppM (Html ())
-getJobs Session = do
+getJobs :: AuthUser -> AppM (Html ())
+getJobs (AuthUser userid) = do
   return $ doctypehtml_ $ html_ $ do
     head "Lodjur"
     body_ $ do
@@ -262,8 +258,8 @@ getJobs Session = do
           div_ [ class_ "job-list card-list" ] ""
         div_ [ class_ "footer" ] ""
 
-getJob :: Session -> Int32 -> AppM (Html ())
-getJob Session jobid = do
+getJob :: AuthUser -> Int32 -> AppM (Html ())
+getJob (AuthUser userid) jobid = do
   job <- runDb $ lookupJob jobid
   case job of
     Nothing -> throwError err404

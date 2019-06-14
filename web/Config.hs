@@ -24,6 +24,7 @@ data Config = Config
 data HttpConfig = HttpConfig
   { httpPort              :: Natural
   , httpStaticDir         :: Maybe Text
+  , httpCookieSecret      :: Text
   } deriving (Generic, Interpret)
 
 data DbConfig = DbConfig
