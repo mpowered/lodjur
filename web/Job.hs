@@ -344,17 +344,18 @@ recentJobsForest :: Integer -> Pg (Forest Job')
 recentJobsForest n = do
   ps <- runSelectReturningList $ selectWith $ do
     rec prev <-
-          selecting
-          $        ( limit_ n
-                   $ orderBy_ (desc_ . jobId)
-                   $ filter_ (\j -> jobParent j ==. val_ nothing_)
-                   $ all_ (dbJobs db)
-                   )
-          `union_` (do
-                     parent <- reuse prev
-                     relatedBy_ (dbJobs db)
-                                (\j -> jobParent j ==. just_ (pk parent))
-                   )
+          selecting $
+            ( limit_ n
+            $ orderBy_ (desc_ . jobId)
+            $ filter_ (\j -> jobParent j ==. val_ nothing_)
+            $ all_ (dbJobs db)
+            )
+          `union_`
+            (do
+              parent <- reuse prev
+              relatedBy_ (dbJobs db)
+                         (\j -> jobParent j ==. just_ (pk parent))
+            )
     pure $ do
       j <- reuse prev
       c <- related_ (dbCommits db) (jobCommit j)

@@ -2,7 +2,6 @@
 {-# LANGUAGE FlexibleContexts       #-}
 {-# LANGUAGE FlexibleInstances      #-}
 {-# LANGUAGE MultiParamTypeClasses  #-}
-{-# LANGUAGE NamedFieldPuns         #-}
 {-# LANGUAGE OverloadedStrings      #-}
 {-# LANGUAGE RankNTypes             #-}
 {-# LANGUAGE RecordWildCards        #-}
@@ -59,13 +58,13 @@ type App
 
 app :: FilePath -> ServerT App AppM
 app staticDir
-      = webhook
-  :<|> return apijs
-  :<|> serveDirectoryFileServer staticDir
-  :<|> websocket
-  :<|> api
-  :<|> streamapi
-  :<|> web
+    = webhook
+ :<|> return apijs
+ :<|> serveDirectoryFileServer staticDir
+ :<|> websocket
+ :<|> api
+ :<|> streamapi
+ :<|> web
 
 apijs :: Text
 apijs = mconcat [ apiAsJS, streamapiAsJS ]
@@ -131,7 +130,7 @@ lodjur LodjurOptions {..} = do
 
     Warp.run (ci httpPort) $ gzip def { gzipFiles = GzipCompress } $
       serveWithContext api' ctx $
-        hoistServerWithContext api' (Proxy :: Proxy '[GitHubKey, AuthHandler Request AuthUser]) (runApp env) $
+        hoistServerWithContext api' (Proxy :: Proxy '[GitHubKey, AuthHandler Request AuthResult]) (runApp env) $
           app staticDir
 
  where
