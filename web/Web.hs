@@ -1,21 +1,26 @@
+{-# LANGUAGE AllowAmbiguousTypes    #-}
 {-# LANGUAGE DataKinds              #-}
 {-# LANGUAGE FlexibleContexts       #-}
 {-# LANGUAGE FlexibleInstances      #-}
+{-# LANGUAGE FunctionalDependencies #-}
 {-# LANGUAGE LambdaCase             #-}
 {-# LANGUAGE MultiParamTypeClasses  #-}
 {-# LANGUAGE MultiWayIf             #-}
 {-# LANGUAGE NamedFieldPuns         #-}
 {-# LANGUAGE OverloadedStrings      #-}
+{-# LANGUAGE PolyKinds              #-}
 {-# LANGUAGE RankNTypes             #-}
 {-# LANGUAGE RecordWildCards        #-}
 {-# LANGUAGE TypeFamilies           #-}
 {-# LANGUAGE TypeOperators          #-}
+{-# LANGUAGE UndecidableInstances   #-}
 
 module Web where
 
 import           Prelude                 hiding ( head )
 
 import           Control.Monad.IO.Class
+import           Control.Monad.Reader
 import           Data.ByteString                ( ByteString )
 import           Data.Int                       ( Int32 )
 import           Data.Maybe
@@ -25,6 +30,7 @@ import qualified Data.Text                     as Text
 import           Data.Time
 import           GitHub                        as GH
 import           GitHub.Endpoints.Users        as GH
+import           GHC.TypeLits
 import           Lodjur.Database               as Db hiding ( div_ )
 import           Lucid
 import           Servant
@@ -51,8 +57,8 @@ type Unprotected
  :<|> "auth" :> QueryParam "code" Text :> QueryParam "state" Text :> Get '[HTML] (Headers '[Header "Set-Cookie" Text] (Html ()))
 
 type Protected
-    = "jobs" :> Get '[HTML] (Html ())
- :<|> "job" :> Capture "jobid" Int32 :> Get '[HTML] (Html ())
+    = "jobs" :> Get '[HTML] (Headers '[Header "Set-Cookie" Text] (Html ()))
+ :<|> "job" :> Capture "jobid" Int32 :> Get '[HTML] (Headers '[Header "Set-Cookie" Text] (Html ()))
 
 unprotected :: ServerT Unprotected AppM
 unprotected
@@ -61,9 +67,33 @@ unprotected
 
 protected :: AuthResult -> ServerT Protected AppM
 protected (Authenticated authuser)
-    = getJobs authuser
+    = headerAll ""
+ (    getJobs authuser
  :<|> getJob authuser
-protected _ = throwAll $ err302 { errHeaders = [("Location", "/login")] }
+ )
+-- protected (AuthExpired authuser)
+--     = protected (Authenticated authuser)
+-- protected _ = throwAll $ err302 { errHeaders = [("Location", "/login")] }
+
+class HeaderAll h v orig new
+    | h v orig -> new
+    , new -> h
+    , new -> v
+    , new -> orig
+  where
+    headerAll :: v -> orig -> new
+
+instance (HeaderAll h v a c, HeaderAll h v b d) => HeaderAll h v (a :<|> b) (c :<|> d) where
+  headerAll v (a :<|> b) = headerAll v a :<|> headerAll v b
+
+instance (HeaderAll h v b c) => HeaderAll h v (a -> b) (a -> c) where
+  headerAll v a = headerAll v <$> a
+
+instance (HeaderAll h v (m a) (n b)) => HeaderAll h v (ReaderT r m a) (ReaderT r n b) where
+  headerAll v a = mapReaderT (headerAll v) a
+
+instance (KnownSymbol h, ToHttpApiData v, AddHeader h v a b) => HeaderAll h v (Handler a) (Handler b) where
+  headerAll v a = addHeader v <$> a
 
 deferredScript :: Text -> Html ()
 deferredScript src =
