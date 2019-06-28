@@ -1,5 +1,7 @@
 {-# LANGUAGE DataKinds              #-}
+{-# LANGUAGE DeriveAnyClass         #-}
 {-# LANGUAGE DeriveFunctor          #-}
+{-# LANGUAGE DeriveGeneric          #-}
 {-# LANGUAGE DeriveTraversable      #-}
 {-# LANGUAGE FlexibleContexts       #-}
 {-# LANGUAGE OverloadedStrings      #-}
@@ -24,12 +26,14 @@ import           Data.Time.Clock.POSIX
 import qualified Database.Beam.Postgres.Full   as Pg
 import           GitHub                        as GH
 import           GitHub.Endpoints.Users        as GH
+import           GHC.Generics                   ( Generic )
 import           Lodjur.Database               as Db
 import           Network.HTTP.Req               ( (/:), (=:) )
 import qualified Network.HTTP.Req              as Req
 import           Network.HTTP.Types             ( HeaderName )
 import           Network.Wai                   as Wai
 import           Servant
+import           Servant.Auth.Server
 import           Servant.Server.Experimental.Auth
 import           Web.Cookie
 import           Web.JWT
@@ -41,27 +45,9 @@ data AuthUser = AuthUser
     , authUserName    :: Text
     , authUserAvatar  :: Maybe Text
     }
-  deriving (Eq, Show, Read)
+  deriving (Eq, Show, Read, Generic, FromJSON, ToJSON, FromJWT, ToJWT)
 
-data AuthResult = Authenticated AuthUser | AuthExpired AuthUser | Unauthenticated
-  deriving (Eq, Show, Read)
-
-type CookieAuth = AuthProtect "cookie-auth"
-
-type instance AuthServerData CookieAuth = AuthResult
-
-authHandler :: Signer -> AuthHandler Wai.Request AuthResult
-authHandler signer = mkAuthHandler handler
- where
-  handler req = do
-    authuser <- maybe (return Invalid) (liftIO . validateUserToken signer) $ do
-      cookie <- lookup "cookie" $ requestHeaders req
-      token  <- lookup "lodjur-auth" $ parseCookies cookie
-      return (cs token)
-    return $ case authuser of
-      Valid user   -> Authenticated user
-      Expired user -> AuthExpired user
-      Invalid      -> Unauthenticated
+{-
 
 authenticateUser :: AuthUser -> AppM (HeaderName, ByteString)
 authenticateUser authuser = do
@@ -148,9 +134,6 @@ redirToken url =
     mempty { unregisteredClaims = ClaimsMap $ Map.fromList [("redirect", toJSON url)]
            }
 
-runDb' :: MonadIO m => DbPool -> Pg a -> m a
-runDb' dbpool a = liftIO $ withConnection dbpool $ \conn -> beam conn a
-
 validateGithubToken :: DbPool -> AuthUser -> Handler ()
 validateGithubToken dbpool authuser = do
   user  <- maybe (throwError err401) return =<<
@@ -162,6 +145,10 @@ validateGithubToken dbpool authuser = do
   now <- liftIO getCurrentTime
   _ <- runDb' dbpool (upsertUser ghUsr token now)
   return ()
+-}
+
+runDb' :: MonadIO m => DbPool -> Pg a -> m a
+runDb' dbpool a = liftIO $ withConnection dbpool $ \conn -> beam conn a
 
 lookupUser :: Int64 -> Pg (Maybe Db.User)
 lookupUser userid =

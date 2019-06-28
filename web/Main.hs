@@ -26,6 +26,7 @@ import           Network.Wai.Middleware.Gzip
 import qualified Network.Wai.Handler.Warp      as Warp
 import           Options.Applicative
 import           Servant
+import           Servant.Auth.Server           as S
 import           Servant.API.WebSocket
 import           Servant.Server.Experimental.Auth
 import qualified Web.JWT                       as JWT
@@ -101,7 +102,6 @@ lodjur LodjurOptions {..} = do
       GithubConfig {..} = cfgGithub
 
   staticDir    <- maybe (getDataFileName "static") (return . cs) httpStaticDir
-  let cookieSigner = JWT.hmacSecret httpCookieSecret
 
   httpManager <- Http.newManager Http.tlsManagerSettings
 
@@ -113,24 +113,33 @@ lodjur LodjurOptions {..} = do
                                       signer
                                       (ghid githubInstId)
 
+
   bracket (startCore accessToken httpManager dbPool) cancelCore $ \core -> do
     let key = gitHubKey (pure (cs githubWebhookSecret))
+        cookieKey = S.fromSecret (cs httpCookieSecret)
+        cookieSettings = defaultCookieSettings { cookieIsSecure = NotSecure
+                                               , cookieXsrfSetting = Just xsrfSettings
+                                               }
+        xsrfSettings = defaultXsrfCookieSettings { xsrfExcludeGet = False
+                                                 }
+        jwtSettings = defaultJWTSettings cookieKey
         env = Types.Env { envGithubAppId = ci githubAppId
                         , envGithubClientId = githubClientId
                         , envGithubClientSecret = githubClientSecret
-                        , envCookieSigner = cookieSigner
                         , envCore = core
                         , envDbPool = dbPool
+                        , envCookieSettings = cookieSettings
+                        , envJWTSettings = jwtSettings
                         }
 
-    let ctx = key :. authHandler cookieSigner :. EmptyContext
+        ctx = key :. cookieSettings :. jwtSettings :. EmptyContext
         api' = Proxy :: Proxy App
 
     putStrLn $ "Serving on port " ++ show httpPort ++ ", static from " ++ show staticDir
 
     Warp.run (ci httpPort) $ gzip def { gzipFiles = GzipCompress } $
       serveWithContext api' ctx $
-        hoistServerWithContext api' (Proxy :: Proxy '[GitHubKey, AuthHandler Request AuthResult]) (runApp env) $
+        hoistServerWithContext api' (Proxy :: Proxy '[GitHubKey, CookieSettings, JWTSettings]) (runApp env) $
           app staticDir
 
  where
