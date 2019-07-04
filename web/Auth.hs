@@ -4,8 +4,11 @@
 {-# LANGUAGE DeriveGeneric          #-}
 {-# LANGUAGE DeriveTraversable      #-}
 {-# LANGUAGE FlexibleContexts       #-}
+{-# LANGUAGE FlexibleInstances      #-}
+{-# LANGUAGE MultiParamTypeClasses  #-}
 {-# LANGUAGE OverloadedStrings      #-}
 {-# LANGUAGE RecordWildCards        #-}
+{-# LANGUAGE ScopedTypeVariables    #-}
 {-# LANGUAGE TypeFamilies           #-}
 
 module Auth where
@@ -13,8 +16,12 @@ module Auth where
 import           Prelude                 hiding ( exp )
 
 import           Control.Monad.IO.Class
+import           Control.Monad.Except
+import           Control.Monad.Reader
+import qualified Crypto.JOSE                   as Jose
+import qualified Crypto.JWT                    as Jose
 import           Data.Aeson
-import           Data.ByteString                ( ByteString )
+import qualified Data.ByteString               as BS
 import           Data.Int                       ( Int64 )
 import qualified Data.Map.Strict               as Map
 import           Data.Maybe
@@ -30,37 +37,29 @@ import           GHC.Generics                   ( Generic )
 import           Lodjur.Database               as Db
 import           Network.HTTP.Req               ( (/:), (=:) )
 import qualified Network.HTTP.Req              as Req
-import           Network.HTTP.Types             ( HeaderName )
+import           Network.HTTP.Types             ( HeaderName, hCookie )
 import           Network.Wai                   as Wai
 import           Servant
-import           Servant.Auth.Server
+import           Servant.Auth.Server hiding (validationKeys)
+import           Servant.Auth.Server.Internal.Class
 import           Servant.Server.Experimental.Auth
 import           Web.Cookie
-import           Web.JWT
 
 import           Types
 
-data AuthUser = AuthUser
-    { authUserId      :: Int64
-    , authUserName    :: Text
-    , authUserAvatar  :: Maybe Text
-    }
-  deriving (Eq, Show, Read, Generic, FromJSON, ToJSON, FromJWT, ToJWT)
-
 {-
+verifyToken :: GHSettings -> Text -> AuthCheck (JWT VerifiedJWT)
+verifyToken ghs tok = do
+  jwt <- maybe mzero return $ decodeAndVerifySignature (ghSigner ghs) tok
+  let c = claims jwt
+  guard $ (ghAudience ghs) `elem` map stringOrURIToText (auds c)
+  guard $ stringOrURI (ghIssuer ghs) == iss c
+  return jwt
 
-authenticateUser :: AuthUser -> AppM (HeaderName, ByteString)
-authenticateUser authuser = do
-  tok <- userToken authuser
-  return ("Set-Cookie", "lodjur-auth="<> cs tok <> "; SameSite=Strict")
-
-data Validated a = Valid a | Expired a | Invalid
-  deriving (Show, Functor, Foldable, Traversable)
-
-validateToken :: Signer -> Text -> IO (Validated (JWT VerifiedJWT))
-validateToken signer tok = do
-    now <- getPOSIXTime
-    return $ maybe Invalid (checkClaims now) (decodeAndVerifySignature signer tok)
+verifyToken :: GHSettings -> Text -> AuthCheck a
+verifyToken ghs tok = do
+    now <- liftIO getPOSIXTime
+    return $ maybe Invalid (checkClaims now) (decodeAndVerifySignature (ghSigner ghs) tok)
   where
     checkClaims now jwt =
       let c = claims jwt
@@ -73,6 +72,16 @@ validateToken signer tok = do
           (True, True)  -> Valid jwt
           (True, False) -> Expired jwt
           (False, _)    -> Invalid
+
+
+authenticateUser :: AuthUser -> AppM (HeaderName, ByteString)
+authenticateUser authuser = do
+  tok <- userToken authuser
+  return ("Set-Cookie", "lodjur-auth="<> cs tok <> "; SameSite=Lax")
+
+data Validated a = Valid a | Expired a | Invalid
+  deriving (Show, Functor, Foldable, Traversable)
+
 
 validateUserToken :: Signer -> Text -> IO (Validated AuthUser)
 validateUserToken signer tok = do

@@ -1,16 +1,11 @@
-# resolver: lts-13.19   # 8.6.4
 resolver: lts-13.24   # 8.6.5
 extra-deps:
 - github
 - beam-migrate-0.4.0.1
 - beam-postgres-0.4.0.0
 - jwt-0.9.0
-  # - primitive-extras-0.7.1
-  # - reroute-0.5.0.0
 - servant-github-webhook-0.4.1.0
 - servant-pipes-0.15
-  # - stm-containers-1.1.0.4
-  # - stm-hamt-1.2.0.2
 - git: https://github.com/bflyblue/servant-event-stream.git
   commit: 696d72833f67c5b42c42c1591775de86ee22a382
 nix:

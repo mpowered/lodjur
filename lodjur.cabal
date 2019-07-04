@@ -227,6 +227,7 @@ executable              lodjur
                       , Auth
                       , ContentTypes
                       , Job
+                      , GithubAuth
                       , Stream
                       , Types
                       , Web
@@ -261,8 +262,9 @@ executable              lodjur
                       , http-media
                       , http-types            >= 0.12.1 && < 0.13
                       , iso8601-time          >= 0.1.5 && < 0.2
-                      , language-javascript   >= 0.6 && < 0.7
+                      , jose                  >= 0.8.0 && < 0.9
                       , jwt                   >= 0.9.0 && < 0.10
+                      , language-javascript   >= 0.6 && < 0.7
                       , lucid                 >= 2.9.10 && < 2.10
                       , monad-control         >= 1.0.2 && < 1.1
                       , mtl                   >= 2.2.2 && < 2.3

@@ -39,12 +39,13 @@ import           Servant.HTML.Lucid
 
 import           Auth
 import           Job
+import           GithubAuth
 import           Types
 
 type Web
     = GetNoContent '[HTML] (Html ())
  :<|> Unprotected
- :<|> S.Auth '[JWT, Cookie] AuthUser :> Protected
+ :<|> GHAuth '[GH AuthUser] AuthUser :> Protected
 
 web :: ServerT Web AppM
 web
@@ -54,7 +55,7 @@ web
 
 type Unprotected
     = QueryParam "redirect" Text :> "login" :> Get '[HTML] (Html ())
- :<|> "auth" :> QueryParam "code" Text :> QueryParam "state" Text :> Get '[HTML] (Headers '[Header "Set-Cookie" SetCookie, Header "Set-Cookie" SetCookie] (Html ()))
+ :<|> "auth" :> QueryParam "code" Text :> QueryParam "state" Text :> Get '[HTML] (Headers '[Header "Set-Cookie" SetCookie] (Html ()))
 
 type Protected
     = "jobs" :> Get '[HTML] (Html ())
@@ -148,7 +149,7 @@ login redir = do
       div_ $ do
         a_ [ href_ endpoint ] "Login with GitHub"
 
-auth :: Maybe Text -> Maybe Text -> AppM (Headers '[Header "Set-Cookie" SetCookie, Header "Set-Cookie" SetCookie] (Html ()))
+auth :: Maybe Text -> Maybe Text -> AppM (Headers '[Header "Set-Cookie" SetCookie] (Html ()))
 auth mcode _mstate = do
   code  <- maybe (throwError err404) return mcode
   token <- getAccessToken code
@@ -158,12 +159,11 @@ auth mcode _mstate = do
   us <- runDb $ upsertUser user' token now
   case us of
     [dbuser] -> do
-      cookieSettings <- getEnv envCookieSettings
-      jwtSettings <- getEnv envJWTSettings
+      ghSettings <- getEnv envGHSettings
       let authuser = AuthUser (Db.userId dbuser)
                               (fromMaybe (Db.userLogin dbuser) (Db.userName dbuser))
                               (Db.userAvatarUrl dbuser)
-      mcookies <- liftIO $ acceptLogin cookieSettings jwtSettings authuser
+      mcookies <- liftIO $ acceptGHLogin ghSettings authuser
       applyCookies <- maybe (throwError err404) return mcookies
       return $ applyCookies $ doctypehtml_ $ html_ $ do
         head "Lodjur"

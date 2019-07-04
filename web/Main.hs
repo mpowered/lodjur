@@ -11,6 +11,7 @@
 module Main where
 
 import           Control.Exception
+import qualified Crypto.JWT                    as Jose
 import           Data.String.Conversions        ( cs )
 import           Data.Text                      ( Text )
 import qualified Data.Text                     as T
@@ -40,6 +41,7 @@ import           Api
 import           Auth
 import           Config
 import           ContentTypes
+import           GithubAuth
 import           Stream
 import           Types
 import           Web
@@ -117,32 +119,38 @@ lodjur LodjurOptions {..} = do
   bracket (startCore accessToken httpManager dbPool) cancelCore $ \core -> do
     let key = gitHubKey (pure (cs githubWebhookSecret))
         cookieKey = S.fromSecret (cs httpCookieSecret)
-        cookieSettings = defaultCookieSettings { cookieIsSecure = NotSecure
-                                               , cookieXsrfSetting = Just xsrfSettings
-                                               }
-        xsrfSettings = defaultXsrfCookieSettings { xsrfExcludeGet = False
-                                                 }
+        cookieSettings = defaultCookieSettings { cookieIsSecure = NotSecure }
         jwtSettings = defaultJWTSettings cookieKey
+        ghSettings = makeGHSettings "lodjur" jwtSettings (return . Just)
         env = Types.Env { envGithubAppId = ci githubAppId
                         , envGithubClientId = githubClientId
                         , envGithubClientSecret = githubClientSecret
                         , envCore = core
                         , envDbPool = dbPool
-                        , envCookieSettings = cookieSettings
-                        , envJWTSettings = jwtSettings
+                        , envGHSettings = ghSettings
                         }
 
-        ctx = key :. cookieSettings :. jwtSettings :. EmptyContext
+        ctx = key :. cookieSettings :. jwtSettings :. ghSettings :. EmptyContext
         api' = Proxy :: Proxy App
+        auth' = Proxy :: Proxy '[GitHubKey, CookieSettings, JWTSettings, GHSettings AuthUser]
 
     putStrLn $ "Serving on port " ++ show httpPort ++ ", static from " ++ show staticDir
 
     Warp.run (ci httpPort) $ gzip def { gzipFiles = GzipCompress } $
       serveWithContext api' ctx $
-        hoistServerWithContext api' (Proxy :: Proxy '[GitHubKey, CookieSettings, JWTSettings]) (runApp env) $
+        hoistServerWithContext api' auth' (runApp env) $
           app staticDir
 
  where
+  hoistServerWithAuth
+    :: HasServer api '[GitHubKey, GHSettings AuthUser]
+    => Proxy api
+    -> (forall x. m x -> n x)
+    -> ServerT api m
+    -> ServerT api n
+  hoistServerWithAuth api =
+    hoistServerWithContext api (Proxy :: Proxy '[GitHubKey, GHSettings AuthUser])
+
   pgConnectInfo DbConfig {..} = Pg.ConnectInfo
     { connectHost     = cs dbHost
     , connectPort     = ci dbPort
