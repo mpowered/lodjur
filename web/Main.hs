@@ -35,6 +35,7 @@ import qualified Lodjur.GitHub                 as GH
 import           Lodjur.GitHub.Webhook
 
 import           Api
+import           Auth
 import           Config
 import           ContentTypes
 import           GithubAuth
@@ -116,7 +117,7 @@ lodjur LodjurOptions {..} = do
     let key = gitHubKey (pure (cs githubWebhookSecret))
         cookieKey = S.fromSecret (cs httpCookieSecret)
         jwtSettings = defaultJWTSettings cookieKey
-        ghSettings = makeGHSettings "lodjur" jwtSettings (return . Just)
+        ghSettings = makeGHSettings "lodjur" jwtSettings (validateAuthUser dbPool)
         env = Types.Env { envGithubAppId = ci githubAppId
                         , envGithubClientId = githubClientId
                         , envGithubClientSecret = githubClientSecret

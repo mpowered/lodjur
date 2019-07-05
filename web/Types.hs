@@ -8,6 +8,7 @@ import Control.Monad.Reader   ( ReaderT , runReaderT , asks, liftIO )
 import Data.Aeson             ( FromJSON, ToJSON )
 import Data.Int               ( Int64 )
 import Data.Text              ( Text )
+import Data.Time              ( UTCTime )
 import GHC.Generics           ( Generic )
 import Servant                ( Handler )
 import Servant.Auth.Server
@@ -31,6 +32,7 @@ data AuthUser = AuthUser
   { authUserId      :: Int64
   , authUserName    :: Text
   , authUserAvatar  :: Maybe Text
+  , authUserExpires :: UTCTime
   } deriving (Eq, Show, Read, Generic, FromJSON, ToJSON, FromJWT, ToJWT)
 
 runApp :: Env -> AppM a -> Handler a

@@ -19,8 +19,7 @@ import           Data.Int                       ( Int64 )
 import           Data.Maybe
 import           Data.String.Conversions
 import           Data.Text                      ( Text )
-import           Data.Time                      ( UTCTime )
-import           Data.Time.Clock.POSIX
+import           Data.Time                      ( UTCTime, getCurrentTime, addUTCTime )
 import qualified Database.Beam.Postgres.Full   as Pg
 import           GitHub                        as GH
 import           GitHub.Endpoints.Users        as GH
@@ -114,9 +113,19 @@ userAuthenticated dbpool user token = do
       let authuser = AuthUser (Db.userId dbuser)
                               (fromMaybe (Db.userLogin dbuser) (Db.userName dbuser))
                               (Db.userAvatarUrl dbuser)
+                              (addUTCTime expiryTTL now)
       return (Just authuser)
     _ ->
       return Nothing
+  where
+    expiryTTL = 60 * 60
+
+validateAuthUser :: DbPool -> AuthUser -> IO (Maybe AuthUser)
+validateAuthUser dbpool authuser = do
+  now <- getCurrentTime
+  if now > authUserExpires authuser
+    then checkAuthUserAccessToken dbpool authuser
+    else return (Just authuser)
 
 checkAuthUserAccessToken :: DbPool -> AuthUser -> IO (Maybe AuthUser)
 checkAuthUserAccessToken dbpool authuser = runMaybeT $ do

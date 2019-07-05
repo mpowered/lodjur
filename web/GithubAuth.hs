@@ -47,13 +47,9 @@ instance ( n ~ 'S 'Z
     where
       authCheck :: DelayedIO (AuthResult v, SetCookieList ('S 'Z))
       authCheck = withRequest $ \req -> liftIO $ do
-        authResult <- runAuthCheck (runAuths (Proxy :: Proxy auths) context) req >>= validate
-        validatedResult <- validate authResult
-        cookie <- mkCookie validatedResult
+        authResult <- runAuthCheck (runAuths (Proxy :: Proxy auths) context) req
+        cookie <- mkCookie authResult
         return (authResult, cookie `SetCookieCons` SetCookieNil)
-
-      validate (Authenticated usr) = maybe mempty Authenticated <$> validateUser ghSettings usr
-      validate x                   = return x
 
       mkCookie (Authenticated usr) = makeGHCookie ghSettings usr
       mkCookie _                   = return Nothing
