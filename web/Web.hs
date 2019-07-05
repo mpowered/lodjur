@@ -2,11 +2,8 @@
 {-# LANGUAGE DataKinds              #-}
 {-# LANGUAGE FlexibleContexts       #-}
 {-# LANGUAGE FlexibleInstances      #-}
-{-# LANGUAGE FunctionalDependencies #-}
-{-# LANGUAGE LambdaCase             #-}
 {-# LANGUAGE MultiParamTypeClasses  #-}
 {-# LANGUAGE MultiWayIf             #-}
-{-# LANGUAGE NamedFieldPuns         #-}
 {-# LANGUAGE OverloadedStrings      #-}
 {-# LANGUAGE PolyKinds              #-}
 {-# LANGUAGE RankNTypes             #-}
@@ -20,18 +17,13 @@ module Web where
 import           Prelude                 hiding ( head )
 
 import           Control.Monad.IO.Class
-import           Control.Monad.Reader
 import           Data.ByteString                ( ByteString )
 import           Data.Int                       ( Int32 )
-import           Data.Maybe
 import           Data.String.Conversions
 import           Data.Text                      ( Text )
 import qualified Data.Text                     as Text
-import           Data.Time
 import           GitHub                        as GH
 import           GitHub.Endpoints.Users        as GH
-import           GHC.TypeLits
-import           Lodjur.Database               as Db hiding ( div_ )
 import           Lucid
 import           Servant
 import           Servant.Auth.Server           as S
@@ -54,7 +46,7 @@ web
  :<|> protected
 
 type Unprotected
-    = QueryParam "redirect" Text :> "login" :> Get '[HTML] (Html ())
+    = "login" :> Get '[HTML] (Html ())
  :<|> "auth" :> QueryParam "code" Text :> QueryParam "state" Text :> Get '[HTML] (Headers '[Header "Set-Cookie" SetCookie] (Html ()))
 
 type Protected
@@ -70,16 +62,17 @@ protected :: AuthResult AuthUser -> ServerT Protected AppM
 protected (Authenticated authuser)
     = getJobs authuser
  :<|> getJob authuser
+protected _ = throwAll err302 { errHeaders = [("Location", "/login")] }
 
 deferredScript :: Text -> Html ()
 deferredScript src =
   script_ [src_ src, defer_ "defer"] ("" :: Text)
 
-static :: Text -> Text
-static = ("/static" <>)
+staticPath :: Text -> Text
+staticPath = ("/static" <>)
 
 staticRef :: Text -> Attribute
-staticRef = href_ . static
+staticRef = href_ . staticPath
 
 head :: Text -> Html ()
 head title = 
@@ -124,11 +117,11 @@ stylesheets =
 
 scripts :: Html ()
 scripts = do
-  deferredScript (static "/js/jquery-3.4.1.min.js")
-  deferredScript (static "/js/underscore-min.js")
-  deferredScript (static "/js/moment.js")
+  deferredScript (staticPath "/js/jquery-3.4.1.min.js")
+  deferredScript (staticPath "/js/underscore-min.js")
+  deferredScript (staticPath "/js/moment.js")
   deferredScript "/js/api.js"
-  deferredScript (static "/js/lodjur.js")
+  deferredScript (staticPath "/js/lodjur.js")
 
 redirects :: ByteString -> AppM a
 redirects url = throwError err302 { errHeaders = [("Location", cs url)] }
@@ -139,8 +132,8 @@ viaShow = Text.pack . show
 home :: AppM (Html ())
 home = redirects "/jobs"
 
-login :: Maybe Text -> AppM (Html ())
-login redir = do
+login :: AppM (Html ())
+login = do
   clientId <- getEnv envGithubClientId
   let endpoint = "https://github.com/login/oauth/authorize?client_id=" <> cs clientId
   return $ doctypehtml_ $ html_ $ do
@@ -151,40 +144,24 @@ login redir = do
 
 auth :: Maybe Text -> Maybe Text -> AppM (Headers '[Header "Set-Cookie" SetCookie] (Html ()))
 auth mcode _mstate = do
-  code  <- maybe (throwError err404) return mcode
+  code  <- maybe (throwError err401) return mcode
   token <- getAccessToken code
   muser <- liftIO $ userInfoCurrent' (OAuth token)
-  user' <- either (const $ throwError err404) return muser
-  now <- liftIO getCurrentTime
-  us <- runDb $ upsertUser user' token now
-  case us of
-    [dbuser] -> do
+  user' <- either (const $ throwError err401) return muser
+  pool  <- getEnv Types.envDbPool
+  mauth <- liftIO $ userAuthenticated pool user' token
+  case mauth of
+    Just authuser -> do
       ghSettings <- getEnv envGHSettings
-      let authuser = AuthUser (Db.userId dbuser)
-                              (fromMaybe (Db.userLogin dbuser) (Db.userName dbuser))
-                              (Db.userAvatarUrl dbuser)
       mcookies <- liftIO $ acceptGHLogin ghSettings authuser
-      applyCookies <- maybe (throwError err404) return mcookies
+      applyCookies <- maybe (throwError err401) return mcookies
       return $ applyCookies $ doctypehtml_ $ html_ $ do
         head "Lodjur"
         body_ $ do
           div_ $ do
             h1_ "Logged in successfully."
             a_ [ href_ "/" ] "Homepage"
-    _ -> error "User upsert failed."
-
--- loggedIn :: GH.User -> Token -> Text -> AppM (Headers '[Header "Set-Cookie" Text] (Html ()))
--- loggedIn user' token redir = undefined
-  -- now <- liftIO getCurrentTime
-  -- us <- runDb $ upsertUser user' token now
-  -- case us of
-  --   [dbuser] -> do
-  --     cookie <- authenticateUser $
-  --       AuthUser (Db.userId dbuser)
-  --                (fromMaybe (Db.userLogin dbuser) (Db.userName dbuser))
-  --                (Db.userAvatarUrl dbuser)
-  --     throwError err302 { errHeaders = [("Location", cs redir), cookie] }
-  --   _ -> error "User upsert failed."
+    Nothing -> throwError err401
 
 user :: AuthUser -> Html ()
 user u = do

@@ -1,8 +1,4 @@
 {-# LANGUAGE DataKinds              #-}
-{-# LANGUAGE DeriveAnyClass         #-}
-{-# LANGUAGE DeriveFunctor          #-}
-{-# LANGUAGE DeriveGeneric          #-}
-{-# LANGUAGE DeriveTraversable      #-}
 {-# LANGUAGE FlexibleContexts       #-}
 {-# LANGUAGE FlexibleInstances      #-}
 {-# LANGUAGE MultiParamTypeClasses  #-}
@@ -17,144 +13,23 @@ import           Prelude                 hiding ( exp )
 
 import           Control.Monad.IO.Class
 import           Control.Monad.Except
-import           Control.Monad.Reader
-import qualified Crypto.JOSE                   as Jose
-import qualified Crypto.JWT                    as Jose
+import           Control.Monad.Trans.Maybe
 import           Data.Aeson
-import qualified Data.ByteString               as BS
 import           Data.Int                       ( Int64 )
-import qualified Data.Map.Strict               as Map
 import           Data.Maybe
 import           Data.String.Conversions
 import           Data.Text                      ( Text )
-import qualified Data.Text.Read                as T
-import           Data.Time                      ( NominalDiffTime, UTCTime )
+import           Data.Time                      ( UTCTime )
 import           Data.Time.Clock.POSIX
 import qualified Database.Beam.Postgres.Full   as Pg
 import           GitHub                        as GH
 import           GitHub.Endpoints.Users        as GH
-import           GHC.Generics                   ( Generic )
 import           Lodjur.Database               as Db
 import           Network.HTTP.Req               ( (/:), (=:) )
 import qualified Network.HTTP.Req              as Req
-import           Network.HTTP.Types             ( HeaderName, hCookie )
-import           Network.Wai                   as Wai
-import           Servant
-import           Servant.Auth.Server hiding (validationKeys)
-import           Servant.Auth.Server.Internal.Class
-import           Servant.Server.Experimental.Auth
-import           Web.Cookie
+import           Servant.Auth.Server
 
 import           Types
-
-{-
-verifyToken :: GHSettings -> Text -> AuthCheck (JWT VerifiedJWT)
-verifyToken ghs tok = do
-  jwt <- maybe mzero return $ decodeAndVerifySignature (ghSigner ghs) tok
-  let c = claims jwt
-  guard $ (ghAudience ghs) `elem` map stringOrURIToText (auds c)
-  guard $ stringOrURI (ghIssuer ghs) == iss c
-  return jwt
-
-verifyToken :: GHSettings -> Text -> AuthCheck a
-verifyToken ghs tok = do
-    now <- liftIO getPOSIXTime
-    return $ maybe Invalid (checkClaims now) (decodeAndVerifySignature (ghSigner ghs) tok)
-  where
-    checkClaims now jwt =
-      let c = claims jwt
-          validAud = "lodjur" `elem` map stringOrURIToText (auds c)
-          validIss = stringOrURI "lodjur" == iss c
-          validNbf = maybe False ((now >=) . secondsSinceEpoch) (nbf c)
-          validExp = maybe False ((now <=) . secondsSinceEpoch) (exp c)
-      in
-        case (validAud && validIss && validNbf, validExp) of
-          (True, True)  -> Valid jwt
-          (True, False) -> Expired jwt
-          (False, _)    -> Invalid
-
-
-authenticateUser :: AuthUser -> AppM (HeaderName, ByteString)
-authenticateUser authuser = do
-  tok <- userToken authuser
-  return ("Set-Cookie", "lodjur-auth="<> cs tok <> "; SameSite=Lax")
-
-data Validated a = Valid a | Expired a | Invalid
-  deriving (Show, Functor, Foldable, Traversable)
-
-
-validateUserToken :: Signer -> Text -> IO (Validated AuthUser)
-validateUserToken signer tok = do
-  jwt <- validateToken signer tok
-  return $ fromMaybe Invalid (mapM parseAuthUser jwt)
-
-validateRedirToken :: Signer -> Text -> IO (Validated Text)
-validateRedirToken signer tok = do
-  jwt <- validateToken signer tok
-  return $ fromMaybe Invalid (mapM parseRedirect jwt)
-
-parseAuthUser :: JWT r -> Maybe AuthUser
-parseAuthUser jwt =
-  let c = claims jwt
-      uc = unClaimsMap (unregisteredClaims c)
-  in AuthUser <$> (parseInt =<< fmap stringOrURIToText (sub c))
-              <*> (parseValue =<< Map.lookup "username" uc)
-              <*> (parseValue =<< Map.lookup "avatar" uc)
-
-parseRedirect :: FromJSON b => JWT r -> Maybe b
-parseRedirect jwt =
-  let c = claims jwt
-      uc = unClaimsMap (unregisteredClaims c)
-  in parseValue =<< Map.lookup "redirect" uc
-
-parseInt :: Integral a => Text -> Maybe a
-parseInt txt =
-  case T.decimal txt of
-    Right (i, "") -> Just i
-    _             -> Nothing
-
-parseValue :: FromJSON a => Value -> Maybe a
-parseValue val =
-  case fromJSON val of
-    Success a -> Just a
-    Error _ -> Nothing
-
-lodjurToken :: NominalDiffTime -> JWTClaimsSet -> AppM Text
-lodjurToken expiry cls = do
-  now <- liftIO getPOSIXTime
-  signer <- getEnv envCookieSigner
-  return $ encodeSigned signer cls { aud = Left <$> stringOrURI "lodjur"
-                                   , iss = stringOrURI "lodjur"
-                                   , iat = numericDate now
-                                   , exp = numericDate (now + expiry)
-                                   , nbf = numericDate now
-                                   }
-
-userToken :: AuthUser -> AppM Text
-userToken (AuthUser uid name avatar) =
-  lodjurToken (24*60*60) $
-    mempty { sub = stringOrURI (cs $ show uid)
-           , unregisteredClaims = ClaimsMap $ Map.fromList [("username", toJSON name), ("avatar", toJSON avatar)]
-           }
-
-redirToken :: Text -> AppM Text
-redirToken url =
-  lodjurToken (15*60) $
-    mempty { unregisteredClaims = ClaimsMap $ Map.fromList [("redirect", toJSON url)]
-           }
-
-validateGithubToken :: DbPool -> AuthUser -> Handler ()
-validateGithubToken dbpool authuser = do
-  user  <- maybe (throwError err401) return =<<
-            runDb' dbpool (lookupUser (authUserId authuser))
-  token <- maybe (throwError err401) (return . cs)
-            (Db.userAccessToken user)
-  ghUsr <- either (const $ throwError err401) return =<<
-            liftIO (userInfoCurrent' (OAuth token))
-  now <- liftIO getCurrentTime
-  _ <- runDb' dbpool (upsertUser ghUsr token now)
-  return ()
--}
 
 runDb' :: MonadIO m => DbPool -> Pg a -> m a
 runDb' dbpool a = liftIO $ withConnection dbpool $ \conn -> beam conn a
@@ -229,3 +104,23 @@ getAccessToken code = do
       Req.jsonResponse
       (Req.header "accept" "application/json")
   return (cs $ accessToken $ Req.responseBody r)
+
+userAuthenticated :: DbPool -> GH.User -> Token -> IO (Maybe AuthUser)
+userAuthenticated dbpool user token = do
+  now <- getCurrentTime
+  us <- runDb' dbpool $ upsertUser user token now
+  case us of
+    [dbuser] -> do
+      let authuser = AuthUser (Db.userId dbuser)
+                              (fromMaybe (Db.userLogin dbuser) (Db.userName dbuser))
+                              (Db.userAvatarUrl dbuser)
+      return (Just authuser)
+    _ ->
+      return Nothing
+
+checkAuthUserAccessToken :: DbPool -> AuthUser -> IO (Maybe AuthUser)
+checkAuthUserAccessToken dbpool authuser = runMaybeT $ do
+  user' <- MaybeT $ runDb' dbpool $ lookupUser (authUserId authuser)
+  token <- maybe mzero return (cs <$> Db.userAccessToken user')
+  user  <- exceptToMaybeT $ ExceptT $ userInfoCurrent' (OAuth token)
+  MaybeT $ userAuthenticated dbpool user token

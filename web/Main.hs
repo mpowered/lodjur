@@ -11,7 +11,6 @@
 module Main where
 
 import           Control.Exception
-import qualified Crypto.JWT                    as Jose
 import           Data.String.Conversions        ( cs )
 import           Data.Text                      ( Text )
 import qualified Data.Text                     as T
@@ -22,14 +21,12 @@ import qualified Language.JavaScript.Parser    as JS
 import qualified Language.JavaScript.Process.Minify as JS
 import qualified Network.HTTP.Client           as Http
 import qualified Network.HTTP.Client.TLS       as Http
-import           Network.Wai
 import           Network.Wai.Middleware.Gzip
 import qualified Network.Wai.Handler.Warp      as Warp
 import           Options.Applicative
 import           Servant
 import           Servant.Auth.Server           as S
 import           Servant.API.WebSocket
-import           Servant.Server.Experimental.Auth
 import qualified Web.JWT                       as JWT
 
 import           Lodjur.Core
@@ -38,7 +35,6 @@ import qualified Lodjur.GitHub                 as GH
 import           Lodjur.GitHub.Webhook
 
 import           Api
-import           Auth
 import           Config
 import           ContentTypes
 import           GithubAuth
@@ -119,7 +115,6 @@ lodjur LodjurOptions {..} = do
   bracket (startCore accessToken httpManager dbPool) cancelCore $ \core -> do
     let key = gitHubKey (pure (cs githubWebhookSecret))
         cookieKey = S.fromSecret (cs httpCookieSecret)
-        cookieSettings = defaultCookieSettings { cookieIsSecure = NotSecure }
         jwtSettings = defaultJWTSettings cookieKey
         ghSettings = makeGHSettings "lodjur" jwtSettings (return . Just)
         env = Types.Env { envGithubAppId = ci githubAppId
@@ -130,9 +125,9 @@ lodjur LodjurOptions {..} = do
                         , envGHSettings = ghSettings
                         }
 
-        ctx = key :. cookieSettings :. jwtSettings :. ghSettings :. EmptyContext
+        ctx = key :. ghSettings :. EmptyContext
         api' = Proxy :: Proxy App
-        auth' = Proxy :: Proxy '[GitHubKey, CookieSettings, JWTSettings, GHSettings AuthUser]
+        auth' = Proxy :: Proxy '[GitHubKey, GHSettings AuthUser]
 
     putStrLn $ "Serving on port " ++ show httpPort ++ ", static from " ++ show staticDir
 
@@ -142,15 +137,6 @@ lodjur LodjurOptions {..} = do
           app staticDir
 
  where
-  hoistServerWithAuth
-    :: HasServer api '[GitHubKey, GHSettings AuthUser]
-    => Proxy api
-    -> (forall x. m x -> n x)
-    -> ServerT api m
-    -> ServerT api n
-  hoistServerWithAuth api =
-    hoistServerWithContext api (Proxy :: Proxy '[GitHubKey, GHSettings AuthUser])
-
   pgConnectInfo DbConfig {..} = Pg.ConnectInfo
     { connectHost     = cs dbHost
     , connectPort     = ci dbPort
