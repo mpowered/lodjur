@@ -16,6 +16,7 @@ module Web where
 
 import           Prelude                 hiding ( head )
 
+import           Data.Binary.Builder            ( toLazyByteString )
 import           Control.Monad.IO.Class
 import           Data.ByteString                ( ByteString )
 import           Data.Int                       ( Int32 )
@@ -28,6 +29,7 @@ import           Lucid
 import           Servant
 import           Servant.Auth.Server           as S
 import           Servant.HTML.Lucid
+import           Web.Cookie
 
 import           Auth
 import           Job
@@ -48,6 +50,7 @@ web
 type Unprotected
     = "login" :> Get '[HTML] (Html ())
  :<|> "auth" :> QueryParam "code" Text :> QueryParam "state" Text :> Get '[HTML] (Headers '[Header "Set-Cookie" SetCookie] (Html ()))
+ :<|> "logout" :> Get '[HTML] (Headers '[Header "Set-Cookie" SetCookie] (Html ()))
 
 type Protected
     = "jobs" :> Get '[HTML] (Html ())
@@ -57,6 +60,7 @@ unprotected :: ServerT Unprotected AppM
 unprotected
     = login
  :<|> auth
+ :<|> logout
 
 protected :: AuthResult AuthUser -> ServerT Protected AppM
 protected (Authenticated authuser)
@@ -74,8 +78,14 @@ staticPath = ("/static" <>)
 staticRef :: Text -> Attribute
 staticRef = href_ . staticPath
 
+signin_ :: Monad m => HtmlT m ()
+signin_ = icon "fas fa-fw fa-sign-in-alt"
+
+signout_ :: Monad m => HtmlT m ()
+signout_ = icon "fas fa-fw fa-sign-out-alt"
+
 head :: Text -> Html ()
-head title = 
+head title =
   head_ $ do
     title_ (toHtml title)
     meta_ [charset_ "UTF-8"]
@@ -140,6 +150,8 @@ login = do
     head "Lodjur"
     body_ $ do
       div_ $ do
+        -- div_ [ class_ "icon" ] signin_
+        signin_
         a_ [ href_ endpoint ] "Login with GitHub"
 
 auth :: Maybe Text -> Maybe Text -> AppM (Headers '[Header "Set-Cookie" SetCookie] (Html ()))
@@ -154,21 +166,31 @@ auth mcode _mstate = do
     Just authuser -> do
       ghSettings <- getEnv envGHSettings
       mcookies <- liftIO $ acceptGHLogin ghSettings authuser
-      applyCookies <- maybe (throwError err401) return mcookies
-      return $ applyCookies $ doctypehtml_ $ html_ $ do
-        head "Lodjur"
-        body_ $ do
-          div_ $ do
-            h1_ "Logged in successfully."
-            a_ [ href_ "/" ] "Homepage"
+      cookie <- maybe (throwError err401) return mcookies
+      throwError err302 { errHeaders = [("Location", "/"), ("Set-Cookie", cs $ toLazyByteString $ renderSetCookie cookie)] }
     Nothing -> throwError err401
+
+logout :: AppM (Headers '[Header "Set-Cookie" SetCookie] (Html ()))
+logout = do
+  ghSettings <- getEnv envGHSettings
+  let cookie = clearGHSession ghSettings
+  return $ addHeader cookie $ doctypehtml_ $ html_ $ do
+    head "Lodjur"
+    body_ $ do
+      div_ $ do
+        div_ "Logged out."
 
 user :: AuthUser -> Html ()
 user u = do
-  case authUserAvatar u of
-    Just url -> img_ [ class_ "user", src_ url ]
-    Nothing -> div_ [ class_ "user"] $ span_ [ class_ "far fa-user" ] ""
-  div_ [ class_ "user" ] (toHtml $ authUserName u)
+  div_ [ class_ "menu" ] $ do
+    div_ [ class_ "menutop user" ] $ do
+      case authUserAvatar u of
+        Just url -> img_ [ class_ "avatar", src_ url ]
+        Nothing -> span_ [ class_ "far fa-user" ] ""
+      div_ (toHtml $ authUserName u)
+    div_ [ class_ "menuitem" ] $ do
+      div_ [ class_ "icon" ] signout_
+      a_ [ href_ "/logout" ] "Logout"
 
 getJobs :: AuthUser -> AppM (Html ())
 getJobs authuser = do

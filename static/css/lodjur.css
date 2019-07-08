@@ -20,7 +20,7 @@ body {
 .app {
   display: grid;
   grid-template-rows: 2.5rem minmax(6rem, 1fr) 2.5rem;
-  grid-template-columns: minmax(10rem, 1fr) minmax(16rem, 6fr) minmax(8rem, 1fr);
+  grid-template-columns: minmax(10rem, 1fr) minmax(10rem, 1fr) minmax(10rem, 1fr);
   height: 100%;
   width: 100%;
 }
@@ -41,13 +41,13 @@ body {
   grid-area: title;
   display: flex;
   flex-direction: row;
-  justify-content: center;
   align-items: center;
 }
 
 .title {
   font-size: larger;
   color: #FFFFFF;
+  margin-left: 2em;
 }
 
 .head-box {
@@ -75,16 +75,61 @@ body {
   display: flex;
   flex-direction: row;
   justify-content: flex-end;
+  padding-right: 2em;
+}
+
+.icon {
+  min-width: 2em;
+}
+
+.menu {
+  display: flex;
+  flex-direction: column;
+}
+
+.menutop {
+  min-height: 2.5rem;
+  background-color: #394B55;
+}
+
+.menuitem {
+  display: none;
+  flex-direction: row;
+  align-items: center;
+  background-color: #394B55;
+  padding: 1em;
+  z-index: 1;
+}
+
+a:link, a:visited, a:focus, a:hover, a:active {
+  text-decoration: none;
+  color: inherit;
+}
+
+.menu :link {
+  color: #fff;
+}
+
+.menu :hover {
+  background-color: hsl(201, 20%, 14%);
+  cursor: pointer;
+}
+
+.menu:hover .menuitem {
+  display: flex;
+}
+
+.user {
+  display: flex;
+  flex-direction: row;
   align-items: center;
   padding-right: 1em;
 }
 
-.user {
-  margin-right: 0.5em;
-}
-
-img.user {
-  max-height: 100%;
+.user .avatar {
+  max-height: 2.5rem;
+  max-width: 2.5rem;
+  padding-right: 0.5em;
 }
 
 .tabbar {

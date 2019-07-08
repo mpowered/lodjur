@@ -17,6 +17,7 @@ import qualified Crypto.JOSE                   as Jose
 import qualified Crypto.JWT                    as Jose
 import qualified Data.ByteString               as BS
 import           Data.String.Conversions
+import           Data.Time
 import           Network.HTTP.Types             ( hCookie )
 import           Network.Wai                   as Wai
 import           Servant
@@ -114,14 +115,10 @@ makeGHCookie ghSettings usr = do
       , setCookieSameSite = Just sameSiteLax
       }
 
-acceptGHLogin
-  :: (ToJWT usr, AddHeader "Set-Cookie" SetCookie response withCookie)
-  => GHSettings usr
-  -> usr
-  -> IO (Maybe (response -> withCookie))
+acceptGHLogin :: ToJWT usr => GHSettings usr -> usr -> IO (Maybe SetCookie)
 acceptGHLogin ghSettings usr = do
-  ejwt   <- makeJWT usr (jwtSettings ghSettings) Nothing
-  cookie <- case ejwt of
+  ejwt <- makeJWT usr (jwtSettings ghSettings) Nothing
+  case ejwt of
     Left  _   -> return Nothing
     Right jwt -> return $ Just defaultSetCookie
       { setCookieName     = cookieName ghSettings
@@ -129,4 +126,16 @@ acceptGHLogin ghSettings usr = do
       , setCookiePath     = Just "/"
       , setCookieSameSite = Just sameSiteLax
       }
-  return (addHeader <$> cookie)
+
+clearGHSession :: GHSettings usr -> SetCookie
+clearGHSession ghSettings =
+  defaultSetCookie
+    { setCookieName     = cookieName ghSettings
+    , setCookieValue    = ""
+    , setCookiePath     = Just "/"
+    , setCookieSameSite = Just sameSiteLax
+    , setCookieExpires  = Just expireTime
+    , setCookieMaxAge   = Just (secondsToDiffTime 0)
+    }
+  where
+    expireTime = UTCTime (ModifiedJulianDay 50000) 0
