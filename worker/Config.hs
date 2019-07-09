@@ -13,7 +13,6 @@ import qualified Lodjur.Core.Util              as Core
 
 data Config = Config
   { logFile     :: Maybe FilePath
-  , workDir     :: FilePath
   , managerCI   :: Core.ConnectInfo
   , gitCfg      :: Git.Config
   , buildCfg    :: BuildConfig
@@ -27,7 +26,6 @@ data BuildConfig = BuildConfig
 instance FromJSON Config where
   parseJSON = withObject "Configuration" $ \o -> do
     logFile   <- o .:?"log-file"
-    workDir   <- o .: "work-dir"
     managerCI <- o .: "manager" >>= mgr
     gitCfg    <- o .: "git"
     buildCfg  <- o .: "nix-build"

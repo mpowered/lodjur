@@ -4,7 +4,6 @@ import           Config
 import qualified Git
 
 data Env = Env
-  { workDir     :: FilePath
-  , gitEnv      :: Git.Env
+  { gitEnv      :: Git.Env
   , buildCfg    :: BuildConfig
   }
