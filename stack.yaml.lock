@@ -48,14 +48,14 @@ packages:
     git: https://github.com/bflyblue/servant-event-stream.git
     pantry-tree:
       size: 639
-      sha256: ef3a82d4f5a32468abcfd0d367950fa2c1c83e4993254a514b1ad94ded4e93de
-    commit: 696d72833f67c5b42c42c1591775de86ee22a382
+      sha256: 9e07d93596ed6307f4fbf44c23c37227a9884fbce4719af2a1f80cf9752a5e85
+    commit: 037463c2404dc921367ada10436fa2d69fcb476d
   original:
     git: https://github.com/bflyblue/servant-event-stream.git
-    commit: 696d72833f67c5b42c42c1591775de86ee22a382
+    commit: 037463c2404dc921367ada10436fa2d69fcb476d
 snapshots:
 - completed:
-    size: 498402
-    url: https://raw.githubusercontent.com/commercialhaskell/stackage-snapshots/master/lts/13/24.yaml
-    sha256: 33e96adfe24f112b62f6edd22565cdbaa13155703bbfbfdc3d0a9bc6138ae7bf
-  original: lts-13.24
+    size: 500539
+    url: https://raw.githubusercontent.com/commercialhaskell/stackage-snapshots/master/lts/13/27.yaml
+    sha256: 690db832392afe55733b4c7023fd29b1b1c660ee42f1fb505b86b07394ca994e
+  original: lts-13.27

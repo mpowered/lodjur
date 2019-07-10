@@ -22,15 +22,15 @@
         "rev": "7f22ce0528c0739497ec8ab6380bc7c2df3824be"
     },
     "servant-event-stream": {
-        "url": "https://github.com/bflyblue/servant-event-stream/archive/58a78748d7751b08413c7a6ed201120293eb39ea.tar.gz",
+        "url": "https://github.com/bflyblue/servant-event-stream/archive/037463c2404dc921367ada10436fa2d69fcb476d.tar.gz",
         "owner": "bflyblue",
         "branch": "master",
         "url_template": "https://github.com/<owner>/<repo>/archive/<rev>.tar.gz",
         "repo": "servant-event-stream",
         "type": "tarball",
-        "sha256": "1igv4ippn918i8jffd5mjavwvslc012y8xk7i9v2g6cb2hkrz79k",
+        "sha256": "0z0gn4a83vswlm5803acws4w4v1b9ywlbwzlwxaps6w09njhnzi2",
         "description": "Servant support for ServerSent events",
-        "rev": "58a78748d7751b08413c7a6ed201120293eb39ea"
+        "rev": "037463c2404dc921367ada10436fa2d69fcb476d"
     },
     "niv": {
         "homepage": "https://github.com/nmattia/niv",

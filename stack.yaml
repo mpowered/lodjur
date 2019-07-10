@@ -1,4 +1,4 @@
-resolver: lts-13.24   # 8.6.5
+resolver: lts-13.27   # 8.6.5
 extra-deps:
 - github
 - beam-migrate-0.4.0.1
@@ -7,7 +7,7 @@ extra-deps:
 - servant-github-webhook-0.4.1.0
 - servant-pipes-0.15
 - git: https://github.com/bflyblue/servant-event-stream.git
-  commit: 696d72833f67c5b42c42c1591775de86ee22a382
+  commit: 037463c2404dc921367ada10436fa2d69fcb476d
 nix:
   packages:
   - postgresql_11
