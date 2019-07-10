@@ -50,7 +50,8 @@ data Env = Env
   }
 
 data Event
-  = JobSubmitted  { eventJobId :: Int32 }
+  = EmptyEvent
+  | JobSubmitted  { eventJobId :: Int32 }
   | JobUpdated    { eventJobId :: Int32 }
   | LogsUpdated   { eventJobId :: Int32, eventLogText :: Text }
   deriving (Show, Eq, Ord, Generic)

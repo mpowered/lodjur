@@ -57,10 +57,12 @@ watchJobs = do
   chan <- liftIO $ Core.subscribe core
 
   return $
-    eventSource $
+    eventSource $ do
+      yield (jsonEvent EmptyEvent)
       forever $ do
         event <- liftIO $ atomically $ readTChan chan
         case event of
+          EmptyEvent -> yield (jsonEvent event)
           JobSubmitted {} -> yield (jsonEvent event)
           JobUpdated {}   -> yield (jsonEvent event)
           LogsUpdated {}  -> return ()
@@ -71,11 +73,13 @@ watchJob jobid = do
   chan <- liftIO $ Core.subscribe core
 
   return $
-    eventSource $
+    eventSource $ do
+      yield (jsonEvent EmptyEvent)
       forever $ do
         event <- liftIO $ atomically $ readTChan chan
         when (eventJobId event == jobid) $
           case event of
+            EmptyEvent -> yield (jsonEvent event)
             JobSubmitted {} -> yield (jsonEvent event)
             JobUpdated {}   -> yield (jsonEvent event)
             LogsUpdated {}  -> return ()
@@ -93,6 +97,7 @@ watchJobLogs jobid = do
         event <- liftIO $ atomically $ readTChan chan
         when (eventJobId event == jobid) $
           case event of
+            EmptyEvent -> return ()
             JobSubmitted {} -> return ()
             JobUpdated {}   -> return ()
             LogsUpdated _ logtxt  -> yield (htmlEvent $ LogLine logtxt)
