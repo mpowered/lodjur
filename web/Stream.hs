@@ -51,7 +51,7 @@ jsonEvent = textEvent . encode
 htmlEvent :: ToHtml a => a -> ServerEvent
 htmlEvent = textEvent . renderBS . toHtml
 
-watchJobs :: AppM EventSource
+watchJobs :: AppM EventSourceHdr
 watchJobs = do
   core <- getEnv Types.envCore
   chan <- liftIO $ Core.subscribe core
@@ -65,7 +65,7 @@ watchJobs = do
           JobUpdated {}   -> yield (jsonEvent event)
           LogsUpdated {}  -> return ()
 
-watchJob :: Int32 -> AppM EventSource
+watchJob :: Int32 -> AppM EventSourceHdr
 watchJob jobid = do
   core <- getEnv Types.envCore
   chan <- liftIO $ Core.subscribe core
@@ -80,7 +80,7 @@ watchJob jobid = do
             JobUpdated {}   -> yield (jsonEvent event)
             LogsUpdated {}  -> return ()
 
-watchJobLogs :: Int32 -> AppM EventSource
+watchJobLogs :: Int32 -> AppM EventSourceHdr
 watchJobLogs jobid = do
   core <- getEnv Types.envCore
   chan <- liftIO $ Core.subscribe core

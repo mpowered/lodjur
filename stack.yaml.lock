@@ -48,11 +48,11 @@ packages:
     git: https://github.com/bflyblue/servant-event-stream.git
     pantry-tree:
       size: 639
-      sha256: 9e07d93596ed6307f4fbf44c23c37227a9884fbce4719af2a1f80cf9752a5e85
-    commit: 037463c2404dc921367ada10436fa2d69fcb476d
+      sha256: 2c9b72f3714d6cfc20ca85c1e19952e895920721dab95a207bba9c4d6c14e70d
+    commit: f7af41ab81073ae054631baa4f8c9ecf6c8bc944
   original:
     git: https://github.com/bflyblue/servant-event-stream.git
-    commit: 037463c2404dc921367ada10436fa2d69fcb476d
+    commit: f7af41ab81073ae054631baa4f8c9ecf6c8bc944
 snapshots:
 - completed:
     size: 500539
