@@ -1,0 +1,15 @@
+dist
+dist-newstyle
+.ghc.environment.*
+*swp
+.cabal-sandbox
+cabal.sandbox.config
+*flymake*
+*.#*
+*~
+*.hi
+*.o
+.stack-work
+run.sh
+src/hightlight.js
+src/style.css

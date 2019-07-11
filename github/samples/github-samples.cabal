@@ -1,0 +1,271 @@
+name:           github-samples
+version:        0.0.0
+build-type:     Simple
+cabal-version:  >= 1.10
+
+library
+  hs-source-dirs:
+      src
+  ghc-options: -Wall
+  build-depends:
+      base
+    , base-compat
+    , github
+    , text
+  exposed-modules:
+      Common
+  default-language: Haskell2010
+
+executable github-add-team-membership-for
+  main-is: AddTeamMembershipFor.hs
+  hs-source-dirs:
+      Teams/Memberships
+  ghc-options: -Wall
+  build-depends:
+      base
+    , base-compat
+    , github
+    , text
+    , github-samples
+  default-language: Haskell2010
+
+executable github-create-deploy-key
+  main-is: CreateDeployKey.hs
+  hs-source-dirs:
+      Repos/DeployKeys
+  ghc-options: -Wall
+  build-depends:
+      base
+    , base-compat
+    , github
+    , text
+    , github-samples
+  default-language: Haskell2010
+
+executable github-delete-deploy-key
+  main-is: DeleteDeployKey.hs
+  hs-source-dirs:
+      Repos/DeployKeys
+  ghc-options: -Wall
+  build-depends:
+      base
+    , base-compat
+    , github
+    , text
+    , github-samples
+  default-language: Haskell2010
+
+executable github-delete-team
+  main-is: DeleteTeam.hs
+  hs-source-dirs:
+      Teams
+  ghc-options: -Wall
+  build-depends:
+      base
+    , base-compat
+    , github
+    , text
+    , github-samples
+  default-language: Haskell2010
+
+executable github-delete-team-membership-for
+  main-is: DeleteTeamMembershipFor.hs
+  hs-source-dirs:
+      Teams/Memberships
+  ghc-options: -Wall
+  build-depends:
+      base
+    , base-compat
+    , github
+    , text
+    , github-samples
+  default-language: Haskell2010
+
+executable github-edit-team
+  main-is: EditTeam.hs
+  hs-source-dirs:
+      Teams
+  ghc-options: -Wall
+  build-depends:
+      base
+    , base-compat
+    , github
+    , text
+    , github-samples
+  default-language: Haskell2010
+
+executable github-list-deploy-keys-for
+  main-is: ListDeployKeys.hs
+  hs-source-dirs:
+      Repos/DeployKeys
+  ghc-options: -Wall
+  build-depends:
+      base
+    , base-compat
+    , github
+    , text
+    , github-samples
+    , vector
+  default-language: Haskell2010
+
+executable github-list-followers
+  main-is: ListFollowers.hs
+  hs-source-dirs:
+      Users/Followers
+  ghc-options: -Wall
+  build-depends:
+      base
+    , base-compat
+    , github
+    , text
+    , github-samples
+  default-language: Haskell2010
+
+executable github-list-followers-example
+  main-is: Example.hs
+  hs-source-dirs:
+      Users/Followers
+  ghc-options: -Wall
+  build-depends:
+      base
+    , base-compat
+    , github
+    , text
+  default-language: Haskell2010
+
+executable github-list-following
+  main-is: ListFollowing.hs
+  hs-source-dirs:
+      Users/Followers
+  ghc-options: -Wall
+  build-depends:
+      base
+    , base-compat
+    , github
+    , text
+    , github-samples
+  default-language: Haskell2010
+
+executable github-list-team-current
+  main-is: ListTeamsCurrent.hs
+  hs-source-dirs:
+      Teams
+  ghc-options: -Wall
+  build-depends:
+      base
+    , base-compat
+    , github
+    , text
+    , github-samples
+  default-language: Haskell2010
+
+executable github-list-team-repos
+  main-is: ListRepos.hs
+  hs-source-dirs:
+      Teams
+  ghc-options: -Wall
+  build-depends:
+      base
+    , base-compat
+    , github
+    , text
+    , github-samples
+  default-language: Haskell2010
+
+executable github-operational
+  main-is: Operational.hs
+  hs-source-dirs:
+      Operational
+  ghc-options: -Wall
+  build-depends:
+      base
+    , base-compat
+    , github
+    , text
+    , github-samples
+    , http-client
+    , http-client-tls
+    , operational
+    , transformers
+    , transformers-compat
+  default-language: Haskell2010
+
+executable github-repos-contents-example
+  main-is: Contents.hs
+  hs-source-dirs:
+      Repos
+  ghc-options: -Wall
+  build-depends:
+      base
+    , base-compat
+    , base64-bytestring
+    , github
+    , github-samples
+    , text
+    , vector
+  default-language: Haskell2010
+
+executable github-show-deploy-key
+  main-is: ShowDeployKey.hs
+  hs-source-dirs:
+      Repos/DeployKeys
+  ghc-options: -Wall
+  build-depends:
+      base
+    , base-compat
+    , github
+    , text
+    , github-samples
+  default-language: Haskell2010
+
+executable github-show-user
+  main-is: ShowUser.hs
+  hs-source-dirs:
+      Users
+  ghc-options: -Wall
+  build-depends:
+      base
+    , base-compat
+    , github
+    , text
+    , github-samples
+  default-language: Haskell2010
+
+executable github-show-user-2
+  main-is: ShowUser2.hs
+  hs-source-dirs:
+      Users
+  ghc-options: -Wall
+  build-depends:
+      base
+    , base-compat
+    , github
+    , text
+    , github-samples
+  default-language: Haskell2010
+
+executable github-team-membership-info-for
+  main-is: TeamMembershipInfoFor.hs
+  hs-source-dirs:
+      Teams/Memberships
+  ghc-options: -Wall
+  build-depends:
+      base
+    , base-compat
+    , github
+    , text
+    , github-samples
+  default-language: Haskell2010
+
+executable github-teaminfo-for
+  main-is: TeamInfoFor.hs
+  hs-source-dirs:
+      Teams
+  ghc-options: -Wall
+  build-depends:
+      base
+    , base-compat
+    , github
+    , text
+    , github-samples
+  default-language: Haskell2010
