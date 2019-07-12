@@ -1,6 +1,6 @@
 {-# LANGUAGE DuplicateRecordFields #-}
 {-# LANGUAGE ExtendedDefaultRules  #-}
-{-# LANGUAGE NamedFieldPuns        #-}
+{-# LANGUAGE FlexibleContexts      #-}
 {-# LANGUAGE OverloadedStrings     #-}
 {-# LANGUAGE RecordWildCards       #-}
 {-# LANGUAGE TypeFamilies          #-}
@@ -10,8 +10,8 @@ module Main where
 import           Control.Concurrent
 import           Control.Monad
 import           Control.Monad.Catch          (MonadMask, bracket)
-import           Control.Monad.IO.Class
--- import           Control.Monad.Log
+import           Control.Monad.Except
+import           Control.Monad.Log
 import           Control.Monad.Reader
 import           Data.Text                    (Text)
 import qualified Data.Text                    as Text
@@ -23,7 +23,7 @@ import           Prelude                      hiding (lookup)
 import           Network.Socket               (withSocketsDo)
 
 import qualified Lodjur.GitHub                as GH
--- import           Lodjur.Logging
+import           Lodjur.Logging
 import           Lodjur.Core.Websocket        as WS
 import qualified Lodjur.Job                   as Job
 
@@ -46,7 +46,7 @@ lodjur = Options
     (  long "config-file"
     <> metavar "PATH"
     <> short 'c'
-    <> value "lodjur-worker.toml"
+    <> value "lodjur-worker.dhall"
     <> help "Path to Lodjur Worker configuration file"
     )
 
@@ -61,10 +61,17 @@ main = start =<< execParser opts
 
 start :: Options -> IO ()
 start Options{..} = do
-  Config{..} <- readConfiguration configFile
-  gitEnv <- Git.setupEnv gitCfg
-  -- let logTarget = maybe LogStdout LogFile logFile
-  withSocketsDo $ WS.runClient managerCI (\r c -> runWorker Env{..} (handler r c))
+  cfg <- readConfig configFile
+  env <- ensureEnv cfg
+  withSocketsDo $
+    WS.runClient (envWebSocket env) (\r c -> runWorker env (handler r c))
+  where
+    ensureEnv cfg = do
+      e <- runExceptT $ buildEnv cfg
+      case e of
+        Left err -> fail err
+        Right a -> return a
+
 
 handler :: Job.Request -> Chan Job.Reply -> Worker Job.Result
 handler (Job.Request _name src act) chan = do
@@ -100,12 +107,12 @@ handler (Job.Request _name src act) chan = do
       return $ Job.Result Job.Failure Nothing [] Nothing
 
 withWorkDir
-  :: (MonadIO io, MonadMask io)
+  :: (MonadIO io, MonadMask io, MonadLog LogMsg io)
   => Env
   -> GH.GitHubCommit
   -> (FilePath -> io a)
   -> io a
 withWorkDir Env{..} commit
   = bracket
-    (liftIO $ Git.checkout gitEnv commit)
+    (Git.checkout envGit commit)
     (liftIO . removeDirectoryRecursive)

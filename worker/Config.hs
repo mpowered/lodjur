@@ -1,50 +1,30 @@
-{-# LANGUAGE OverloadedStrings #-}
-{-# LANGUAGE RecordWildCards   #-}
+{-# LANGUAGE DeriveAnyClass    #-}
+{-# LANGUAGE DeriveGeneric     #-}
 
 module Config where
 
-import           Data.Aeson                    as JSON
-import           Data.Text.IO                  as Text
-import           Text.Toml
+import Dhall
 
-import qualified Git
-import qualified Lodjur.Core                   as Core
-import qualified Lodjur.Core.Util              as Core
+import Data.Text (Text)
 
 data Config = Config
-  { logFile     :: Maybe FilePath
-  , managerCI   :: Core.ConnectInfo
-  , gitCfg      :: Git.Config
-  , buildCfg    :: BuildConfig
-  }
+  { cfgLogFile    :: Maybe Text
+  , cfgWebSocket  :: Text
+  , cfgGit        :: GitConfig
+  , cfgBuild      :: BuildConfig
+  } deriving (Generic, Interpret)
+
+data GitConfig = GitConfig
+  { gitCommand  :: Text
+  , gitCache    :: Text
+  , gitWorkRoot :: Text
+  , gitDebug    :: Bool
+  } deriving (Generic, Interpret)
 
 data BuildConfig = BuildConfig
-  { buildCmd    :: FilePath
-  , buildDebug  :: Bool
-  }
+  { buildCommand  :: Text
+  , buildDebug    :: Bool
+  } deriving (Generic, Interpret)
 
-instance FromJSON Config where
-  parseJSON = withObject "Configuration" $ \o -> do
-    logFile   <- o .:?"log-file"
-    managerCI <- o .: "manager" >>= mgr
-    gitCfg    <- o .: "git"
-    buildCfg  <- o .: "nix-build"
-    return Config { .. }
-   where
-    mgr s =
-      maybe (fail "Not a valid websocket URI") return $ Core.parseConnectURI s
-
-instance FromJSON BuildConfig where
-  parseJSON = withObject "Build Config" $ \o -> do
-    buildCmd    <- o .: "command"
-    buildDebug  <- o .: "debug"
-    return BuildConfig{..}
-
-readConfiguration :: FilePath -> IO Config
-readConfiguration path = do
-  f <- Text.readFile path
-  case parseTomlDoc path f of
-    Right toml -> case fromJSON (toJSON toml) of
-      JSON.Success config -> pure config
-      JSON.Error   e      -> fail e
-    Left e -> fail (show e)
+readConfig :: FilePath -> IO Config
+readConfig = inputFile auto

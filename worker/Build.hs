@@ -16,7 +16,6 @@ import           System.Exit
 import qualified Lodjur.GitHub           as GH
 import qualified Lodjur.Job              as Job
 
-import           Config
 import           Env
 import           Types
 
@@ -54,7 +53,7 @@ process chan cp = do
 
 runBuild :: Chan Job.Reply -> CreateProcess -> Worker Job.Result
 runBuild chan p = liftIO $ do
-  putStrLn $ "GIT: " <> show (cmdspec p)
+  putStrLn $ "BUILD: " <> show (cmdspec p)
   exitcode <- process chan p
   case exitcode of
     ExitSuccess -> do
@@ -79,13 +78,13 @@ runBuild chan p = liftIO $ do
                         }
           return $ Job.Result Job.Failure (Just output) [] Nothing
 
-nixBuild :: BuildConfig -> [String] -> CreateProcess
-nixBuild BuildConfig{..} = proc buildCmd
+nixBuild :: BuildEnv -> [String] -> CreateProcess
+nixBuild BuildEnv{..} = proc envBuildCommand
 
 withCwd :: FilePath -> CreateProcess -> CreateProcess
 withCwd d p = p { cwd = Just d }
 
 build :: Chan Job.Reply -> FilePath -> FilePath -> Worker Job.Result
 build chan d file = do
-  cfg <- asks Env.buildCfg
+  cfg <- asks Env.envBuild
   runBuild chan $ withCwd d $ nixBuild cfg [file]
