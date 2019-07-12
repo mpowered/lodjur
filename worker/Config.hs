@@ -11,6 +11,7 @@ data Config = Config
   { cfgLogFile    :: Maybe Text
   , cfgWebSocket  :: Text
   , cfgGit        :: GitConfig
+  , cfgGithub     :: GithubConfig
   , cfgBuild      :: BuildConfig
   } deriving (Generic, Interpret)
 
@@ -19,6 +20,12 @@ data GitConfig = GitConfig
   , gitCache    :: Text
   , gitWorkRoot :: Text
   , gitDebug    :: Bool
+  } deriving (Generic, Interpret)
+
+data GithubConfig = GithubConfig
+  { githubAppId           :: Natural
+  , githubAppPrivateKey   :: Text
+  , githubInstId          :: Natural
   } deriving (Generic, Interpret)
 
 data BuildConfig = BuildConfig

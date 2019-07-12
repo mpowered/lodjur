@@ -16,6 +16,7 @@ import           Control.Monad.Reader
 import           Data.Text                    (Text)
 import qualified Data.Text                    as Text
 import           Data.Text.Prettyprint.Doc
+import           Network.HTTP.Client          (newManager, defaultManagerSettings)
 import           Options.Applicative          hiding (Success, Failure)
 import           System.Directory
 import           Prelude                      hiding (lookup)
@@ -61,13 +62,14 @@ main = start =<< execParser opts
 
 start :: Options -> IO ()
 start Options{..} = do
+  httpManager <- newManager defaultManagerSettings
   cfg <- readConfig configFile
-  env <- ensureEnv cfg
+  env <- ensureEnv httpManager cfg
   withSocketsDo $
     WS.runClient (envWebSocket env) (\r c -> runWorker env (handler r c))
   where
-    ensureEnv cfg = do
-      e <- runExceptT $ buildEnv cfg
+    ensureEnv httpManager cfg = do
+      e <- runExceptT $ buildEnv httpManager cfg
       case e of
         Left err -> fail err
         Right a -> return a
@@ -114,5 +116,5 @@ withWorkDir
   -> io a
 withWorkDir Env{..} commit
   = bracket
-    (Git.checkout envGit commit)
+    (Git.checkout envGit envGithub commit)
     (liftIO . removeDirectoryRecursive)

@@ -11,10 +11,10 @@ import           Control.Monad
 import           Control.Monad.Catch
 import           Control.Monad.IO.Class
 import           Control.Monad.Log
-import qualified Data.Text                  as Text
+import           Data.String.Conversions            ( cs )
 import           Data.Text.Prettyprint.Doc
 import           System.Directory
-import           System.Directory.Internal.Prelude (isAlreadyExistsError, isDoesNotExistError)
+import           System.Directory.Internal.Prelude  ( isAlreadyExistsError, isDoesNotExistError )
 import           System.FilePath
 import           System.Process
 import           System.Exit
@@ -55,46 +55,53 @@ withCwd :: FilePath -> CreateProcess -> CreateProcess
 withCwd d p = p { cwd = Just d }
 
 login :: GH.RepoRef -> String
-login = Text.unpack . GH.untagName . GH.simpleOwnerLogin . GH.repoRefOwner
+login = cs . GH.untagName . GH.simpleOwnerLogin . GH.repoRefOwner
 
 name :: GH.RepoRef -> String
-name = Text.unpack . GH.untagName . GH.repoRefRepo
+name = cs . GH.untagName . GH.repoRefRepo
 
-githubUrlFor :: GitEnv -> GH.GitHubCommit -> String
-githubUrlFor _ GH.GitHubCommit{..} = "https://github.com/" <> Text.unpack ghcOwner <> "/" <> Text.unpack ghcRepo <> ".git"
+githubUrlFor :: GitEnv -> GH.GitHubCommit -> Maybe GH.Token -> String
+githubUrlFor _ GH.GitHubCommit{..} Nothing = "https://github.com/" <> cs ghcOwner <> "/" <> cs ghcRepo <> ".git"
+githubUrlFor _ GH.GitHubCommit{..} (Just token) = "https://x-access-token:" <> cs token <> "@github.com/" <> cs ghcOwner <> "/" <> cs ghcRepo <> ".git"
 
 cachePathFor :: GitEnv -> GH.GitHubCommit -> FilePath
-cachePathFor GitEnv{..} GH.GitHubCommit{..} = envGitCache </> Text.unpack ghcOwner </> Text.unpack ghcRepo
+cachePathFor GitEnv{..} GH.GitHubCommit{..} = envGitCache </> cs ghcOwner </> cs ghcRepo
 
-cacheClone :: (MonadIO m, MonadMask m, MonadLog LogMsg m) => GitEnv -> GH.GitHubCommit -> m ()
-cacheClone env@GitEnv{..} commit =
+cacheClone :: (MonadIO m, MonadMask m, MonadLog LogMsg m) => GitEnv -> GithubEnv -> GH.GitHubCommit -> m ()
+cacheClone env@GitEnv{..} GithubEnv{..} commit = do
+  token <- liftIO $ GH.ensureToken envGithubInstallationAccessToken
   runGit env
-    $ git env ["clone", githubUrlFor env commit, "--mirror", cachePathFor env commit]
+    $ git env ["clone", githubUrlFor env commit (Just token), "--mirror", cachePathFor env commit]
 
-cacheUpdate :: (MonadIO m, MonadMask m, MonadLog LogMsg m) => GitEnv -> GH.GitHubCommit -> m ()
-cacheUpdate env commit =
+cacheUpdate :: (MonadIO m, MonadMask m, MonadLog LogMsg m) => GitEnv -> GithubEnv -> GH.GitHubCommit -> m ()
+cacheUpdate env GithubEnv{..} commit = do
+  -- TODO: switch to use a custom credential manager?
+  token <- liftIO $ GH.ensureToken envGithubInstallationAccessToken
+  runGit env
+    $ withCwd (cachePathFor env commit)
+    $ git env ["remote", "set-url", "origin", githubUrlFor env commit (Just token)]
   runGit env
     $ withCwd (cachePathFor env commit)
     $ git env ["remote", "update", "--prune"]
 
-cacheGetRepo :: (MonadIO m, MonadMask m, MonadLog LogMsg m) => GitEnv -> GH.GitHubCommit -> m FilePath
-cacheGetRepo env commit = do
+cacheGetRepo :: (MonadIO m, MonadMask m, MonadLog LogMsg m) => GitEnv -> GithubEnv -> GH.GitHubCommit -> m FilePath
+cacheGetRepo env ghenv commit = do
   let repoPath = cachePathFor env commit
   exists <- liftIO $ doesPathExist repoPath
   if exists
-    then cacheUpdate env commit
-    else cacheClone env commit
+    then cacheUpdate env ghenv commit
+    else cacheClone env ghenv commit
   return repoPath
 
-checkout :: (MonadIO m, MonadMask m, MonadLog LogMsg m) => GitEnv -> GH.GitHubCommit -> m FilePath
-checkout env commit = do
-  workdir <- createNewWorkDir env (Text.unpack $ GH.ghcSha commit)
-  repoPath <- cacheGetRepo env commit
+checkout :: (MonadIO m, MonadMask m, MonadLog LogMsg m) => GitEnv -> GithubEnv -> GH.GitHubCommit -> m FilePath
+checkout env ghenv commit = do
+  workdir <- createNewWorkDir env (cs $ GH.ghcSha commit)
+  repoPath <- cacheGetRepo env ghenv commit
   runGit env
     $ git env ["clone", repoPath, workdir]
   runGit env
     $ withCwd workdir
-    $ git env ["checkout", "--detach", Text.unpack $ GH.ghcSha commit]
+    $ git env ["checkout", "--detach", cs $ GH.ghcSha commit]
   return workdir
 
 createNewWorkDir :: forall m. (MonadIO m, MonadMask m, MonadLog LogMsg m) => GitEnv -> String -> m FilePath
