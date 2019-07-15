@@ -17,7 +17,7 @@ import Data.Text (Text)
 data Config = Config
   { cfgHttp               :: HttpConfig
   , cfgGithub             :: GithubConfig
-  , cfgLogDir             :: Text
+  , cfgLogFile            :: Maybe Text
   , cfgDatabase           :: DbConfig
   } deriving (Generic, Interpret)
 

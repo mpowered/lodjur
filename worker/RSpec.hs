@@ -8,8 +8,10 @@ import           Control.Concurrent.Async
 import           Control.Exception
 import           Control.Monad
 import           Control.Monad.IO.Class
+import           Control.Monad.Log
 import           Data.Aeson
 import qualified Data.Text               as Text
+import           Data.Text.Prettyprint.Doc
 import           System.Directory
 import           System.FilePath
 import           System.IO                ( Handle, hGetLine )
@@ -32,8 +34,8 @@ logh chan h = go
       Left e
         | isEOFError e -> return ()
         | otherwise    -> go
-      Right line -> do
-        writeChan chan (Job.LogOutput (Text.pack line))
+      Right logline -> do
+        writeChan chan (Job.LogOutput (Text.pack logline))
         go
 
 process :: Chan Job.Reply -> CreateProcess -> IO ExitCode
@@ -47,10 +49,10 @@ process chan cp = do
   _ <- wait err
   return code
 
-runRSpec :: Chan Job.Reply -> CreateProcess -> IO ExitCode
+runRSpec :: Chan Job.Reply -> CreateProcess -> Worker ExitCode
 runRSpec chan p = do
-  putStrLn $ "RSPEC: " ++ show (cmdspec p)
-  process chan p
+  logDebug $ "RSPEC: " <> viaShow (cmdspec p)
+  liftIO $ process chan p
 
 rspecCmd :: [String] -> CreateProcess
 rspecCmd = proc ".lodjur/rspec"
@@ -59,12 +61,12 @@ withCwd :: FilePath -> CreateProcess -> CreateProcess
 withCwd d p = p { cwd = Just d }
 
 rspec :: Chan Job.Reply -> FilePath -> String -> Worker Job.Result
-rspec chan d app = liftIO $ do
-  createDirectoryIfMissing True (d </> checkOutput)
+rspec chan d app = do
+  liftIO $ createDirectoryIfMissing True (d </> checkOutput)
   exitcode <- runRSpec chan $ withCwd d $ rspecCmd [app, checkOutput]
   case exitcode of
     ExitSuccess -> do
-      r <- parseCheckResults (d </> checkOutput)
+      r <- liftIO $ parseCheckResults (d </> checkOutput)
       case r of
         Just result@RSpecResult{..} -> do
           let RSpecSummary{..} = rspecSummary

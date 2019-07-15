@@ -35,7 +35,7 @@ instance Exception GitError where
 runGit :: (MonadIO m, MonadMask m, MonadLog LogMsg m) => GitEnv -> CreateProcess -> m ()
 runGit GitEnv{..} p =
   bracket_ (liftIO $ waitQSem envGitSem) (liftIO $ signalQSem envGitSem) $ do
-    when envGitDebug $ logDebug $ "GIT: " <> viaShow (cmdspec p)
+    logDebug $ "GIT: " <> viaShow (cmdspec p)
     (exitcode, stdout, stderr) <- liftIO $ readCreateProcessWithExitCode p ""
     when envGitDebug $ do
       mapM_ logDebug [ "> " <> pretty l | l <- lines stdout ]

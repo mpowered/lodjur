@@ -31,6 +31,7 @@ import           Lodjur.Database                ( Connection )
 import qualified Lodjur.GitHub                 as GH
 import qualified Lodjur.Internal.JSON          as JSON
 import qualified Lodjur.Job                    as Job
+import           Lodjur.Logging                 ( LogTarget )
 import qualified Network.HTTP.Client           as HTTP
 import           Network.Socket                 ( PortNumber )
 import           Network.WebSockets             ( ServerApp )
@@ -47,6 +48,7 @@ data Env = Env
   , envJobQueue                         :: !(TQueue (Job.Request, Associated))
   , envReplyQueue                       :: !(TQueue (Job.Reply, Associated))
   , envEventChan                        :: !(TChan Event)
+  , envLogTarget                        :: !LogTarget
   }
 
 data Event

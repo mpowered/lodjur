@@ -10,11 +10,12 @@ import           Control.Concurrent.Async
 import           Control.Concurrent.STM
 import           Control.Monad
 import           Control.Monad.IO.Class
+import           Control.Monad.Log
 import           Data.Aeson
 import qualified Data.ByteString               as B
 import qualified Data.ByteString.Lazy          as LB
-import qualified Data.ByteString.Lazy.Char8    as C8
 import           Data.Default.Class
+import           Data.Text.Prettyprint.Doc
 import           GHC.Generics
 import           Control.Exception
 import qualified Network.Connection            as NC
@@ -24,6 +25,7 @@ import           Network.WebSockets.Stream
 import           Lodjur.Core.Types
 import qualified Lodjur.Internal.JSON          as JSON
 import           Lodjur.Job                    as Job
+import           Lodjur.Logging                 ( LogTarget, runLogging )
 
 data HandshakeRequest
   = Greet
@@ -48,7 +50,7 @@ instance FromJSON HandshakeReply where
 recvMsg :: (FromJSON a, MonadIO m) => WS.Connection -> m a
 recvMsg conn = liftIO $ do
   d <- receiveData conn
-  putStrLn $ "<- " ++ C8.unpack d
+  -- putStrLn $ "<- " ++ C8.unpack d
   case decode' d of
     Nothing  -> throwIO WebsocketError
     Just msg -> return msg
@@ -56,7 +58,7 @@ recvMsg conn = liftIO $ do
 sendMsg :: (ToJSON a, MonadIO m) => WS.Connection -> a -> m ()
 sendMsg conn msg = liftIO $ do
   sendTextData conn $ encode msg
-  putStrLn $ "-> " ++ C8.unpack (encode msg)
+  -- putStrLn $ "-> " ++ C8.unpack (encode msg)
 
 serverApp :: Env -> ServerApp
 serverApp env pending = if validRequest (pendingRequest pending)
@@ -71,13 +73,15 @@ accept :: PendingConnection -> Env -> IO ()
 accept pending Env {..} = do
   conn <- acceptRequest pending
   serverHandshake conn
-  putStrLn "Worker connected"
+  runLogging envLogTarget $ logInfo "Worker connected"
   forkPingThread conn 30
   inprogress <- newEmptyTMVarIO
   catch
     (concurrently_ (sendloop conn inprogress) (recvloop conn inprogress))
-    (\(SomeException e) -> putStrLn $ "Exception in worker server: " ++ show e)
-  putStrLn "Worker disconnected"
+    (\(SomeException e) ->
+      runLogging envLogTarget $
+        logError $ "Exception in worker server: " <> viaShow e)
+  runLogging envLogTarget $ logInfo "Worker disconnected"
   atomically $ do
     r <- tryTakeTMVar inprogress
     case r of
@@ -146,11 +150,12 @@ makeConnectionStream conn = makeStream r s
   s Nothing   = NC.connectionClose conn `catch` \(_ :: IOException) -> return ()
   s (Just bs) = NC.connectionPut conn (LB.toStrict bs)
 
-runClient :: ConnectInfo -> (Job.Request -> Chan Job.Reply -> IO Job.Result) -> IO ()
-runClient ci handler =
+runClient :: ConnectInfo -> LogTarget -> (Job.Request -> Chan Job.Reply -> IO Job.Result) -> IO ()
+runClient ci logTarget handler =
   catch
     (runClientApp ci clientApp)
-    (\ConnectionClosed -> putStrLn "Disconnected from server")
+    (\ConnectionClosed -> 
+      runLogging logTarget $ logCritical "Disconnected from server")
  where
   clientApp conn = do
     clientHandshake conn
@@ -161,7 +166,7 @@ runClient ci handler =
   clientloop s r = forever $ do
     req <- takeMVar r
     rep <- handler req s `catch` \(e :: IOException) -> do
-      putStrLn $ "Worker threw an excaption: " ++ show e
+      runLogging logTarget $ logError $ "Worker threw an excaption: " <> viaShow e
       return $ Job.Result Job.Failure Nothing [] Nothing
     writeChan s (Concluded rep)
 

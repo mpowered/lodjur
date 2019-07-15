@@ -42,7 +42,7 @@ data GithubEnv = GithubEnv
 
 buildEnv :: (MonadIO m, MonadError String m) => Manager -> Config -> m Env
 buildEnv httpManager cfg =
-  Env <$> pure (maybe LogStdout LogFile (cs <$> cfgLogFile cfg))
+  Env <$> pure (maybe LogStdout (LogFile . cs) (cfgLogFile cfg))
       <*> maybe (throwError "Invalid WebSocket URI") return (Core.parseConnectURI (cs $ cfgWebSocket cfg))
       <*> buildGitEnv (cfgGit cfg)
       <*> buildGithubEnv httpManager (cfgGithub cfg)

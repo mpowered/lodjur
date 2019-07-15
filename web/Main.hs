@@ -11,9 +11,11 @@
 module Main where
 
 import           Control.Exception
+import           Control.Monad.Log
 import           Data.String.Conversions        ( cs )
 import           Data.Text                      ( Text )
 import qualified Data.Text                     as T
+import           Data.Text.Prettyprint.Doc
 import qualified Data.Text.Lazy                as LT
 import qualified Database.PostgreSQL.Simple    as Pg
 import           GitHub.Data.Id                 ( Id(..) )
@@ -33,6 +35,7 @@ import           Lodjur.Core
 import           Lodjur.Database
 import qualified Lodjur.GitHub                 as GH
 import           Lodjur.GitHub.Webhook
+import           Lodjur.Logging
 
 import           Api
 import           Auth
@@ -99,6 +102,7 @@ lodjur LodjurOptions {..} = do
   Config {..} <- readConfig configFile
   let HttpConfig {..}   = cfgHttp
       GithubConfig {..} = cfgGithub
+      logTarget = maybe LogStdout (LogFile . cs) cfgLogFile
 
   staticDir    <- maybe (getDataFileName "static") (return . cs) httpStaticDir
 
@@ -112,13 +116,13 @@ lodjur LodjurOptions {..} = do
                                       signer
                                       (ghid githubInstId)
 
-
-  bracket (startCore accessToken httpManager dbPool) cancelCore $ \core -> do
+  bracket (startCore accessToken httpManager dbPool logTarget) cancelCore $ \core -> do
     let key = gitHubKey (pure (cs githubWebhookSecret))
         cookieKey = S.fromSecret (cs httpCookieSecret)
         jwtSettings = defaultJWTSettings cookieKey
         ghSettings = makeGHSettings "lodjur" jwtSettings (validateAuthUser dbPool)
-        env = Types.Env { envGithubAppId = ci githubAppId
+        env = Types.Env { envLogTarget = logTarget
+                        , envGithubAppId = ci githubAppId
                         , envGithubClientId = githubClientId
                         , envGithubClientSecret = githubClientSecret
                         , envCore = core
@@ -130,7 +134,8 @@ lodjur LodjurOptions {..} = do
         api' = Proxy :: Proxy App
         auth' = Proxy :: Proxy '[GitHubKey, GHSettings AuthUser]
 
-    putStrLn $ "Serving on port " ++ show httpPort ++ ", static from " ++ show staticDir
+    runLogging logTarget $
+      logInfo $ "Serving on port " <> pretty httpPort <> ", static from " <> pretty staticDir
 
     Warp.run (ci httpPort) $ gzip def { gzipFiles = GzipCompress } $
       serveWithContext api' ctx $

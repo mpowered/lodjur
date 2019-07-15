@@ -6,8 +6,10 @@ module Build where
 import           Control.Concurrent
 import           Control.Concurrent.Async
 import           Control.Exception
+import           Control.Monad.Log
 import           Control.Monad.Reader
 import qualified Data.Text               as Text
+import           Data.Text.Prettyprint.Doc
 import           System.IO                ( Handle, hGetLine )
 import           System.IO.Error          ( isEOFError )
 import           System.Process
@@ -36,8 +38,8 @@ logh chan h = go
       Left e
         | isEOFError e -> return ()
         | otherwise    -> go
-      Right line -> do
-        writeChan chan (Job.LogOutput (Text.pack line))
+      Right logline -> do
+        writeChan chan (Job.LogOutput (Text.pack logline))
         go
 
 process :: Chan Job.Reply -> CreateProcess -> IO ExitCode
@@ -52,9 +54,9 @@ process chan cp = do
   return code
 
 runBuild :: Chan Job.Reply -> CreateProcess -> Worker Job.Result
-runBuild chan p = liftIO $ do
-  putStrLn $ "BUILD: " <> show (cmdspec p)
-  exitcode <- process chan p
+runBuild chan p = do
+  logDebug $ "BUILD: " <> viaShow (cmdspec p)
+  exitcode <- liftIO $ process chan p
   case exitcode of
     ExitSuccess -> do
       let output = GH.CheckRunOutput

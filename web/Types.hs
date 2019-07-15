@@ -4,6 +4,7 @@
 
 module Types where
 
+import Control.Monad.Log      ( LoggingT )
 import Control.Monad.Reader   ( ReaderT , runReaderT , asks, liftIO )
 import Data.Aeson             ( FromJSON, ToJSON )
 import Data.Int               ( Int64 )
@@ -14,13 +15,15 @@ import Servant                ( Handler )
 import Servant.Auth.Server
 import Lodjur.Core            ( Core )
 import Lodjur.Database        ( DbPool, Pg, withConnection, beam )
+import Lodjur.Logging
 
 import GithubAuth
 
-type AppM = ReaderT Env Handler
+type AppM = ReaderT Env (LoggingT LogMsg Handler)
 
 data Env = Env
-  { envGithubAppId        :: !Int
+  { envLogTarget          :: LogTarget
+  , envGithubAppId        :: !Int
   , envGithubClientId     :: !Text
   , envGithubClientSecret :: !Text
   , envGHSettings         :: !(GHSettings AuthUser)
@@ -36,7 +39,7 @@ data AuthUser = AuthUser
   } deriving (Eq, Show, Read, Generic, FromJSON, ToJSON, FromJWT, ToJWT)
 
 runApp :: Env -> AppM a -> Handler a
-runApp = flip runReaderT
+runApp env = runLogging (envLogTarget env) . flip runReaderT env
 
 getEnv :: (Env -> a) -> AppM a
 getEnv = asks

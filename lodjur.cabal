@@ -266,12 +266,14 @@ executable              lodjur
                       , jose                  >= 0.8.0 && < 0.9
                       , jwt                   >= 0.9.0 && < 0.10
                       , language-javascript   >= 0.6 && < 0.7
+                      , logging-effect        >= 1.3 && < 1.4
                       , lucid                 >= 2.9.10 && < 2.10
                       , monad-control         >= 1.0.2 && < 1.1
                       , mtl                   >= 2.2.2 && < 2.3
                       , optparse-applicative  >= 0.14 && < 0.15
                       , pipes                 >= 4.3.0 && < 4.4
                       , postgresql-simple     >= 0.5.4 && < 0.7
+                      , prettyprinter         >= 1.2 && < 1.3
                       , process               >= 1.6.3 && < 1.7
                       , req                   >= 1.2 && < 1.3
                       , resource-pool         >= 0.2.3 && < 0.3

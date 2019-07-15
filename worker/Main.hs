@@ -66,7 +66,7 @@ start Options{..} = do
   cfg <- readConfig configFile
   env <- ensureEnv httpManager cfg
   withSocketsDo $
-    WS.runClient (envWebSocket env) (\r c -> runWorker env (handler r c))
+    WS.runClient (envWebSocket env) (envLogTarget env) (\r c -> runWorker env (handler r c))
   where
     ensureEnv httpManager cfg = do
       e <- runExceptT $ buildEnv httpManager cfg

@@ -1,4 +1,5 @@
 {-# LANGUAGE RecordWildCards       #-}
+{-# LANGUAGE OverloadedStrings     #-}
 
 module Lodjur.Core
   ( startCore
@@ -15,12 +16,14 @@ import           Control.Concurrent.STM
 import           Control.Exception
 import           Control.Monad
 import           Control.Monad.IO.Class         ( liftIO )
+import           Control.Monad.Log
 import           Data.Aeson
 import           Data.Bifunctor
 import           Data.Int                       ( Int32 )
 import           Data.Pool
 import           Data.Text                      ( Text )
 import qualified Data.Text                     as Text
+import           Data.Text.Prettyprint.Doc
 import           Data.Time.Clock                ( getCurrentTime )
 import           Database.Beam.Postgres
 import qualified Database.Beam.Postgres.Full   as Pg
@@ -30,11 +33,12 @@ import           Lodjur.Database               as DB
 import           Lodjur.Database.Enum          as DB
 import qualified Lodjur.GitHub                 as GH
 import           Lodjur.Job                    as Job
+import           Lodjur.Logging                 ( LogTarget, runLogging )
 import           Lodjur.RSpec                  as RSpec
 import qualified Network.HTTP.Client           as HTTP
 
-startCore :: GH.GitHubToken -> HTTP.Manager -> Pool Connection -> IO Core
-startCore envGithubInstallationAccessToken envHttpManager envDbPool = do
+startCore :: GH.GitHubToken -> HTTP.Manager -> Pool Connection -> LogTarget -> IO Core
+startCore envGithubInstallationAccessToken envHttpManager envDbPool envLogTarget = do
   envJobQueue   <- newTQueueIO
   envReplyQueue <- newTQueueIO
   envEventChan  <- newBroadcastTChanIO
@@ -54,7 +58,8 @@ replyHandler env = do
   case first fromException e of
     Left (Just AsyncCancelled) -> return ()
     Left _ -> do
-      putStrLn $ "Exception in replyHandler: " ++ show e
+      runLogging (envLogTarget env) $
+        logError $ "Exception in replyHandler:" <+> viaShow e
       replyHandler env
     Right () -> return ()
 
