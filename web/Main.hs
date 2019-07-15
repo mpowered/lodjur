@@ -104,7 +104,7 @@ lodjur LodjurOptions {..} = do
 
   httpManager <- Http.newManager Http.tlsManagerSettings
 
-  dbPool <- createPool (Pg.connect (pgConnectInfo cfgDatabase)) Pg.close 1 60 32
+  dbPool      <- createPool (Pg.connect (pgConnectInfo cfgDatabase)) Pg.close 1 60 32
 
   signer      <- parsePrivateKey (cs githubAppPrivateKey)
   accessToken <- GH.installationToken httpManager
