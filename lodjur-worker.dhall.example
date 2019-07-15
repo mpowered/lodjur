@@ -1,0 +1,22 @@
+{ cfgLogFile = Some "worker.log"
+, cfgWebSocket = "ws://neptune:4000/websocket"
+, cfgGit =
+    { gitCommand = "git"
+    , gitCache = "gitcache"
+    , gitWorkRoot = "workdirs"
+    , gitDebug = True
+    }
+, cfgGithub =
+    { githubAppId = 25289
+    , githubAppPrivateKey = ''
+        -----BEGIN RSA PRIVATE KEY-----
+        ...
+        -----END RSA PRIVATE KEY-----
+        ''
+    , githubInstId = 684377
+    }
+, cfgBuild =
+   { buildCommand = "nix-build"
+   , buildDebug = True
+   }
+}
