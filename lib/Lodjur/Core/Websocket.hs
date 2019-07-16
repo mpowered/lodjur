@@ -1,4 +1,5 @@
 {-# LANGUAGE DeriveGeneric       #-}
+{-# LANGUAGE LambdaCase          #-}
 {-# LANGUAGE RecordWildCards     #-}
 {-# LANGUAGE OverloadedStrings   #-}
 {-# LANGUAGE ScopedTypeVariables #-}
@@ -154,8 +155,12 @@ runClient :: ConnectInfo -> LogTarget -> (Job.Request -> Chan Job.Reply -> IO Jo
 runClient ci logTarget handler =
   catch
     (runClientApp ci clientApp)
-    (\ConnectionClosed -> 
-      runLogging logTarget $ logCritical "Disconnected from server")
+    (\case
+      ConnectionClosed -> 
+        runLogging logTarget $ logCritical "Disconnected from server"
+      x ->
+        runLogging logTarget $ logCritical $ "Websocket client connection error:" <+> viaShow x
+    )
  where
   clientApp conn = do
     clientHandshake conn
