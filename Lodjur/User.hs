@@ -8,6 +8,9 @@ import           GHC.Generics
 
 newtype UserId = UserId { unUserId :: Text } deriving (Show, Eq, Generic, Hashable)
 
+data Role = Core | Tester
+
 data User = User
-  { userId   :: UserId
+  { userId      :: UserId
+  , userRole    :: Role
   }

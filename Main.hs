@@ -36,11 +36,12 @@ import           Lodjur.Web.Base
 data DeploymentConfiguration = DeploymentConfiguration
   { name :: Text
   , warn :: Bool
+  , test :: Bool
   }
 
 deploymentConfigurationToDeployment :: DeploymentConfiguration -> Deployment
 deploymentConfigurationToDeployment DeploymentConfiguration {..} =
-  Deployment {deploymentName = DeploymentName name, deploymentWarn = warn}
+  Deployment {deploymentName = DeploymentName name, deploymentWarn = warn, deploymentTest = test}
 
 data LodjurConfiguration = LodjurConfiguration
   { gitWorkingDir       :: FilePath
@@ -58,6 +59,7 @@ instance FromJSON DeploymentConfiguration where
   parseJSON = withObject "Deployment" $ \o -> do
     name <- o .: "name"
     warn <- o .: "warn"
+    test <- o .: "test"
     return DeploymentConfiguration{..}
 
 instance FromJSON LodjurConfiguration where
@@ -81,6 +83,7 @@ instance FromJSON LodjurConfiguration where
           , ..
           }
     githubAuthTeam <- o .: "github-authorized-team"
+    githubTestTeam <- o .: "github-test-team"
     githubAuthOrg <- o .: "github-authorized-organization"
     let githubTeamAuth = TeamAuthConfig{..}
 

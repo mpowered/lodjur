@@ -341,8 +341,9 @@ jobLink = jobIdLink . jobId
 
 homeAction :: Action ()
 homeAction = do
+  user <- requireUser
   Env {..}    <- getState
-  deployments <- liftIO $ envDeployer ? GetDeployments
+  deployments <- liftIO $ envDeployer ? GetDeployments (userRole user)
   revisions   <- liftIO $ envGitReader ? GetRevisions
   refs        <- liftIO $ envGitReader ? GetRefs
   deployState <- liftIO $ envDeployer ? GetCurrentState
@@ -378,7 +379,7 @@ newDeployAction = readState >>= \case
     action   <- param' "action"
     now      <- liftIO getCurrentTime
     let buildOnly = action == ("Build" :: String)
-    liftIO (deployer ? Deploy dName revision now buildOnly (userId user)) >>= \case
+    liftIO (deployer ? Deploy dName revision now buildOnly user) >>= \case
       Just job -> do
         setStatus status302
         setHeader "Location" (jobHref job)

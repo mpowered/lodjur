@@ -13,6 +13,7 @@ github-oauth-client-secret = "..."
 github-oauth-callback-url = "https://example.com/auth/github/callback"
 github-authorized-team = "core"
 github-authorized-organization = "mpowered"
+github-test-team = "testers"
 
 [database]
 host = "localhost"
@@ -24,7 +25,9 @@ password = "lodjur"
 [[deployments]]
 name = "my-deployment-1"
 warn = false
+test = true
 
 [[deployments]]
 name = "my-deployment-2"
 warn = true
+test = false

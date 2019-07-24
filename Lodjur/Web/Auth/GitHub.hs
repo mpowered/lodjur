@@ -1,3 +1,4 @@
+{-# LANGUAGE MultiWayIf        #-}
 {-# LANGUAGE OverloadedStrings #-}
 {-# LANGUAGE RecordWildCards   #-}
 module Lodjur.Web.Auth.GitHub where
@@ -77,9 +78,9 @@ getUserAndTeams accessToken = do
     Right userAndTeams ->
       return userAndTeams
 
-loginAndRedirect :: GitHub.User -> Action ()
-loginAndRedirect githubUser = do
-  let user = User { userId = UserId (GitHub.untagName $ GitHub.userLogin githubUser) }
+loginAndRedirect :: GitHub.User -> Role -> Action ()
+loginAndRedirect githubUser role = do
+  let user = User { userId = UserId (GitHub.untagName $ GitHub.userLogin githubUser), userRole = role }
   continueTo' <- continueTo <$> readSession
   writeSession emptySession { currentUser = Just user }
   case continueTo' of
@@ -91,19 +92,23 @@ authorizeAndLogin oauth2 teamAuth = do
   checkError
   accessToken <- exchangeCode oauth2
   (githubUser, teams) <- getUserAndTeams accessToken
-  if isAuthorized teamAuth teams
-    then loginAndRedirect githubUser
-    else do setStatus status403
-            text (mconcat [ "You are not authorized, "
-                          , "because you don't have read/write permissions in the "
-                          , githubAuthOrg teamAuth <> "/" <> githubAuthTeam teamAuth
-                          , " team."
-                          ])
+  case isAuthorized teamAuth teams of
+    Just role -> loginAndRedirect githubUser role
+    Nothing -> do
+      setStatus status403
+      text (mconcat [ "You are not authorized, "
+                    , "because you don't have read/write permissions in the "
+                    , githubAuthOrg teamAuth <> "/" <> githubAuthTeam teamAuth
+                    , " team."
+                    ])
 
-isAuthorized :: TeamAuthConfig -> [GitHub.Team] -> Bool
-isAuthorized TeamAuthConfig{..} = any authorizedInTeam
+isAuthorized :: TeamAuthConfig -> [GitHub.Team] -> Maybe Role
+isAuthorized TeamAuthConfig{..} teams =
+  if | any (authorizedInTeam githubAuthTeam) teams -> Just Core
+     | any (authorizedInTeam githubTestTeam) teams -> Just Tester
+     | otherwise                                   -> Nothing
   where
-    authorizedInTeam t = team t == githubAuthTeam && org t == githubAuthOrg
+    authorizedInTeam m t = team t == m && org t == githubAuthOrg
     team = GitHub.untagName . GitHub.teamSlug
     org  = GitHub.untagName . GitHub.simpleOrganizationLogin . GitHub.teamOrganization
 

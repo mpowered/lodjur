@@ -22,6 +22,7 @@ instance IsString DeploymentName where
 data Deployment =
   Deployment { deploymentName :: DeploymentName
              , deploymentWarn :: Bool
+             , deploymentTest :: Bool
              }
   deriving (Eq, Show, Generic)
 
