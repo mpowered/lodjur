@@ -5,14 +5,14 @@
 
 module GitHub.Data.Apps where
 
-import Data.Text.Encoding        (encodeUtf8)
-import GitHub.Auth               (Token)
-import GitHub.Data.Definitions
-import GitHub.Data.Id            (Id)
-import GitHub.Data.Name          (Name)
-import GitHub.Data.URL           (URL)
-import GitHub.Internal.Prelude
-import Prelude ()
+import           Data.Text.Encoding        (encodeUtf8)
+import           GitHub.Auth               (Token)
+import           GitHub.Data.Definitions
+import           GitHub.Data.Id            (Id)
+import           GitHub.Data.Name          (Name)
+import           GitHub.Data.URL           (URL)
+import           GitHub.Internal.Prelude
+import           Prelude                   ()
 
 data App = App
     { appId             :: !(Id App)

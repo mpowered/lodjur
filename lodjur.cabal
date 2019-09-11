@@ -184,8 +184,7 @@ library                 lodjur-lib
                       , beam-core             == 0.8.*
                       , beam-postgres         == 0.4.*
                       , bytestring            >= 0.10.8 && < 0.11
-                      , connection            >= 0.2 && < 0.3
-                      , data-default-class
+                      , connection            >= 0.2 && < 0.4
                       , deepseq               >= 1.4.4 && < 1.5
                       , deepseq-generics      >= 0.2 && < 0.3
                       , errors                >= 2.3 && < 2.4
@@ -194,8 +193,8 @@ library                 lodjur-lib
                       , github-extra
                       , github-webhooks       >= 0.10 && < 0.11
                       , hashable              >= 1.2.7.0 && < 1.3
-                      , http-client
-                      , jwt                   >= 0.9.0 && < 0.10
+                      , http-client           >= 0.5 && < 0.7
+                      , jwt                   >= 0.10.0 && < 0.11
                       , logging-effect        >= 1.3 && < 1.4
                       , monad-control         >= 1.0 && < 1.1
                       , mtl                   >= 2.2.2 && < 2.3
@@ -205,8 +204,8 @@ library                 lodjur-lib
                       , prettyprinter         >= 1.2 && < 1.3
                       , resource-pool         >= 0.2.3 && < 0.3
                       , servant-github-webhook>= 0.4 && < 0.5
-                      , servant-server        >= 0.15 && < 0.16
-                      , servant-websockets    >= 1.1 && < 1.2
+                      , servant-server        >= 0.16 && < 0.17
+                      , servant-websockets    == 1.2.*
                       , string-conversions    >= 0.4 && < 0.5
                       , stm                   >= 2.4 && < 2.6
                       , text                  >= 1.2.3 && < 1.3
@@ -247,8 +246,7 @@ executable              lodjur
                       , cookie                == 0.4.*
                       , containers            >= 0.5 && < 0.7
                       , cryptonite            >= 0.25 && < 0.26
-                      , data-default-class
-                      , dhall                 == 1.19.*
+                      , dhall                 >= 1.19 && < 1.25
                       , directory             >= 1.3 && < 1.4
                       , errors                >= 2.3 && < 2.4
                       , filepath              >= 1.4 && < 1.5
@@ -258,13 +256,13 @@ executable              lodjur
                       , hashable              >= 1.2.7 && < 1.3
                       , hoauth2
                       , htoml                 >= 1.0.0 && < 1.1
-                      , http-client
-                      , http-client-tls
+                      , http-client           >= 0.5 && < 0.7
+                      , http-client-tls       >= 0.3 && < 0.4
                       , http-media
                       , http-types            >= 0.12.1 && < 0.13
                       , iso8601-time          >= 0.1.5 && < 0.2
                       , jose                  >= 0.8.0 && < 0.9
-                      , jwt                   >= 0.9.0 && < 0.10
+                      , jwt                   >= 0.10.0 && < 0.11
                       , language-javascript   >= 0.6 && < 0.7
                       , logging-effect        >= 1.3 && < 1.4
                       , lucid                 >= 2.9.10 && < 2.10
@@ -275,16 +273,16 @@ executable              lodjur
                       , postgresql-simple     >= 0.5.4 && < 0.7
                       , prettyprinter         >= 1.2 && < 1.3
                       , process               >= 1.6.3 && < 1.7
-                      , req                   >= 1.2 && < 1.3
+                      , req                   >= 2.0 && < 2.2
                       , resource-pool         >= 0.2.3 && < 0.3
-                      , servant               >= 0.15 && < 0.16
+                      , servant               >= 0.16 && < 0.17
                       , servant-auth-server   >= 0.4 && < 0.5
                       , servant-event-stream  >= 0.1 && < 0.2
                       , servant-github-webhook>= 0.4 && < 0.5
                       , servant-js            >= 0.9 && < 0.10
-                      , servant-lucid         >= 0.8 && < 0.9
-                      , servant-server        >= 0.15 && < 0.16
-                      , servant-websockets    >= 1.1 && < 1.2
+                      , servant-lucid         >= 0.8 && < 0.10
+                      , servant-server        >= 0.16 && < 0.17
+                      , servant-websockets    == 1.2.*
                       , stm                   >= 2.4 && < 2.6
                       , string-conversions    >= 0.4 && < 0.5
                       , text                  >= 1.2.3 && < 1.3
@@ -319,16 +317,16 @@ executable              lodjur-worker
                       , async                 >= 2.2 && < 2.3
                       , bytestring            >= 0.10.8 && < 0.11
                       , directory             >= 1.3 && < 1.4
-                      , dhall                 == 1.19.*
+                      , dhall                 >= 1.19 && < 1.25
                       , errors                >= 2.3 && < 2.4
                       , exceptions            >= 0.10 && < 0.11
                       , filepath              >= 1.4 && < 1.5
                       , github                >= 0.21 && < 0.22
                       , github-extra
-                      , http-client           >= 0.5 && < 0.6
+                      , http-client           >= 0.5 && < 0.7
                       , http-client-tls       >= 0.3 && < 0.4
                       , htoml                 >= 1.0.0 && < 1.1
-                      , jwt                   >= 0.9.0 && < 0.10
+                      , jwt                   >= 0.10.0 && < 0.11
                       , logging-effect        >= 1.3 && < 1.4
                       , mtl                   >= 2.2.2 && < 2.3
                       , network               >= 2.6 && < 3.1

@@ -89,7 +89,7 @@ createInstallationJWT appid signer now = Text.encodeUtf8 jwt
                   , JWT.iat = JWT.numericDate now
                   , JWT.exp = JWT.numericDate (now + 600)
                   }
-  jwt = JWT.encodeSigned signer claims
+  jwt = JWT.encodeSigned signer mempty claims
 
 newInstallationAccessToken
   :: Manager

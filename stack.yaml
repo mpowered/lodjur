@@ -1,11 +1,19 @@
-resolver: lts-13.27   # 8.6.5
+resolver: lts-14.5   # 8.6.5
 extra-deps:
-- github
 - beam-migrate-0.4.0.1
 - beam-postgres-0.4.0.0
-- jwt-0.9.0
+- binary-orphans-0.1.8.0
+- github
+- jwt-0.10.0
 - servant-github-webhook-0.4.1.0
 - servant-pipes-0.15
+
+# waiting on PR for newer servant/lts-40:
+# https://github.com/moesenle/servant-websockets/pull/9
+# - servant-websockets-1.1.0
+- git: https://github.com/OndrejSlamecka/servant-websockets.git
+  commit: 9ff8a6ba6aeaa14669a0f2b8a62439f29669a8f7
+
 - git: https://github.com/bflyblue/servant-event-stream.git
   commit: f7af41ab81073ae054631baa4f8c9ecf6c8bc944
 nix:

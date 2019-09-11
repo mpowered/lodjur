@@ -26,7 +26,6 @@ import           GitHub.Endpoints.Users        as GH
 import           Lodjur.Database               as Db
 import           Network.HTTP.Req               ( (/:), (=:) )
 import qualified Network.HTTP.Req              as Req
-import           Servant.Auth.Server
 
 import           Types
 
@@ -90,7 +89,7 @@ getAccessToken code = do
   clientId <- getEnv envGithubClientId
   clientSecret <- getEnv envGithubClientSecret
 
-  r <- Req.runReq def $
+  r <- Req.runReq Req.defaultHttpConfig  $
     Req.req
       Req.POST
       (Req.https "github.com" /: "login" /: "oauth" /: "access_token")

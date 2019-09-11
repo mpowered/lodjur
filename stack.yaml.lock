@@ -19,12 +19,19 @@ packages:
   original:
     hackage: beam-postgres-0.4.0.0
 - completed:
-    hackage: jwt-0.9.0@sha256:82df51e48d2c7a6773bac7cd0f99f221107e7124db5d118f828dc08af025edee,4179
+    hackage: binary-orphans-0.1.8.0@sha256:009457e7f5f2dfdc32cb4b2b0bfc5d88ac78acb1b5fa8de15fd933ceb70cdeb6,2615
+    pantry-tree:
+      size: 380
+      sha256: fbe0d58605e9e65aa161c4869190f1a2ab92f07a946aeff163aea9c272b3e6b5
+  original:
+    hackage: binary-orphans-0.1.8.0
+- completed:
+    hackage: jwt-0.10.0@sha256:d14551b0c357424fb9441ec9a7a9d5b90b13f805fcc9327ba49db548cd64fc29,4180
     pantry-tree:
       size: 1027
-      sha256: b5d2fea8ec4a71942be093a6e6fc59ac55e70afae9146ab4720ce38eb4176744
+      sha256: e0cf95e834d99768ad8a3f7e99246948f0cdd2cfa18813517f540144aea6c3e5
   original:
-    hackage: jwt-0.9.0
+    hackage: jwt-0.10.0
 - completed:
     hackage: servant-github-webhook-0.4.1.0@sha256:6ac456ccc6a2a96b30a7b80cd91b121f1b7e9bd33635641a6afbd6137700a753,2754
     pantry-tree:
@@ -41,6 +48,20 @@ packages:
     hackage: servant-pipes-0.15
 - completed:
     cabal-file:
+      size: 2253
+      sha256: a3ff22d4a288d7d8b60b9b80f3f053403b0ace4969ed18dacd840610a2e330d7
+    name: servant-websockets
+    version: 1.2.0
+    git: https://github.com/OndrejSlamecka/servant-websockets.git
+    pantry-tree:
+      size: 682
+      sha256: d6d2c345d4ac7c63e69aefc679fa44204ae9a31457fffeaa54acf79db44e5048
+    commit: 9ff8a6ba6aeaa14669a0f2b8a62439f29669a8f7
+  original:
+    git: https://github.com/OndrejSlamecka/servant-websockets.git
+    commit: 9ff8a6ba6aeaa14669a0f2b8a62439f29669a8f7
+- completed:
+    cabal-file:
       size: 1479
       sha256: 00d475b5227a77461a27df880d6572f9d4afad6409f4f58e307391bfbacf2534
     name: servant-event-stream
@@ -55,7 +76,7 @@ packages:
     commit: f7af41ab81073ae054631baa4f8c9ecf6c8bc944
 snapshots:
 - completed:
-    size: 500539
-    url: https://raw.githubusercontent.com/commercialhaskell/stackage-snapshots/master/lts/13/27.yaml
-    sha256: 690db832392afe55733b4c7023fd29b1b1c660ee42f1fb505b86b07394ca994e
-  original: lts-13.27
+    size: 524104
+    url: https://raw.githubusercontent.com/commercialhaskell/stackage-snapshots/master/lts/14/5.yaml
+    sha256: 3c146eebc1b383211ea49d5422fb3d63d699da12307b4bc989107300eb579d60
+  original: lts-14.5

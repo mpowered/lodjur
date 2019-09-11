@@ -15,7 +15,6 @@ import           Control.Monad.Log
 import           Data.Aeson
 import qualified Data.ByteString               as B
 import qualified Data.ByteString.Lazy          as LB
-import           Data.Default.Class
 import           Data.Text.Prettyprint.Doc
 import           GHC.Generics
 import           Control.Exception
@@ -139,7 +138,7 @@ runClientApp ci app = do
     , connectionUseSecure = secure
     , connectionUseSocks  = Nothing
     }
-  secure = if connectSecure ci then Just def else Nothing
+  secure = if connectSecure ci then Just (NC.TLSSettingsSimple False False False) else Nothing
 
 makeConnectionStream :: NC.Connection -> IO Stream
 makeConnectionStream conn = makeStream r s
@@ -156,7 +155,7 @@ runClient ci logTarget handler =
   catch
     (runClientApp ci clientApp)
     (\case
-      ConnectionClosed -> 
+      ConnectionClosed ->
         runLogging logTarget $ logCritical "Disconnected from server"
       x ->
         runLogging logTarget $ logCritical $ "Websocket client connection error:" <+> viaShow x
