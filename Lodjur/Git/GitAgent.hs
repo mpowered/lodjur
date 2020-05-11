@@ -39,7 +39,7 @@ instance Process GitAgent where
   terminate _ = return ()
 
 gitFetchRemote :: FilePath -> IO ()
-gitFetchRemote = void . gitCmd ["fetch", "--tags", "--prune", "origin"]
+gitFetchRemote = void . gitCmd ["fetch", "--tags", "--prune", "-f", "origin"]
 
 gitCheckout :: Ref OutputLogger -> FilePath -> Git.Revision -> IO ()
 gitCheckout outputLogger workingDir revision =
