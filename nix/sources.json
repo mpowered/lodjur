@@ -1,47 +1,50 @@
 {
-    "nixpkgs": {
-        "url": "https://github.com/NixOS/nixpkgs-channels/archive/cf3e277dd0bd710af0df667e9364f4bd80c72713.tar.gz",
-        "owner": "NixOS",
-        "branch": "nixos-19.03",
-        "url_template": "https://github.com/<owner>/<repo>/archive/<rev>.tar.gz",
-        "repo": "nixpkgs-channels",
-        "type": "tarball",
-        "sha256": "1abyadl3sxf67yi65758hq6hf2j07afgp1fmkk7kd94dadx6r6f4",
-        "description": "Nixpkgs/NixOS branches that track the Nixpkgs/NixOS channels",
-        "rev": "cf3e277dd0bd710af0df667e9364f4bd80c72713"
-    },
     "beam": {
-        "url": "https://github.com/tathougies/beam/archive/7f22ce0528c0739497ec8ab6380bc7c2df3824be.tar.gz",
-        "owner": "tathougies",
         "branch": "master",
-        "url_template": "https://github.com/<owner>/<repo>/archive/<rev>.tar.gz",
-        "repo": "beam",
-        "type": "tarball",
-        "sha256": "1zrgxxlw54fn7x6014x7r3v1xr7399qq01nrgrjafrhasj60gx3m",
         "description": "A type-safe, non-TH Haskell SQL library and ORM",
-        "rev": "7f22ce0528c0739497ec8ab6380bc7c2df3824be"
-    },
-    "servant-event-stream": {
-        "url": "https://github.com/bflyblue/servant-event-stream/archive/f7af41ab81073ae054631baa4f8c9ecf6c8bc944.tar.gz",
-        "owner": "bflyblue",
-        "branch": "master",
-        "url_template": "https://github.com/<owner>/<repo>/archive/<rev>.tar.gz",
-        "repo": "servant-event-stream",
+        "homepage": null,
+        "owner": "tathougies",
+        "repo": "beam",
+        "rev": "01249bc39c9901ffbcaef55cdce59e75518c8141",
+        "sha256": "0zxx7kvhlqqrymfh9lf0rzg9vznhg491j07304q4fzclmm13avxm",
         "type": "tarball",
-        "sha256": "1y4cmn9cdxrq0afbx3fy4gg1qf6rkzy8bch4fzdwp94rvfh5r7iq",
-        "description": "Servant support for ServerSent events",
-        "rev": "f7af41ab81073ae054631baa4f8c9ecf6c8bc944"
+        "url": "https://github.com/tathougies/beam/archive/01249bc39c9901ffbcaef55cdce59e75518c8141.tar.gz",
+        "url_template": "https://github.com/<owner>/<repo>/archive/<rev>.tar.gz"
     },
     "niv": {
-        "homepage": "https://github.com/nmattia/niv",
-        "url": "https://github.com/nmattia/niv/archive/a489b65a5c3a29983701069d1ce395b23d9bde64.tar.gz",
-        "owner": "nmattia",
         "branch": "master",
-        "url_template": "https://github.com/<owner>/<repo>/archive/<rev>.tar.gz",
-        "repo": "niv",
-        "type": "tarball",
-        "sha256": "0mvh2x4l4f3nbgzzygk317nkzbyj3xgnczivgdra4q82dg8x77ka",
         "description": "Easy dependency management for Nix projects",
-        "rev": "a489b65a5c3a29983701069d1ce395b23d9bde64"
+        "homepage": "https://github.com/nmattia/niv",
+        "owner": "nmattia",
+        "repo": "niv",
+        "rev": "d13bf5ff11850f49f4282d59b25661c45a851936",
+        "sha256": "06hg0i173dia99bcv8si8qqwdw0ymbngsilz2s182d4afsnylq5z",
+        "type": "tarball",
+        "url": "https://github.com/nmattia/niv/archive/d13bf5ff11850f49f4282d59b25661c45a851936.tar.gz",
+        "url_template": "https://github.com/<owner>/<repo>/archive/<rev>.tar.gz"
+    },
+    "nixpkgs": {
+        "branch": "nixos-19.03",
+        "description": "Nixpkgs/NixOS branches that track the Nixpkgs/NixOS channels",
+        "homepage": "https://github.com/NixOS/nixpkgs",
+        "owner": "NixOS",
+        "repo": "nixpkgs-channels",
+        "rev": "34c7eb7545d155cc5b6f499b23a7cb1c96ab4d59",
+        "sha256": "11z6ajj108fy2q5g8y4higlcaqncrbjm3dnv17pvif6avagw4mcb",
+        "type": "tarball",
+        "url": "https://github.com/NixOS/nixpkgs-channels/archive/34c7eb7545d155cc5b6f499b23a7cb1c96ab4d59.tar.gz",
+        "url_template": "https://github.com/<owner>/<repo>/archive/<rev>.tar.gz"
+    },
+    "servant-event-stream": {
+        "branch": "master",
+        "description": "Servant support for ServerSent events",
+        "homepage": null,
+        "owner": "bflyblue",
+        "repo": "servant-event-stream",
+        "rev": "f7af41ab81073ae054631baa4f8c9ecf6c8bc944",
+        "sha256": "1y4cmn9cdxrq0afbx3fy4gg1qf6rkzy8bch4fzdwp94rvfh5r7iq",
+        "type": "tarball",
+        "url": "https://github.com/bflyblue/servant-event-stream/archive/f7af41ab81073ae054631baa4f8c9ecf6c8bc944.tar.gz",
+        "url_template": "https://github.com/<owner>/<repo>/archive/<rev>.tar.gz"
     }
 }
