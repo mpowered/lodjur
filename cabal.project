@@ -1,6 +1,6 @@
 packages:
   ./lodjur.cabal
-  github
+  -- github
 
 source-repository-package
   type: git
